@@ -1,0 +1,26 @@
+[
+    {
+        "id": 1,
+        "uuid": "228eedcb-29d4-4b8e-ba42-71504d9ff43e",
+        "nombre": "ACTIVO",
+        "created_at": "2025-08-25 19:38:38",
+        "updated_at": "2025-08-25 19:38:38",
+        "deleted_at": null
+    },
+    {
+        "id": 2,
+        "uuid": "76d1e41b-f649-4b27-9c8a-512b58d7da21",
+        "nombre": "INACTIVO",
+        "created_at": "2025-08-25 19:38:38",
+        "updated_at": "2025-08-25 19:38:38",
+        "deleted_at": null
+    },
+    {
+        "id": 3,
+        "uuid": "011fd038-82d4-47d2-81e2-387ed664c22b",
+        "nombre": "SUSPENDIDO",
+        "created_at": "2025-08-25 19:38:38",
+        "updated_at": "2025-08-25 19:38:38",
+        "deleted_at": null
+    }
+]

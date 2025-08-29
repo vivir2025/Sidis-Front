@@ -1,0 +1,469 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Services\{AuthService, ApiService};
+use Illuminate\Support\Facades\{Validator, Log, Cache};
+
+class AuthController extends Controller
+{
+    protected $authService;
+    protected $apiService;
+
+    public function __construct(AuthService $authService, ApiService $apiService)
+    {
+        $this->authService = $authService;
+        $this->apiService = $apiService;
+    }
+
+    /**
+     * Mostrar formulario de login
+     */
+    public function showLogin()
+    {
+        // Verificar si ya está autenticado
+        if ($this->authService->check()) {
+            return redirect()->route('dashboard');
+        }
+
+        $isOnline = $this->apiService->isOnline();
+        $sedes = $this->getSedes($isOnline);
+
+        return view('auth.login', compact('isOnline', 'sedes'));
+    }
+
+    /**
+     * ✅ CORREGIDO: Procesar login - DEBE recibir Request
+     */
+    public function login(Request $request)
+    {
+        // Validación de entrada
+        $validator = Validator::make($request->all(), [
+            'login' => 'required|string|max:50',
+            'password' => 'required|string|min:4',
+            'sede_id' => 'required|integer'
+        ], [
+            'login.required' => 'El usuario es obligatorio',
+            'login.max' => 'El usuario no puede tener más de 50 caracteres',
+            'password.required' => 'La contraseña es obligatoria',
+            'password.min' => 'La contraseña debe tener al menos 4 caracteres',
+            'sede_id.required' => 'Debe seleccionar una sede',
+            'sede_id.integer' => 'Sede inválida'
+        ]);
+
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput($request->except('password'));
+        }
+
+        $credentials = $request->only('login', 'password', 'sede_id');
+
+        try {
+            // ✅ DEBUGGING TEMPORAL
+            Log::info('Iniciando login desde controller', [
+                'login' => $credentials['login'],
+                'sede_id' => $credentials['sede_id'],
+                'api_online' => $this->apiService->isOnline()
+            ]);
+
+            // Guardar contraseña temporalmente para offline
+            session(['temp_password_for_offline' => $credentials['password']]);
+
+            // ✅ LLAMAR AL SERVICIO DE AUTENTICACIÓN
+            $result = $this->authService->login($credentials);
+
+            // ✅ DEBUGGING: Log del resultado completo
+            Log::info('Resultado de AuthService::login', [
+                'result' => $result,
+                'login' => $credentials['login']
+            ]);
+
+            // Limpiar contraseña temporal
+            session()->forget('temp_password_for_offline');
+
+            if ($result['success']) {
+                $message = $result['message'];
+                
+                // Agregar indicador de modo offline
+                if (isset($result['offline']) && $result['offline']) {
+                    $message .= ' (Modo Offline)';
+                }
+
+                Log::info('Login exitoso desde web', [
+                    'usuario' => $result['usuario']['login'] ?? 'unknown',
+                    'sede_id' => $credentials['sede_id'],
+                    'offline' => $result['offline'] ?? false,
+                    'ip' => $request->ip()
+                ]);
+
+                // Recordar datos si está marcado
+                if ($request->has('remember')) {
+                    $this->rememberLoginData($credentials);
+                }
+
+                return redirect()
+                    ->intended(route('dashboard'))
+                    ->with('success', $message);
+            }
+
+            // Login fallido
+            Log::warning('Login fallido desde web', [
+                'login' => $credentials['login'],
+                'sede_id' => $credentials['sede_id'],
+                'error' => $result['error'],
+                'ip' => $request->ip()
+            ]);
+
+            $errorMessage = $result['error'] ?? 'Error desconocido en el login';
+
+            return back()
+                ->withErrors(['login' => $errorMessage])
+                ->withInput($request->except('password'));
+
+        } catch (\Exception $e) {
+            // Limpiar contraseña temporal en caso de error
+            session()->forget('temp_password_for_offline');
+            
+            Log::error('Error crítico en login', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'login' => $credentials['login'] ?? 'unknown',
+                'ip' => $request->ip()
+            ]);
+
+            return back()
+                ->withErrors(['login' => 'Error interno del sistema. Intente nuevamente.'])
+                ->withInput($request->except('password'));
+        }
+    }
+
+    /**
+     * Cerrar sesión
+     */
+    public function logout(Request $request)
+    {
+        try {
+            $usuarioLogin = $this->authService->usuario()['login'] ?? 'unknown';
+            
+            // Si está online, intentar logout en API
+            if (!$this->authService->isOffline() && $this->apiService->isOnline()) {
+                $response = $this->apiService->post('/auth/logout');
+                if (!$response['success']) {
+                    Log::warning('Logout API falló, continuando con logout local', [
+                        'error' => $response['error'] ?? 'Unknown error'
+                    ]);
+                }
+            }
+
+            $this->authService->logout();
+
+            Log::info('Logout exitoso desde web', [
+                'usuario' => $usuarioLogin,
+                'ip' => $request->ip()
+            ]);
+
+            return redirect()
+                ->route('login')
+                ->with('success', 'Sesión cerrada correctamente');
+
+        } catch (\Exception $e) {
+            Log::error('Error en logout', [
+                'error' => $e->getMessage(),
+                'ip' => $request->ip()
+            ]);
+            
+            // Forzar logout local aunque falle el remoto
+            $this->authService->logout();
+            
+            return redirect()
+                ->route('login')
+                ->with('warning', 'Sesión cerrada localmente debido a un error');
+        }
+    }
+
+    /**
+     * Obtener sedes disponibles con cache
+     */
+    protected function getSedes(bool $isOnline = null)
+    {
+        $isOnline = $isOnline ?? $this->apiService->isOnline();
+        
+        if ($isOnline) {
+            try {
+                // Intentar obtener sedes del API
+                $response = $this->apiService->get('/master-data/sedes');
+                
+                if ($response['success'] && isset($response['data'])) {
+                    $sedes = $response['data']['data'] ?? $response['data'];
+                    
+                    // Guardar en cache para uso offline
+                    Cache::put('sedes_cache', $sedes, now()->addHours(24));
+                    
+                    return $sedes;
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo sedes de API', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // Intentar obtener desde cache
+        $cachedSedes = Cache::get('sedes_cache');
+        if ($cachedSedes) {
+            return $cachedSedes;
+        }
+
+        // Sedes por defecto si no hay conexión ni cache
+        $defaultSedes = [
+            ['id' => 1, 'nombre' => 'Sede Principal'],
+            ['id' => 2, 'nombre' => 'Sede Norte'],
+            ['id' => 3, 'nombre' => 'Sede Sur']
+        ];
+
+        Log::info('Usando sedes por defecto (sin conexión ni cache)');
+        return $defaultSedes;
+    }
+
+    /**
+     * Verificar estado de conexión
+     */
+    public function checkConnection(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            $isOnline = $this->apiService->isOnline();
+            $isAuthenticated = $this->authService->check();
+            $isOfflineMode = $this->authService->isOffline();
+
+            $response = [
+                'online' => $isOnline,
+                'authenticated' => $isAuthenticated,
+                'offline_mode' => $isOfflineMode,
+                'timestamp' => now()->toISOString()
+            ];
+
+            // Si volvió la conexión y hay cambios pendientes
+            if ($isOnline && $isAuthenticated && $isOfflineMode) {
+                $response['can_sync'] = true;
+                $response['message'] = 'Conexión restaurada. Puede sincronizar datos.';
+            }
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            Log::error('Error verificando conexión', ['error' => $e->getMessage()]);
+            
+            return response()->json([
+                'online' => false,
+                'error' => 'Error verificando conexión',
+                'timestamp' => now()->toISOString()
+            ], 500);
+        }
+    }
+
+    /**
+     * Sincronizar datos
+     */
+    public function sync(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        if (!$this->authService->check()) {
+            return response()->json([
+                'success' => false, 
+                'error' => 'No autenticado'
+            ], 401);
+        }
+
+        if (!$this->apiService->isOnline()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sin conexión al servidor'
+            ]);
+        }
+
+        try {
+            $synced = $this->authService->syncWhenOnline();
+            
+            if ($synced) {
+                // Actualizar estado de sesión a online
+                session(['is_offline' => false]);
+                
+                Log::info('Sincronización exitosa', [
+                    'usuario' => $this->authService->usuario()['login'] ?? 'unknown'
+                ]);
+            }
+            
+            return response()->json([
+                'success' => $synced,
+                'message' => $synced ? 'Sincronización exitosa' : 'No se pudo sincronizar',
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en sincronización', [
+                'error' => $e->getMessage(),
+                'usuario' => $this->authService->usuario()['login'] ?? 'unknown'
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error durante la sincronización: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Recordar datos de login
+     */
+    protected function rememberLoginData(array $credentials): void
+    {
+        try {
+            $dataToRemember = [
+                'login' => $credentials['login'],
+                'sede_id' => $credentials['sede_id']
+            ];
+            
+            Cache::put('remembered_login_data', $dataToRemember, now()->addDays(30));
+        } catch (\Exception $e) {
+            Log::warning('Error guardando datos recordados', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Obtener datos recordados
+     */
+    public function getRememberedData(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        $rememberedData = Cache::get('remembered_login_data', []);
+        
+        return response()->json($rememberedData);
+    }
+    
+
+    // Agregar estos métodos al AuthController.php
+
+/**
+ * ✅ NUEVO: Verificar estado de sesión
+ */
+public function sessionStatus(Request $request)
+{
+    if (!$request->ajax()) {
+        abort(404);
+    }
+
+    try {
+        $user = $this->authService->usuario();
+        $isOnline = $this->apiService->isOnline();
+        $isOffline = $this->authService->isOffline();
+
+        return response()->json([
+            'authenticated' => true,
+            'user' => [
+                'login' => $user['login'],
+                'nombre' => $user['nombre'],
+                'rol' => $user['rol'],
+                'sede_nombre' => $user['sede_nombre']
+            ],
+            'online' => $isOnline,
+            'offline_mode' => $isOffline,
+            'session_expires_at' => session('session_expires_at'),
+            'timestamp' => now()->toISOString()
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'authenticated' => false,
+            'error' => 'Sesión inválida'
+        ], 401);
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener sedes via AJAX
+ */
+
+/**
+ * ✅ NUEVO: Mostrar perfil de usuario
+ */
+public function showProfile()
+{
+    $user = $this->authService->usuario();
+    $isOnline = $this->apiService->isOnline();
+    
+    return view('auth.profile', compact('user', 'isOnline'));
+}
+
+/**
+ * ✅ NUEVO: Actualizar perfil
+ */
+public function updateProfile(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'nombre' => 'required|string|max:100',
+        'email' => 'nullable|email|max:100'
+    ]);
+
+    if ($validator->fails()) {
+        return back()->withErrors($validator)->withInput();
+    }
+
+    try {
+        $result = $this->authService->updateProfile($request->only('nombre', 'email'));
+        
+        if ($result['success']) {
+            return back()->with('success', 'Perfil actualizado correctamente');
+        }
+        
+        return back()->withErrors(['error' => $result['error']]);
+
+    } catch (\Exception $e) {
+        Log::error('Error actualizando perfil', ['error' => $e->getMessage()]);
+        return back()->withErrors(['error' => 'Error interno del sistema']);
+    }
+}
+
+/**
+ * ✅ NUEVO: Cambiar contraseña
+ */
+public function changePassword(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'current_password' => 'required',
+        'new_password' => 'required|min:4|confirmed',
+        'new_password_confirmation' => 'required'
+    ]);
+
+    if ($validator->fails()) {
+        return back()->withErrors($validator);
+    }
+
+    try {
+        $result = $this->authService->changePassword(
+            $request->current_password,
+            $request->new_password
+        );
+        
+        if ($result['success']) {
+            return back()->with('success', 'Contraseña cambiada correctamente');
+        }
+        
+        return back()->withErrors(['current_password' => $result['error']]);
+
+    } catch (\Exception $e) {
+        Log::error('Error cambiando contraseña', ['error' => $e->getMessage()]);
+        return back()->withErrors(['error' => 'Error interno del sistema']);
+    }
+}
+
+}

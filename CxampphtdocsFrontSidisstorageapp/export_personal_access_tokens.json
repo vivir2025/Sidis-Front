@@ -1,0 +1,14 @@
+[
+    {
+        "id": 1,
+        "tokenable_type": "App\\Models\\Usuario",
+        "tokenable_id": 1,
+        "name": "api-token",
+        "token": "030fcdb36c6512e9a0f63c97f6822bb1672dbd4418f64f14000bc4b7ca010730",
+        "abilities": "[\"*\"]",
+        "last_used_at": "2025-08-25 19:39:22",
+        "expires_at": "2025-08-26 03:39:17",
+        "created_at": "2025-08-25 19:39:17",
+        "updated_at": "2025-08-25 19:39:22"
+    }
+]

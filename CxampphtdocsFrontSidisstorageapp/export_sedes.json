@@ -1,0 +1,26 @@
+[
+    {
+        "id": 1,
+        "uuid": "2f154671-dd12-4b9e-abce-5eba97323c8e",
+        "nombre": "Sede Principal",
+        "codigo": "CAJIBIO",
+        "direccion": "Calle 123 # 45-67",
+        "telefono": "3001234567",
+        "ciudad": "Bogot\u00e1",
+        "activo": 1,
+        "created_at": "2025-08-25 19:38:38",
+        "updated_at": "2025-08-25 19:38:38"
+    },
+    {
+        "id": 2,
+        "uuid": "6d37f57a-a9a7-49f2-a419-6c9b40e9caa7",
+        "nombre": "Sede Norte",
+        "codigo": "CAJIBIO",
+        "direccion": "Carrera 78 # 90-12",
+        "telefono": "3007654321",
+        "ciudad": "Bogot\u00e1",
+        "activo": 1,
+        "created_at": "2025-08-25 19:38:38",
+        "updated_at": "2025-08-25 19:38:38"
+    }
+]
