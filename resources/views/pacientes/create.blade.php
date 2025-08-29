@@ -1011,10 +1011,10 @@ function showUnsavedAlert() {
         alert.classList.add('show');
         
         // Agregar clase visual al formulario
-        const form = document.getElementById('pacienteForm');
-        if (form) {
-            form.classList.add('form-changed');
-        }
+       // const form = document.getElementById('pacienteForm');
+        //if (form) {
+          //  form.classList.add('form-changed');
+        //}
     }
 }
 
