@@ -82,48 +82,121 @@ class OfflineService
     /**
      * ✅ NUEVO: Crear tablas SQLite dinámicamente
      */
-    private function createTablesIfNotExist(): void
-    {
-        try {
-            // Verificar si las tablas ya existen
-            $tables = DB::connection('offline')->select("SELECT name FROM sqlite_master WHERE type='table'");
-            $existingTables = array_column($tables, 'name');
+   private function createTablesIfNotExist(): void
+{
+    try {
+        // Verificar si las tablas ya existen
+        $tables = DB::connection('offline')->select("SELECT name FROM sqlite_master WHERE type='table'");
+        $existingTables = array_column($tables, 'name');
+        
+        if (in_array('departamentos', $existingTables)) {
+            Log::info('✅ Tablas SQLite ya existen');
             
-            if (in_array('departamentos', $existingTables)) {
-                Log::info('✅ Tablas SQLite ya existen');
-                return; // Las tablas ya existen
+            // ✅ VERIFICAR Y CREAR TABLAS DE AGENDAS Y CITAS SI NO EXISTEN
+            if (!in_array('agendas', $existingTables)) {
+                $this->createAgendasTable();
+                Log::info('✅ Tabla agendas creada');
             }
             
-            Log::info('🔧 Creando tablas SQLite offline...');
+            if (!in_array('citas', $existingTables)) {
+                $this->createCitasTable();
+                Log::info('✅ Tabla citas creada');
+            }
             
-            // Crear tablas una por una
-            $this->createDepartamentosTable();
-            $this->createMunicipiosTable();
-            $this->createEmpresasTable();
-            $this->createRegimenesTable();
-            $this->createTiposAfiliacionTable();
-            $this->createZonasResidencialesTable();
-            $this->createRazasTable();
-            $this->createEscolaridadesTable();
-            $this->createTiposParentescoTable();
-            $this->createTiposDocumentoTable();
-            $this->createOcupacionesTable();
-            $this->createNovedadesTable();
-            $this->createAuxiliaresTable();
-            $this->createBrigadasTable();
-            $this->createSyncStatusTable();
-            
-            Log::info('✅ Todas las tablas SQLite creadas exitosamente');
-            
-        } catch (\Exception $e) {
-            Log::error('❌ Error creando tablas SQLite', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-            throw $e;
+            return;
         }
+        
+        Log::info('🔧 Creando tablas SQLite offline...');
+        
+        // Crear todas las tablas existentes
+        $this->createDepartamentosTable();
+        $this->createMunicipiosTable();
+        $this->createEmpresasTable();
+        $this->createRegimenesTable();
+        $this->createTiposAfiliacionTable();
+        $this->createZonasResidencialesTable();
+        $this->createRazasTable();
+        $this->createEscolaridadesTable();
+        $this->createTiposParentescoTable();
+        $this->createTiposDocumentoTable();
+        $this->createOcupacionesTable();
+        $this->createNovedadesTable();
+        $this->createAuxiliaresTable();
+        $this->createBrigadasTable();
+        
+        // ✅ CREAR NUEVAS TABLAS
+        $this->createAgendasTable();
+        $this->createCitasTable();
+        
+        $this->createSyncStatusTable();
+        
+        Log::info('✅ Todas las tablas SQLite creadas exitosamente');
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error creando tablas SQLite', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+        throw $e;
     }
+}
+        private function createAgendasTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS agendas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            sede_id INTEGER NOT NULL,
+            modalidad TEXT NOT NULL,
+            fecha DATE NOT NULL,
+            consultorio TEXT,
+            hora_inicio TIME NOT NULL,
+            hora_fin TIME NOT NULL,
+            intervalo TEXT,
+            etiqueta TEXT,
+            estado TEXT DEFAULT "ACTIVO",
+            proceso_id INTEGER,
+            usuario_id INTEGER,
+            brigada_id INTEGER,
+            cupos_disponibles INTEGER DEFAULT 0,
+            sync_status TEXT DEFAULT "synced",
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME NULL
+        )
+    ');
+}
+
+private function createCitasTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS citas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            sede_id INTEGER NOT NULL,
+            fecha DATE NOT NULL,
+            fecha_inicio DATETIME NOT NULL,
+            fecha_final DATETIME NOT NULL,
+            fecha_deseada DATE,
+            motivo TEXT,
+            nota TEXT,
+            estado TEXT NOT NULL,
+            patologia TEXT,
+            paciente_id INTEGER,
+            paciente_uuid TEXT,
+            agenda_id INTEGER,
+            agenda_uuid TEXT,
+            cups_contratado_id INTEGER,
+            usuario_creo_cita_id INTEGER,
+            sync_status TEXT DEFAULT "synced",
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME NULL
+        )
+    ');
+}
+
 
     // ✅ MÉTODOS DE CREACIÓN DE TABLAS (SIN CAMBIOS)
     private function createDepartamentosTable(): void
@@ -320,6 +393,22 @@ class OfflineService
         ');
     }
 
+     private function createProcesosTable(): void
+    {
+        DB::connection('offline')->statement('
+            CREATE TABLE IF NOT EXISTS procesos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE NOT NULL,
+                nombre TEXT NOT NULL,
+                n_cups TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+    }
+
+
+
     private function createSyncStatusTable(): void
     {
         DB::connection('offline')->statement('
@@ -333,6 +422,8 @@ class OfflineService
             )
         ');
     }
+
+
 
     /**
      * ✅ CORREGIDO: Sincronizar todos los datos maestros desde la API
@@ -459,6 +550,11 @@ class OfflineService
         if (isset($masterData['brigadas'])) {
             $this->syncBrigadas($masterData['brigadas']);
             $syncResults['brigadas'] = count($masterData['brigadas']);
+        }
+
+        if (isset($masterData['procesos'])) {
+            $this->syncProcesos($masterData['procesos']);
+            $syncResults['procesos'] = count($masterData['procesos']);
         }
 
         Log::info('✅ Sincronización SQLite completada', [
@@ -703,6 +799,23 @@ class OfflineService
         $this->updateSyncStatus('brigadas', count($data));
     }
 
+    private function syncProcesos(array $data): void
+    {
+        DB::connection('offline')->table('procesos')->delete();
+        foreach ($data as $item) {
+            DB::connection('offline')->table('procesos')->insert([
+                'uuid' => $item['uuid'],
+                'nombre' => $item['nombre'],
+                'n_cups' => $item['n_cups'],
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        }
+        $this->updateSyncStatus('procesos', count($data));
+    }
+
+    
+
     private function updateSyncStatus(string $tableName, int $count): void
     {
         if (!$this->isSQLiteAvailable()) return;
@@ -898,6 +1011,17 @@ class OfflineService
                 'nombre' => $brigada->nombre
             ];
         })->toArray();
+
+         $procesos = DB::connection('offline')->table('procesos')->get();
+        $masterData['procesos'] = $procesos->map(function ($proceso) {
+            return [
+                'uuid' => $proceso->uuid,
+                'nombre' => $proceso->nombre,
+                'n_cups' => $proceso->n_cups,
+            ];
+        })->toArray();
+
+
 
         // Agregar datos estáticos
         $masterData['estados_civiles'] = [
@@ -1147,7 +1271,7 @@ class OfflineService
             'departamentos', 'municipios', 'empresas', 'regimenes',
             'tipos_afiliacion', 'zonas_residenciales', 'razas',
             'escolaridades', 'tipos_parentesco', 'tipos_documento',
-            'ocupaciones', 'novedades', 'auxiliares', 'brigadas'
+            'ocupaciones', 'novedades', 'auxiliares', 'brigadas', 'procesos'
         ];
 
         foreach ($tables as $table) {
@@ -1189,7 +1313,7 @@ class OfflineService
             'departamentos', 'municipios', 'empresas', 'regimenes',
             'tipos_afiliacion', 'zonas_residenciales', 'razas',
             'escolaridades', 'tipos_parentesco', 'tipos_documento',
-            'ocupaciones', 'novedades', 'auxiliares', 'brigadas'
+            'ocupaciones', 'novedades', 'auxiliares', 'brigadas',  'procesos'
         ];
 
         foreach ($tables as $table) {
@@ -1523,4 +1647,491 @@ class OfflineService
             mkdir($this->storagePath, 0755, true);
         }
     }
+
+    public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
+{
+    try {
+        if (empty($agendaData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar agenda sin UUID');
+            return;
+        }
+
+        if (empty($agendaData['sede_id'])) {
+            $user = auth()->user();
+            $agendaData['sede_id'] = $user['sede_id'] ?? 1;
+        }
+
+        $offlineData = [
+            'id' => $agendaData['id'] ?? null,
+            'uuid' => $agendaData['uuid'],
+            'sede_id' => $agendaData['sede_id'],
+            'modalidad' => $agendaData['modalidad'] ?? 'Ambulatoria',
+            'fecha' => $agendaData['fecha'],
+            'consultorio' => $agendaData['consultorio'] ?? '',
+            'hora_inicio' => $agendaData['hora_inicio'],
+            'hora_fin' => $agendaData['hora_fin'],
+            'intervalo' => $agendaData['intervalo'] ?? '15',
+            'etiqueta' => $agendaData['etiqueta'] ?? '',
+            'estado' => $agendaData['estado'] ?? 'ACTIVO',
+            'proceso_id' => $agendaData['proceso_id'] ?? null,
+            'usuario_id' => $agendaData['usuario_id'] ?? null,
+            'brigada_id' => $agendaData['brigada_id'] ?? null,
+            'cupos_disponibles' => $agendaData['cupos_disponibles'] ?? 0,
+            'sync_status' => $needsSync ? 'pending' : 'synced',
+            'created_at' => $agendaData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString(),
+            'deleted_at' => $agendaData['deleted_at'] ?? null
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('agendas')->updateOrInsert(
+                ['uuid' => $agendaData['uuid']],
+                $offlineData
+            );
+        }
+
+        // También guardar en JSON como backup
+        $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $offlineData);
+
+        Log::debug('✅ Agenda almacenada offline', [
+            'uuid' => $agendaData['uuid'],
+            'fecha' => $agendaData['fecha'],
+            'consultorio' => $agendaData['consultorio']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando agenda offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $agendaData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
+public function storeCitaOffline(array $citaData, bool $needsSync = false): void
+{
+    try {
+        if (empty($citaData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar cita sin UUID');
+            return;
+        }
+
+        if (empty($citaData['sede_id'])) {
+            $user = auth()->user();
+            $citaData['sede_id'] = $user['sede_id'] ?? 1;
+        }
+
+        $offlineData = [
+            'id' => $citaData['id'] ?? null,
+            'uuid' => $citaData['uuid'],
+            'sede_id' => $citaData['sede_id'],
+            'fecha' => $citaData['fecha'],
+            'fecha_inicio' => $citaData['fecha_inicio'],
+            'fecha_final' => $citaData['fecha_final'],
+            'fecha_deseada' => $citaData['fecha_deseada'] ?? null,
+            'motivo' => $citaData['motivo'] ?? null,
+            'nota' => $citaData['nota'] ?? '',
+            'estado' => $citaData['estado'] ?? 'PROGRAMADA',
+            'patologia' => $citaData['patologia'] ?? null,
+            'paciente_id' => $citaData['paciente_id'] ?? null,
+            'paciente_uuid' => $citaData['paciente_uuid'] ?? null,
+            'agenda_id' => $citaData['agenda_id'] ?? null,
+            'agenda_uuid' => $citaData['agenda_uuid'] ?? null,
+            'cups_contratado_id' => $citaData['cups_contratado_id'] ?? null,
+            'usuario_creo_cita_id' => $citaData['usuario_creo_cita_id'] ?? null,
+            'sync_status' => $needsSync ? 'pending' : 'synced',
+            'created_at' => $citaData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString(),
+            'deleted_at' => $citaData['deleted_at'] ?? null
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('citas')->updateOrInsert(
+                ['uuid' => $citaData['uuid']],
+                $offlineData
+            );
+        }
+
+        // También guardar en JSON como backup
+        $this->storeData('citas/' . $citaData['uuid'] . '.json', $offlineData);
+
+        Log::debug('✅ Cita almacenada offline', [
+            'uuid' => $citaData['uuid'],
+            'fecha' => $citaData['fecha'],
+            'paciente_uuid' => $citaData['paciente_uuid']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando cita offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $citaData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
+public function getAgendasOffline(int $sedeId, array $filters = []): array
+{
+    try {
+        $agendas = [];
+
+        if ($this->isSQLiteAvailable()) {
+            $query = DB::connection('offline')->table('agendas')
+                ->where('sede_id', $sedeId)
+                ->whereNull('deleted_at');
+
+            // Aplicar filtros
+            if (!empty($filters['fecha_desde'])) {
+                $query->where('fecha', '>=', $filters['fecha_desde']);
+            }
+            if (!empty($filters['fecha_hasta'])) {
+                $query->where('fecha', '<=', $filters['fecha_hasta']);
+            }
+            if (!empty($filters['estado'])) {
+                $query->where('estado', $filters['estado']);
+            }
+            if (!empty($filters['modalidad'])) {
+                $query->where('modalidad', $filters['modalidad']);
+            }
+
+            $agendas = $query->orderBy('fecha', 'desc')
+                ->orderBy('hora_inicio', 'asc')
+                ->get()
+                ->toArray();
+        } else {
+            // Fallback a JSON
+            $agendasPath = $this->getStoragePath() . '/agendas';
+            if (is_dir($agendasPath)) {
+                $files = glob($agendasPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
+                        $agendas[] = $data;
+                    }
+                }
+            }
+        }
+
+        return $agendas;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo agendas offline', [
+            'error' => $e->getMessage(),
+            'sede_id' => $sedeId
+        ]);
+        return [];
+    }
+}
+
+public function getCitasOffline(int $sedeId, array $filters = []): array
+{
+    try {
+        $citas = [];
+
+        if ($this->isSQLiteAvailable()) {
+            $query = DB::connection('offline')->table('citas')
+                ->where('sede_id', $sedeId)
+                ->whereNull('deleted_at');
+
+            // Aplicar filtros
+            if (!empty($filters['fecha'])) {
+                $query->where('fecha', $filters['fecha']);
+            }
+            if (!empty($filters['estado'])) {
+                $query->where('estado', $filters['estado']);
+            }
+            if (!empty($filters['paciente_uuid'])) {
+                $query->where('paciente_uuid', $filters['paciente_uuid']);
+            }
+            if (!empty($filters['agenda_uuid'])) {
+                $query->where('agenda_uuid', $filters['agenda_uuid']);
+            }
+
+            $citas = $query->orderBy('fecha_inicio', 'desc')
+                ->get()
+                ->toArray();
+        } else {
+            // Fallback a JSON
+            $citasPath = $this->getStoragePath() . '/citas';
+            if (is_dir($citasPath)) {
+                $files = glob($citasPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
+                        $citas[] = $data;
+                    }
+                }
+            }
+        }
+
+        return $citas;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo citas offline', [
+            'error' => $e->getMessage(),
+            'sede_id' => $sedeId
+        ]);
+        return [];
+    }
+}
+
+public function getAgendaOffline(string $uuid): ?array
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $agenda = DB::connection('offline')->table('agendas')
+                ->where('uuid', $uuid)
+                ->whereNull('deleted_at')
+                ->first();
+            
+            return $agenda ? (array) $agenda : null;
+        }
+
+        return $this->getData('agendas/' . $uuid . '.json');
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo agenda offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+        return null;
+    }
+}
+
+public function getCitaOffline(string $uuid): ?array
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $cita = DB::connection('offline')->table('citas')
+                ->where('uuid', $uuid)
+                ->whereNull('deleted_at')
+                ->first();
+            
+            return $cita ? (array) $cita : null;
+        }
+
+        return $this->getData('citas/' . $uuid . '.json');
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo cita offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+        return null;
+    }
+}
+public function syncPendingAgendas(): array
+{
+    try {
+        $results = [
+            'success' => 0,
+            'errors' => 0,
+            'details' => []
+        ];
+
+        if (!$this->isSQLiteAvailable()) {
+            // Sincronizar desde JSON
+            return $this->syncPendingAgendasFromJSON();
+        }
+
+        // Obtener agendas pendientes de sincronización
+        $pendingAgendas = DB::connection('offline')
+            ->table('agendas')
+            ->where('sync_status', 'pending')
+            ->get();
+
+        Log::info('🔄 Sincronizando agendas pendientes', [
+            'count' => $pendingAgendas->count()
+        ]);
+
+        foreach ($pendingAgendas as $agenda) {
+            try {
+                $agendaData = (array) $agenda;
+                unset($agendaData['id'], $agendaData['sync_status']);
+
+                // Intentar sincronizar con API
+                $apiService = app(ApiService::class);
+                
+                if ($agendaData['deleted_at']) {
+                    // Eliminar en servidor
+                    $response = $apiService->delete("/agendas/{$agenda->uuid}");
+                } else {
+                    // Crear o actualizar en servidor
+                    $response = $apiService->post('/agendas', $agendaData);
+                }
+
+                if ($response['success']) {
+                    // Marcar como sincronizado
+                    DB::connection('offline')
+                        ->table('agendas')
+                        ->where('uuid', $agenda->uuid)
+                        ->update(['sync_status' => 'synced']);
+                    
+                    $results['success']++;
+                    $results['details'][] = [
+                        'uuid' => $agenda->uuid,
+                        'status' => 'success',
+                        'action' => $agendaData['deleted_at'] ? 'deleted' : 'synced'
+                    ];
+                } else {
+                    $results['errors']++;
+                    $results['details'][] = [
+                        'uuid' => $agenda->uuid,
+                        'status' => 'error',
+                        'error' => $response['error'] ?? 'Error desconocido'
+                    ];
+                }
+
+            } catch (\Exception $e) {
+                $results['errors']++;
+                $results['details'][] = [
+                    'uuid' => $agenda->uuid,
+                    'status' => 'error',
+                    'error' => $e->getMessage()
+                ];
+                
+                Log::error('❌ Error sincronizando agenda', [
+                    'uuid' => $agenda->uuid,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        Log::info('✅ Sincronización de agendas completada', $results);
+        return $results;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en sincronización de agendas', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => 0,
+            'errors' => 1,
+            'details' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
+/**
+ * ✅ SINCRONIZAR CITAS PENDIENTES
+ */
+public function syncPendingCitas(): array
+{
+    try {
+        $results = [
+            'success' => 0,
+            'errors' => 0,
+            'details' => []
+        ];
+
+        if (!$this->isSQLiteAvailable()) {
+            return $results; // Por ahora solo SQLite
+        }
+
+        $pendingCitas = DB::connection('offline')
+            ->table('citas')
+            ->where('sync_status', 'pending')
+            ->get();
+
+        Log::info('🔄 Sincronizando citas pendientes', [
+            'count' => $pendingCitas->count()
+        ]);
+
+        foreach ($pendingCitas as $cita) {
+            try {
+                $citaData = (array) $cita;
+                unset($citaData['id'], $citaData['sync_status']);
+
+                $apiService = app(ApiService::class);
+                
+                if ($citaData['deleted_at']) {
+                    $response = $apiService->delete("/citas/{$cita->uuid}");
+                } else {
+                    $response = $apiService->post('/citas', $citaData);
+                }
+
+                if ($response['success']) {
+                    DB::connection('offline')
+                        ->table('citas')
+                        ->where('uuid', $cita->uuid)
+                        ->update(['sync_status' => 'synced']);
+                    
+                    $results['success']++;
+                    $results['details'][] = [
+                        'uuid' => $cita->uuid,
+                        'status' => 'success'
+                    ];
+                } else {
+                    $results['errors']++;
+                    $results['details'][] = [
+                        'uuid' => $cita->uuid,
+                        'status' => 'error',
+                        'error' => $response['error'] ?? 'Error desconocido'
+                    ];
+                }
+
+            } catch (\Exception $e) {
+                $results['errors']++;
+                $results['details'][] = [
+                    'uuid' => $cita->uuid,
+                    'status' => 'error',
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+
+        return $results;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en sincronización de citas', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => 0,
+            'errors' => 1,
+            'details' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
+/**
+ * ✅ OBTENER CONTEO DE REGISTROS PENDIENTES
+ */
+public function getPendingSyncCount(): array
+{
+    try {
+        $counts = [
+            'agendas' => 0,
+            'citas' => 0,
+            'total' => 0
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            $counts['agendas'] = DB::connection('offline')
+                ->table('agendas')
+                ->where('sync_status', 'pending')
+                ->count();
+                
+            $counts['citas'] = DB::connection('offline')
+                ->table('citas')
+                ->where('sync_status', 'pending')
+                ->count();
+        }
+
+        $counts['total'] = $counts['agendas'] + $counts['citas'];
+        
+        return $counts;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo conteo pendiente', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'agendas' => 0,
+            'citas' => 0,
+            'total' => 0
+        ];
+    }
+}
 }

@@ -36,18 +36,18 @@
                             <i class="fas fa-sync-alt"></i> Sincronizar
                         </button>
                     @endif
+
+                    <button type="button" class="btn btn-success btn-sm" onclick="syncAllPendingData()">
+                    <i class="fas fa-sync-alt"></i> Forzar Sync
+                    </button>
                     
                     <!-- Botón Nuevo Paciente -->
                     <a href="{{ route('pacientes.create') }}" class="btn btn-primary">
                         <i class="fas fa-plus me-1"></i>Nuevo Paciente
                     </a>
 
-                    <!-- Después del botón "Nuevo Paciente" -->
+                 
 
-
-<button type="button" class="btn btn-success btn-sm" onclick="syncAllPendingData()">
-    <i class="fas fa-sync-alt"></i> Forzar Sync
-</button>
 
                 </div>
             </div>

@@ -636,6 +636,7 @@ private function getDefaultMasterData(): array
         'brigadas' => [
             ['uuid' => 'bri-general', 'nombre' => 'Brigada General']
         ],
+        
         'estados_civiles' => [
             'SOLTERO' => 'Soltero(a)',
             'CASADO' => 'Casado(a)',

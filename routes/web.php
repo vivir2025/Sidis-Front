@@ -6,7 +6,9 @@ use App\Http\Controllers\{
     DashboardController,
     AdminController,
     PacienteController,
-    OfflineController
+    OfflineController,
+    CitaController,
+    AgendaController
 };
 
 // Rutas públicas (para usuarios no autenticados)
@@ -65,6 +67,34 @@ Route::middleware('custom.auth')->group(function () {
             ->name('search');
         Route::get('stats', [PacienteController::class, 'stats'])
             ->name('stats');
+    });
+  // Rutas de sincronización
+    Route::post('/agendas/sync-pending', [AgendaController::class, 'syncPending'])->name('agendas.sync-pending');
+    Route::get('/agendas/pending-count', [AgendaController::class, 'pendingCount'])->name('agendas.pending-count');
+     // Agendas
+    Route::prefix('agendas')->name('agendas.')->group(function () {
+        Route::get('/', [AgendaController::class, 'index'])->name('index');
+        Route::get('/create', [AgendaController::class, 'create'])->name('create');
+        Route::post('/', [AgendaController::class, 'store'])->name('store');
+        Route::get('/disponibles', [AgendaController::class, 'disponibles'])->name('disponibles');
+        Route::get('/{uuid}', [AgendaController::class, 'show'])->name('show');
+        Route::get('/{uuid}/edit', [AgendaController::class, 'edit'])->name('edit');
+        Route::put('/{uuid}', [AgendaController::class, 'update'])->name('update');
+        Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
+    });
+
+    // Citas
+    Route::prefix('citas')->name('citas.')->group(function () {
+        Route::get('/', [CitaController::class, 'index'])->name('index');
+        Route::get('/create', [CitaController::class, 'create'])->name('create');
+        Route::post('/', [CitaController::class, 'store'])->name('store');
+        Route::get('/del-dia', [CitaController::class, 'citasDelDia'])->name('del-dia');
+        Route::get('/buscar-paciente', [CitaController::class, 'buscarPaciente'])->name('buscar-paciente');
+        Route::get('/{uuid}', [CitaController::class, 'show'])->name('show');
+        Route::get('/{uuid}/edit', [CitaController::class, 'edit'])->name('edit');
+        Route::put('/{uuid}', [CitaController::class, 'update'])->name('update');
+        Route::delete('/{uuid}', [CitaController::class, 'destroy'])->name('destroy');
+        Route::patch('/{uuid}/estado', [CitaController::class, 'cambiarEstado'])->name('cambiar-estado');
     });
     
     // ✅ SINCRONIZACIÓN

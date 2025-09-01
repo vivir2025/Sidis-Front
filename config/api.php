@@ -24,6 +24,29 @@ return [
             'search_by_document' => '/pacientes/search/document',
             'bulk_sync' => '/pacientes/sync',
 ],
+
+   'agendas' => [
+            'index' => '/agendas',
+            'store' => '/agendas',
+            'show' => '/agendas/{uuid}',
+            'update' => '/agendas/{uuid}',
+            'destroy' => '/agendas/{uuid}',
+            'disponibles' => '/agendas/disponibles',
+            'citas' => '/agendas/{uuid}/citas',
+            'bulk_sync' => '/agendas/sync',
+        ],
+
+         'citas' => [
+            'index' => '/citas',
+            'store' => '/citas',
+            'show' => '/citas/{uuid}',
+            'update' => '/citas/{uuid}',
+            'destroy' => '/citas/{uuid}',
+            'del_dia' => '/citas/del-dia',
+            'por_agenda' => '/citas/agenda/{agenda_uuid}',
+            'cambiar_estado' => '/citas/{uuid}/estado',
+            'bulk_sync' => '/citas/sync',
+        ],
     ],
     
     'offline' => [
