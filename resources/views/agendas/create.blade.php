@@ -28,8 +28,6 @@
     <div class="row justify-content-center">
         <div class="col-lg-8">
             <div class="card">
-               {{-- resources/views/agendas/create.blade.php (CONTINUACIÓN) --}}
-
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-info-circle me-2"></i>Información de la Agenda
@@ -134,67 +132,90 @@
                             </div>
 
                             <!-- Intervalo -->
-                            <div class="col-md-4">
-                                <label for="intervalo" class="form-label">
-                                    <i class="fas fa-stopwatch me-1"></i>Intervalo (min) <span class="text-danger">*</span>
-                                </label>
-                                <select class="form-select @error('intervalo') is-invalid @enderror" 
-                                        id="intervalo" name="intervalo" required>
-                                    <option value="">Seleccionar</option>
-                                    <option value="15" {{ old('intervalo') == '15' ? 'selected' : '' }}>15 minutos</option>
-                                    <option value="20" {{ old('intervalo') == '20' ? 'selected' : '' }}>20 minutos</option>
-                                    <option value="30" {{ old('intervalo') == '30' ? 'selected' : '' }}>30 minutos</option>
-                                    <option value="45" {{ old('intervalo') == '45' ? 'selected' : '' }}>45 minutos</option>
-                                    <option value="60" {{ old('intervalo') == '60' ? 'selected' : '' }}>60 minutos</option>
-                                </select>
-                                @error('intervalo')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                           <div class="col-md-4">
+    <label for="intervalo" class="form-label">
+        <i class="fas fa-stopwatch me-1"></i>Intervalo (min) <span class="text-danger">*</span>
+    </label>
+    <select class="form-select @error('intervalo') is-invalid @enderror" 
+            id="intervalo" name="intervalo" required>
+        <option value="">Seleccionar</option>
+        <option value="15" {{ old('intervalo') == '15' ? 'selected' : '' }}>15 minutos</option>
+        <option value="20" {{ old('intervalo') == '20' ? 'selected' : '' }}>20 minutos</option>
+        <option value="30" {{ old('intervalo') == '30' ? 'selected' : '' }}>30 minutos</option>
+        <option value="45" {{ old('intervalo') == '45' ? 'selected' : '' }}>45 minutos</option>
+        <option value="60" {{ old('intervalo') == '60' ? 'selected' : '' }}>60 minutos</option>
+    </select>
+    @error('intervalo')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
                             </div>
 
-                            <!-- Proceso -->
-                            <div class="col-md-6">
-                                <label for="proceso_id" class="form-label">
-                                    <i class="fas fa-cogs me-1"></i>Proceso
-                                </label>
-                                <select class="form-select @error('proceso_id') is-invalid @enderror" 
-                                        id="proceso_id" name="proceso_id">
-                                    <option value="">Seleccionar proceso</option>
-                                    @if(isset($masterData['procesos']))
-                                        @foreach($masterData['procesos'] as $proceso)
-                                            <option value="{{ $proceso['uuid'] }}" 
-                                                    {{ old('proceso_id') == $proceso['uuid'] ? 'selected' : '' }}>
-                                                {{ $proceso['nombre'] }}
-                                            </option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                                @error('proceso_id')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
-                            </div>
+{{-- ✅ PROCESO - VERSIÓN FINAL CORREGIDA --}}
+<div class="col-md-6">
+    <label for="proceso_id" class="form-label">
+        <i class="fas fa-cogs me-1"></i>Proceso
+    </label>
+    <select class="form-select @error('proceso_id') is-invalid @enderror" 
+            id="proceso_id" name="proceso_id">
+        <option value="">Seleccionar proceso (opcional)</option>
+        @if(isset($masterData['procesos']) && is_array($masterData['procesos']))
+            @foreach($masterData['procesos'] as $proceso)
+                @php
+                    // ✅ PRIORIZAR ID NUMÉRICO SIEMPRE
+                    $procesoValue = $proceso['id'] ?? $proceso['uuid'] ?? '';
+                @endphp
+                
+                @if(!empty($procesoValue))
+                    <option value="{{ $procesoValue }}" 
+                            data-id="{{ $proceso['id'] ?? '' }}"
+                            data-uuid="{{ $proceso['uuid'] ?? '' }}"
+                            {{ old('proceso_id') == $procesoValue ? 'selected' : '' }}>
+                        {{ $proceso['nombre'] ?? 'Proceso sin nombre' }}
+                        @if(isset($proceso['n_cups']) && !empty($proceso['n_cups']))
+                            ({{ $proceso['n_cups'] }})
+                        @endif
+                    </option>
+                @endif
+            @endforeach
+        @endif
+    </select>
+    @error('proceso_id')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+    <div class="form-text">Campo opcional - Deje vacío si no aplica</div>
+</div>
 
-                            <!-- Brigada -->
-                            <div class="col-md-6">
-                                <label for="brigada_id" class="form-label">
-                                    <i class="fas fa-users me-1"></i>Brigada
-                                </label>
-                                <select class="form-select @error('brigada_id') is-invalid @enderror" 
-                                        id="brigada_id" name="brigada_id">
-                                    <option value="">Seleccionar brigada</option>
-                                    @if(isset($masterData['brigadas']))
-                                        @foreach($masterData['brigadas'] as $brigada)
-                                            <option value="{{ $brigada['uuid'] }}" 
-                                                    {{ old('brigada_id') == $brigada['uuid'] ? 'selected' : '' }}>
-                                                {{ $brigada['nombre'] }}
-                                            </option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                                @error('brigada_id')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
-                            </div>
+{{-- ✅ BRIGADA - VERSIÓN FINAL CORREGIDA --}}
+<div class="col-md-6">
+    <label for="brigada_id" class="form-label">
+        <i class="fas fa-users me-1"></i>Brigada
+    </label>
+    <select class="form-select @error('brigada_id') is-invalid @enderror" 
+            id="brigada_id" name="brigada_id">
+        <option value="">Seleccionar brigada (opcional)</option>
+        @if(isset($masterData['brigadas']) && is_array($masterData['brigadas']))
+            @foreach($masterData['brigadas'] as $brigada)
+                @php
+                    // ✅ PRIORIZAR ID NUMÉRICO SIEMPRE
+                    $brigadaValue = $brigada['id'] ?? $brigada['uuid'] ?? '';
+                @endphp
+                
+                @if(!empty($brigadaValue))
+                    <option value="{{ $brigadaValue }}" 
+                            data-id="{{ $brigada['id'] ?? '' }}"
+                            data-uuid="{{ $brigada['uuid'] ?? '' }}"
+                            {{ old('brigada_id') == $brigadaValue ? 'selected' : '' }}>
+                        {{ $brigada['nombre'] ?? 'Brigada sin nombre' }}
+                    </option>
+                @endif
+            @endforeach
+        @endif
+    </select>
+    @error('brigada_id')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+    <div class="form-text">Campo opcional - Deje vacío si no aplica</div>
+</div>
                         </div>
 
                         <!-- Información calculada -->
@@ -250,6 +271,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const horaFin = document.getElementById('hora_fin');
     const intervalo = document.getElementById('intervalo');
     
+    // ✅ FUNCIÓN PARA MOSTRAR ALERTAS
+    function showAlert(type, message) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: type,
+                title: type === 'warning' ? 'Advertencia' : 'Información',
+                text: message,
+                timer: 3000,
+                showConfirmButton: false
+            });
+        } else {
+            alert(message);
+        }
+    }
+    
     // Calcular información automáticamente
     function calcularInformacion() {
         const inicio = horaInicio.value;
@@ -299,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('ultimoCupo').textContent = '--:--';
     }
     
-    // Event listeners
+    // Event listeners para cálculos
     horaInicio.addEventListener('change', calcularInformacion);
     horaFin.addEventListener('change', calcularInformacion);
     intervalo.addEventListener('change', calcularInformacion);
@@ -310,9 +346,46 @@ document.addEventListener('DOMContentLoaded', function() {
             if (timeToMinutes(horaFin.value) <= timeToMinutes(horaInicio.value)) {
                 showAlert('warning', 'La hora de fin debe ser posterior a la hora de inicio');
                 horaFin.value = '';
+                resetCalculos();
             }
         }
     });
+    
+    // ✅ VALIDACIÓN MEJORADA DE SELECCIONES (OPCIONAL Y MENOS RESTRICTIVA)
+    const procesoSelect = document.getElementById('proceso_id');
+    const brigadaSelect = document.getElementById('brigada_id');
+    
+    function isValidSelection(value) {
+        // Permitir valores vacíos (campos opcionales)
+        if (!value || value.trim() === '') return true;
+        
+        // Debe ser numérico o UUID válido o texto alfanumérico razonable
+        return /^\d+$/.test(value) || 
+               /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+               /^[a-zA-Z0-9_-]{1,50}$/.test(value);
+    }
+    
+    if (procesoSelect) {
+        procesoSelect.addEventListener('change', function() {
+            const value = this.value;
+            if (!isValidSelection(value)) {
+                console.warn('Proceso inválido seleccionado:', value);
+                this.value = '';
+                showAlert('warning', 'Selección de proceso inválida');
+            }
+        });
+    }
+    
+    if (brigadaSelect) {
+        brigadaSelect.addEventListener('change', function() {
+            const value = this.value;
+            if (!isValidSelection(value)) {
+                console.warn('Brigada inválida seleccionada:', value);
+                this.value = '';
+                showAlert('warning', 'Selección de brigada inválida');
+            }
+        });
+    }
     
     // Submit del formulario
     form.addEventListener('submit', async function(e) {
@@ -327,6 +400,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData(form);
             
+            // ✅ LOG PARA DEBUG
+            console.log('📤 Enviando datos del formulario:');
+            for (let [key, value] of formData.entries()) {
+                console.log(`${key}: ${value}`);
+            }
+            
             const response = await fetch(form.action, {
                 method: 'POST',
                 body: formData,
@@ -339,19 +418,28 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.success) {
-                Swal.fire({
-                    title: '¡Éxito!',
-                    text: data.message || 'Agenda creada exitosamente',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        title: '¡Éxito!',
+                        text: data.message || 'Agenda creada exitosamente',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        if (data.redirect_url) {
+                            window.location.href = data.redirect_url;
+                        } else {
+                            window.location.href = '{{ route("agendas.index") }}';
+                        }
+                    });
+                } else {
+                    alert(data.message || 'Agenda creada exitosamente');
                     if (data.redirect_url) {
                         window.location.href = data.redirect_url;
                     } else {
                         window.location.href = '{{ route("agendas.index") }}';
                     }
-                });
+                }
             } else {
                 if (data.errors) {
                     showValidationErrors(data.errors);
@@ -362,11 +450,15 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error('Error guardando agenda:', error);
-            Swal.fire({
-                title: 'Error',
-                text: 'Error guardando agenda: ' + error.message,
-                icon: 'error'
-            });
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Error guardando agenda: ' + error.message,
+                    icon: 'error'
+                });
+            } else {
+                alert('Error guardando agenda: ' + error.message);
+            }
         } finally {
             btnGuardar.disabled = false;
             btnGuardar.innerHTML = originalText;
@@ -398,6 +490,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const firstError = document.querySelector('.is-invalid');
         if (firstError) {
             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
+        // Mostrar alerta general
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Errores de Validación',
+                text: 'Por favor corrige los errores marcados en el formulario',
+                icon: 'error'
+            });
         }
     }
     

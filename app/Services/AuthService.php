@@ -100,6 +100,7 @@ class AuthService
             ]);
 
             // Guardar para uso offline futuro
+               $this->syncMasterDataAfterLogin();
             $this->offlineService->storeUserData($userData);
             $this->apiService->setToken($token);
 
@@ -166,7 +167,31 @@ class AuthService
         ];
     }
 
-
+private function syncMasterDataAfterLogin(): void
+{
+    try {
+        Log::info('🔄 Sincronizando datos maestros después del login');
+        
+        $response = $this->apiService->get('/master-data/all');
+        
+        if ($response['success'] && isset($response['data'])) {
+            $this->offlineService->syncMasterDataFromApi($response['data']);
+            
+            Log::info('✅ Datos maestros sincronizados después del login', [
+                'tables_count' => count($response['data']),
+                'procesos_count' => count($response['data']['procesos'] ?? []),
+                'brigadas_count' => count($response['data']['brigadas'] ?? [])
+            ]);
+        } else {
+            Log::warning('⚠️ No se pudieron obtener datos maestros después del login');
+        }
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando datos maestros después del login', [
+            'error' => $e->getMessage()
+        ]);
+    }
+}
     /**
      * ✅ NUEVO: Normalizar datos de usuario
      */

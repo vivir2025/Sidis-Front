@@ -31,7 +31,7 @@ class OfflineService
     /**
      * ✅ CORREGIDO: Asegurar que existe la base de datos SQLite
      */
-    private function ensureSQLiteExists(): void
+    public function ensureSQLiteExists(): void
     {
         try {
             $dbPath = storage_path('app/offline/offline_data.sqlite');
@@ -82,7 +82,7 @@ class OfflineService
     /**
      * ✅ NUEVO: Crear tablas SQLite dinámicamente
      */
-   private function createTablesIfNotExist(): void
+  private function createTablesIfNotExist(): void
 {
     try {
         // Verificar si las tablas ya existen
@@ -101,6 +101,12 @@ class OfflineService
             if (!in_array('citas', $existingTables)) {
                 $this->createCitasTable();
                 Log::info('✅ Tabla citas creada');
+            }
+            
+            // ✅ AGREGAR VERIFICACIÓN DE PROCESOS
+            if (!in_array('procesos', $existingTables)) {
+                $this->createProcesosTable();
+                Log::info('✅ Tabla procesos creada');
             }
             
             return;
@@ -124,6 +130,9 @@ class OfflineService
         $this->createAuxiliaresTable();
         $this->createBrigadasTable();
         
+        // ✅ AGREGAR ESTA LÍNEA QUE FALTA
+        $this->createProcesosTable();
+        
         // ✅ CREAR NUEVAS TABLAS
         $this->createAgendasTable();
         $this->createCitasTable();
@@ -143,7 +152,7 @@ class OfflineService
 }
         private function createAgendasTable(): void
 {
-    DB::connection('offline')->statement('
+      DB::connection('offline')->statement('
         CREATE TABLE IF NOT EXISTS agendas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT UNIQUE NOT NULL,
@@ -156,11 +165,15 @@ class OfflineService
             intervalo TEXT,
             etiqueta TEXT,
             estado TEXT DEFAULT "ACTIVO",
-            proceso_id INTEGER,
+            proceso_id TEXT NULL, 
             usuario_id INTEGER,
-            brigada_id INTEGER,
+            brigada_id TEXT NULL,  
             cupos_disponibles INTEGER DEFAULT 0,
             sync_status TEXT DEFAULT "synced",
+            error_message TEXT NULL,
+            synced_at DATETIME NULL,
+            operation_type TEXT DEFAULT "create",  
+            original_data TEXT NULL,               
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             deleted_at DATETIME NULL
@@ -1648,7 +1661,7 @@ private function createCitasTable(): void
         }
     }
 
-    public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
+  public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
 {
     try {
         if (empty($agendaData['uuid'])) {
@@ -1656,15 +1669,16 @@ private function createCitasTable(): void
             return;
         }
 
+        // ✅ ASEGURAR SEDE_ID
         if (empty($agendaData['sede_id'])) {
-            $user = auth()->user();
+            $user = auth()->user() ?? session('usuario');
             $agendaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
         $offlineData = [
             'id' => $agendaData['id'] ?? null,
             'uuid' => $agendaData['uuid'],
-            'sede_id' => $agendaData['sede_id'],
+            'sede_id' => (int) $agendaData['sede_id'],
             'modalidad' => $agendaData['modalidad'] ?? 'Ambulatoria',
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'] ?? '',
@@ -1674,10 +1688,12 @@ private function createCitasTable(): void
             'etiqueta' => $agendaData['etiqueta'] ?? '',
             'estado' => $agendaData['estado'] ?? 'ACTIVO',
             'proceso_id' => $agendaData['proceso_id'] ?? null,
-            'usuario_id' => $agendaData['usuario_id'] ?? null,
+            'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
             'brigada_id' => $agendaData['brigada_id'] ?? null,
-            'cupos_disponibles' => $agendaData['cupos_disponibles'] ?? 0,
+            'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
+            'operation_type' => $needsSync ? 'create' : 'sync', // ✅ AGREGAR ESTO
+            'original_data' => $needsSync ? json_encode($agendaData) : null, // ✅ AGREGAR ESTO
             'created_at' => $agendaData['created_at'] ?? now()->toISOString(),
             'updated_at' => now()->toISOString(),
             'deleted_at' => $agendaData['deleted_at'] ?? null
@@ -1696,7 +1712,8 @@ private function createCitasTable(): void
         Log::debug('✅ Agenda almacenada offline', [
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
-            'consultorio' => $agendaData['consultorio']
+            'consultorio' => $agendaData['consultorio'],
+            'sync_status' => $offlineData['sync_status']
         ]);
 
     } catch (\Exception $e) {
@@ -1921,6 +1938,8 @@ public function getCitaOffline(string $uuid): ?array
 public function syncPendingAgendas(): array
 {
     try {
+        Log::info('🔄 Iniciando sincronización de agendas pendientes');
+        
         $results = [
             'success' => 0,
             'errors' => 0,
@@ -1928,88 +1947,459 @@ public function syncPendingAgendas(): array
         ];
 
         if (!$this->isSQLiteAvailable()) {
-            // Sincronizar desde JSON
-            return $this->syncPendingAgendasFromJSON();
+            Log::warning('⚠️ SQLite no disponible para sincronización');
+            return $results;
         }
 
-        // Obtener agendas pendientes de sincronización
+        // ✅ VERIFICAR CONEXIÓN PRIMERO
+        $apiService = app(ApiService::class);
+        if (!$apiService->isOnline()) {
+            Log::warning('⚠️ Sin conexión para sincronizar');
+            return [
+                'success' => false,
+                'error' => 'Sin conexión al servidor',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ];
+        }
+
+        // Obtener agendas pendientes
         $pendingAgendas = DB::connection('offline')
             ->table('agendas')
             ->where('sync_status', 'pending')
+            ->orWhere('sync_status', 'error')
             ->get();
 
-        Log::info('🔄 Sincronizando agendas pendientes', [
+        Log::info('📊 Agendas pendientes encontradas', [
             'count' => $pendingAgendas->count()
         ]);
 
+        if ($pendingAgendas->isEmpty()) {
+            return [
+                'success' => true,
+                'message' => 'No hay agendas pendientes',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ];
+        }
+
         foreach ($pendingAgendas as $agenda) {
             try {
-                $agendaData = (array) $agenda;
-                unset($agendaData['id'], $agendaData['sync_status']);
-
-                // Intentar sincronizar con API
-                $apiService = app(ApiService::class);
+                $agendaArray = (array) $agenda;
                 
-                if ($agendaData['deleted_at']) {
-                    // Eliminar en servidor
-                    $response = $apiService->delete("/agendas/{$agenda->uuid}");
-                } else {
-                    // Crear o actualizar en servidor
-                    $response = $apiService->post('/agendas', $agendaData);
-                }
+                Log::info('📡 Procesando agenda para sincronización', [
+                    'uuid' => $agenda->uuid,
+                    'fecha' => $agenda->fecha,
+                    'consultorio' => $agenda->consultorio,
+                    'operation_type' => $agenda->operation_type ?? 'create'
+                ]);
 
-                if ($response['success']) {
-                    // Marcar como sincronizado
+                // ✅ PREPARAR DATOS LIMPIOS PARA LA API
+                $syncData = $this->prepareAgendaDataForSync($agendaArray);
+                
+                Log::info('📤 Datos preparados para API', [
+                    'uuid' => $agenda->uuid,
+                    'sync_data' => $syncData
+                ]);
+
+                // ✅ ENVIAR A LA API CON LOGGING DETALLADO
+                $response = $apiService->post('/agendas', $syncData);
+                
+                // ✅ LOG COMPLETO DE LA RESPUESTA
+                Log::info('📥 Respuesta completa de API', [
+                    'uuid' => $agenda->uuid,
+                    'response' => $response, // ← ESTO ES CLAVE
+                    'success' => $response['success'] ?? false,
+                    'error' => $response['error'] ?? null,
+                    'status' => $response['status'] ?? null
+                ]);
+
+                if (isset($response['success']) && $response['success'] === true) {
+                    // ✅ ÉXITO
                     DB::connection('offline')
                         ->table('agendas')
                         ->where('uuid', $agenda->uuid)
-                        ->update(['sync_status' => 'synced']);
+                        ->update([
+                            'sync_status' => 'synced',
+                            'synced_at' => now(),
+                            'error_message' => null
+                        ]);
                     
                     $results['success']++;
                     $results['details'][] = [
                         'uuid' => $agenda->uuid,
                         'status' => 'success',
-                        'action' => $agendaData['deleted_at'] ? 'deleted' : 'synced'
+                        'action' => 'created'
                     ];
+                    
+                    Log::info('✅ Agenda sincronizada exitosamente', [
+                        'uuid' => $agenda->uuid
+                    ]);
+                    
                 } else {
-                    $results['errors']++;
-                    $results['details'][] = [
+                    // ✅ ERROR - CAPTURAR DETALLES REALES
+                    $errorMessage = 'Error desconocido';
+                    
+                    if (isset($response['error'])) {
+                        $errorMessage = $response['error'];
+                    } elseif (isset($response['message'])) {
+                        $errorMessage = $response['message'];
+                    } elseif (isset($response['errors'])) {
+                        $errorMessage = is_array($response['errors']) 
+                            ? json_encode($response['errors']) 
+                            : $response['errors'];
+                    }
+                    
+                    Log::error('❌ Error real de la API', [
                         'uuid' => $agenda->uuid,
-                        'status' => 'error',
-                        'error' => $response['error'] ?? 'Error desconocido'
-                    ];
+                        'error_message' => $errorMessage,
+                        'full_response' => $response
+                    ]);
+                    
+                    // ✅ VERIFICAR SI ES ERROR DE DUPLICADO
+                    $errorLower = strtolower($errorMessage);
+                    if (str_contains($errorLower, 'ya existe') || 
+                        str_contains($errorLower, 'duplicate') ||
+                        str_contains($errorLower, 'already exists') ||
+                        str_contains($errorLower, 'conflicto')) {
+                        
+                        // Marcar como sincronizado si ya existe
+                        DB::connection('offline')
+                            ->table('agendas')
+                            ->where('uuid', $agenda->uuid)
+                            ->update([
+                                'sync_status' => 'synced',
+                                'synced_at' => now(),
+                                'error_message' => null
+                            ]);
+                        
+                        $results['success']++;
+                        $results['details'][] = [
+                            'uuid' => $agenda->uuid,
+                            'status' => 'success',
+                            'action' => 'already_exists'
+                        ];
+                        
+                        Log::info('✅ Agenda ya existía en servidor', [
+                            'uuid' => $agenda->uuid
+                        ]);
+                    } else {
+                        // Error real
+                        DB::connection('offline')
+                            ->table('agendas')
+                            ->where('uuid', $agenda->uuid)
+                            ->update([
+                                'sync_status' => 'error',
+                                'error_message' => $errorMessage
+                            ]);
+                        
+                        $results['errors']++;
+                        $results['details'][] = [
+                            'uuid' => $agenda->uuid,
+                            'status' => 'error',
+                            'error' => $errorMessage
+                        ];
+                        
+                        Log::error('❌ Error sincronizando agenda', [
+                            'uuid' => $agenda->uuid,
+                            'error' => $errorMessage
+                        ]);
+                    }
                 }
 
             } catch (\Exception $e) {
                 $results['errors']++;
                 $results['details'][] = [
-                    'uuid' => $agenda->uuid,
+                    'uuid' => $agenda->uuid ?? 'unknown',
                     'status' => 'error',
                     'error' => $e->getMessage()
                 ];
                 
-                Log::error('❌ Error sincronizando agenda', [
-                    'uuid' => $agenda->uuid,
-                    'error' => $e->getMessage()
+                Log::error('❌ Excepción sincronizando agenda', [
+                    'uuid' => $agenda->uuid ?? 'unknown',
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
             }
         }
 
-        Log::info('✅ Sincronización de agendas completada', $results);
-        return $results;
+        Log::info('🏁 Sincronización completada', [
+            'success' => $results['success'],
+            'errors' => $results['errors'],
+            'total' => $pendingAgendas->count()
+        ]);
+
+        return [
+            'success' => true,
+            'message' => "Sincronización completada: {$results['success']} exitosas, {$results['errors']} errores",
+            'synced_count' => $results['success'],
+            'failed_count' => $results['errors'],
+            'details' => $results['details']
+        ];
 
     } catch (\Exception $e) {
-        Log::error('❌ Error en sincronización de agendas', [
-            'error' => $e->getMessage()
+        Log::error('💥 Error crítico en sincronización', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return [
-            'success' => 0,
-            'errors' => 1,
-            'details' => [['error' => $e->getMessage()]]
+            'success' => false,
+            'error' => 'Error crítico: ' . $e->getMessage(),
+            'synced_count' => 0,
+            'failed_count' => 0
         ];
     }
 }
+/**
+ * ✅ NUEVO: Preparar datos para enviar a la API
+ */
+private function prepareAgendaDataForSync(array $agenda): array
+{
+    // ✅ USAR DATOS ORIGINALES SI ESTÁN DISPONIBLES
+    if (!empty($agenda['original_data'])) {
+        $originalData = json_decode($agenda['original_data'], true);
+        if ($originalData) {
+            Log::info('📋 Usando datos originales para sincronización', [
+                'uuid' => $agenda['uuid'],
+                'original_keys' => array_keys($originalData)
+            ]);
+            return $this->cleanDataForApi($originalData);
+        }
+    }
+    
+    // ✅ SINO, USAR DATOS ACTUALES
+    Log::info('📋 Usando datos actuales para sincronización', [
+        'uuid' => $agenda['uuid'],
+        'current_keys' => array_keys($agenda)
+    ]);
+    return $this->cleanDataForApi($agenda);
+}
+
+/**
+ * ✅ NUEVO: Limpiar datos para la API
+ */
+private function cleanDataForApi(array $data): array
+{
+    Log::info('🧹 Limpiando datos para API', [
+        'original_data' => $data,
+        'proceso_id_original' => $data['proceso_id'] ?? 'no-set',
+        'brigada_id_original' => $data['brigada_id'] ?? 'no-set',
+        'intervalo_original' => $data['intervalo'] ?? 'no-set'
+    ]);
+
+    $cleanData = [
+        'modalidad' => $data['modalidad'] ?? 'Ambulatoria',
+        'fecha' => $data['fecha'],
+        'consultorio' => (string) ($data['consultorio'] ?? ''),
+        'hora_inicio' => $data['hora_inicio'],
+        'hora_fin' => $data['hora_fin'],
+        'intervalo' => (string) ($data['intervalo'] ?? '15'), // ✅ CAMBIAR A STRING
+        'etiqueta' => $data['etiqueta'] ?? '',
+        'estado' => $data['estado'] ?? 'ACTIVO',
+        'sede_id' => (int) ($data['sede_id'] ?? 1),
+        'usuario_id' => (int) ($data['usuario_id'] ?? 1)
+    ];
+
+    // ✅ MANEJAR proceso_id CORRECTAMENTE
+   if (isset($data['proceso_id']) && !empty($data['proceso_id']) && $data['proceso_id'] !== 'null') {
+    if (is_numeric($data['proceso_id'])) {
+        // Es un ID numérico
+        $cleanData['proceso_id'] = (int) $data['proceso_id'];
+        Log::info('✅ proceso_id incluido como entero', [
+            'original' => $data['proceso_id'],
+            'clean' => $cleanData['proceso_id']
+        ]);
+    } elseif (is_string($data['proceso_id']) && $this->isValidUuid($data['proceso_id'])) {
+        // Es un UUID válido - ENVIAR COMO STRING
+        $cleanData['proceso_id'] = $data['proceso_id'];
+        Log::info('✅ proceso_id incluido como UUID', [
+            'original' => $data['proceso_id'],
+            'clean' => $cleanData['proceso_id']
+        ]);
+    } else {
+        Log::warning('⚠️ proceso_id inválido, omitiendo', [
+            'proceso_id' => $data['proceso_id']
+        ]);
+    }
+}
+
+// ✅ MANEJAR brigada_id CORRECTAMENTE (ACEPTA UUIDs Y ENTEROS)
+if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null') {
+    if (is_numeric($data['brigada_id'])) {
+        // Es un ID numérico
+        $cleanData['brigada_id'] = (int) $data['brigada_id'];
+        Log::info('✅ brigada_id incluido como entero', [
+            'original' => $data['brigada_id'],
+            'clean' => $cleanData['brigada_id']
+        ]);
+    } elseif (is_string($data['brigada_id']) && $this->isValidUuid($data['brigada_id'])) {
+        // Es un UUID válido - ENVIAR COMO STRING
+        $cleanData['brigada_id'] = $data['brigada_id'];
+        Log::info('✅ brigada_id incluido como UUID', [
+            'original' => $data['brigada_id'],
+            'clean' => $cleanData['brigada_id']
+        ]);
+    } else {
+        Log::warning('⚠️ brigada_id inválido, omitiendo', [
+            'brigada_id' => $data['brigada_id']
+        ]);
+    }
+}
+
+    Log::info('🧹 Datos finales limpiados para API', [
+        'clean_data' => $cleanData,
+        'has_proceso_id' => isset($cleanData['proceso_id']),
+        'has_brigada_id' => isset($cleanData['brigada_id']),
+        'intervalo_type' => gettype($cleanData['intervalo']) // ✅ Ahora será "string"
+    ]);
+
+    return $cleanData;
+}
+
+private function getProcesoIdFromUuid(string $uuid): ?int
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $proceso = DB::connection('offline')
+                ->table('procesos')
+                ->where('uuid', $uuid)
+                ->first();
+            
+            return $proceso ? $proceso->id : null;
+        }
+        
+        // Fallback a JSON
+        $masterData = $this->getData('master_data.json', []);
+        if (isset($masterData['procesos'])) {
+            foreach ($masterData['procesos'] as $proceso) {
+                if ($proceso['uuid'] === $uuid) {
+                    return isset($proceso['id']) ? (int) $proceso['id'] : null;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo proceso ID desde UUID', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+private function getBrigadaIdFromUuid(string $uuid): ?int
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $brigada = DB::connection('offline')
+                ->table('brigadas')
+                ->where('uuid', $uuid)
+                ->first();
+            
+            return $brigada ? $brigada->id : null;
+        }
+        
+        // Fallback a JSON
+        $masterData = $this->getData('master_data.json', []);
+        if (isset($masterData['brigadas'])) {
+            foreach ($masterData['brigadas'] as $brigada) {
+                if ($brigada['uuid'] === $uuid) {
+                    return isset($brigada['id']) ? (int) $brigada['id'] : null;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo brigada ID desde UUID', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+private function isValidUuid(string $uuid): bool
+{
+    return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $uuid);
+}
+
+/**
+ * ✅ NUEVO: Manejar errores de sincronización
+ */
+private function handleSyncError(string $uuid, array $response, array &$results): void
+{
+    $errorMessage = $response['error'] ?? 'Error desconocido';
+    
+    // ✅ SI EL ERROR ES "YA EXISTE", MARCAR COMO SINCRONIZADO
+    if (str_contains($errorMessage, 'Ya existe una agenda') || 
+        str_contains($errorMessage, 'already exists')) {
+        
+        DB::connection('offline')
+            ->table('agendas')
+            ->where('uuid', $uuid)
+            ->update(['sync_status' => 'synced']);
+        
+        $results['success']++;
+        $results['details'][] = [
+            'uuid' => $uuid,
+            'status' => 'success',
+            'action' => 'conflict_resolved'
+        ];
+        
+        Log::info('✅ Conflicto resuelto - agenda marcada como sincronizada', [
+            'uuid' => $uuid
+        ]);
+    } else {
+        // ✅ ERROR REAL
+        $results['errors']++;
+        $results['details'][] = [
+            'uuid' => $uuid,
+            'status' => 'error',
+            'error' => $errorMessage
+        ];
+        
+        Log::error('❌ Error sincronizando agenda', [
+            'uuid' => $uuid,
+            'error' => $errorMessage
+        ]);
+    }
+}
+
+/**
+ * ✅ NUEVO: Limpiar datos de agenda para sincronización
+ */
+private function cleanAgendaDataForSync(array $agendaData): array
+{
+    $cleanData = [
+        'modalidad' => $agendaData['modalidad'],
+        'fecha' => $agendaData['fecha'],
+        'consultorio' => $agendaData['consultorio'],
+        'hora_inicio' => $agendaData['hora_inicio'],
+        'hora_fin' => $agendaData['hora_fin'],
+        'intervalo' => $agendaData['intervalo'],
+        'etiqueta' => $agendaData['etiqueta'],
+        'estado' => $agendaData['estado'] ?? 'ACTIVO',
+        'sede_id' => $agendaData['sede_id'],
+        'usuario_id' => $agendaData['usuario_id']
+    ];
+
+    // ✅ SOLO AGREGAR SI NO SON NULOS
+    if (!empty($agendaData['proceso_id']) && $agendaData['proceso_id'] !== 'null') {
+        $cleanData['proceso_id'] = null; // ✅ Enviar null explícitamente
+    }
+    
+    if (!empty($agendaData['brigada_id']) && $agendaData['brigada_id'] !== 'null') {
+        $cleanData['brigada_id'] = null; // ✅ Enviar null explícitamente
+    }
+
+    return $cleanData;
+}
+
 
 /**
  * ✅ SINCRONIZAR CITAS PENDIENTES
@@ -2134,4 +2524,152 @@ public function getPendingSyncCount(): array
         ];
     }
 }
+/**
+ * ✅ OBTENER DATOS DE TEST PARA SINCRONIZACIÓN
+ */
+public function getTestSyncData($limit = 10): array
+{
+    try {
+        Log::info('🧪 Test manual de sincronización de agendas iniciado');
+        
+        $this->ensureSQLiteExists();
+        
+        $pendingAgendas = DB::connection('offline')->table('agendas')
+            ->where('sync_status', 'pending')
+            ->orWhere('sync_status', 'error')
+            ->limit($limit)
+            ->get();
+        
+        Log::info('📊 Agendas pendientes encontradas', [
+            'total' => $pendingAgendas->count(),
+            'limit' => $limit
+        ]);
+        
+        if ($pendingAgendas->isEmpty()) {
+            return [
+                'success' => true,
+                'pending_count' => 0,
+                'total_count' => 0,
+                'error_count' => 0,
+                'data' => [],
+                'message' => 'No hay agendas pendientes de sincronización'
+            ];
+        }
+        
+        // ✅ CONVERTIR OBJETOS stdClass A ARRAYS
+        $agendasArray = $pendingAgendas->map(function ($agenda) {
+            $agendaArray = (array) $agenda;
+            
+            if (isset($agendaArray['original_data']) && is_string($agendaArray['original_data'])) {
+                $originalData = json_decode($agendaArray['original_data'], true);
+                if ($originalData) {
+                    $agendaArray['original_data'] = $originalData;
+                }
+            }
+            
+            return $agendaArray;
+        })->toArray();
+        
+        // Filtrar agendas válidas
+        $validAgendas = array_filter($agendasArray, function ($agenda) {
+            return isset($agenda['uuid']) && 
+                   !empty($agenda['uuid']) && 
+                   isset($agenda['fecha']) && 
+                   !empty($agenda['fecha']);
+        });
+        
+        // ✅ OBTENER TOTALES
+        $totalCount = DB::connection('offline')->table('agendas')->count();
+        $errorCount = DB::connection('offline')->table('agendas')
+            ->where('sync_status', 'error')
+            ->count();
+        
+        Log::info('✅ Agendas válidas para sincronización', [
+            'total_pendientes' => count($agendasArray),
+            'validas' => count($validAgendas),
+            'total_count' => $totalCount,
+            'error_count' => $errorCount
+        ]);
+        
+        return [
+            'success' => true,
+            'pending_count' => count($validAgendas),
+            'total_count' => $totalCount,
+            'error_count' => $errorCount,
+            'data' => array_values($validAgendas),
+            'pending_details' => array_values($validAgendas),
+            'message' => count($validAgendas) . ' agendas pendientes de sincronización'
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en getTestSyncData', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ]);
+        
+        return [
+            'success' => false,
+            'pending_count' => 0,
+            'total_count' => 0,
+            'error_count' => 0,
+            'data' => [],
+            'error' => 'Error obteniendo datos de prueba: ' . $e->getMessage()
+        ];
+    }
+}
+// app/Services/OfflineService.php - AGREGAR MÉTODO TEMPORAL
+public function diagnosticSync(): array
+{
+    try {
+        Log::info('🔍 Diagnóstico de sincronización iniciado');
+        
+        // ✅ VERIFICAR SQLITE
+        if (!$this->isSQLiteAvailable()) {
+            return [
+                'success' => false,
+                'error' => 'SQLite no disponible',
+                'sqlite_available' => false
+            ];
+        }
+        
+        // ✅ CONTAR REGISTROS
+        $totalAgendas = DB::connection('offline')->table('agendas')->count();
+        $pendingAgendas = DB::connection('offline')->table('agendas')
+            ->whereIn('sync_status', ['pending', 'error'])
+            ->count();
+        
+        // ✅ OBTENER MUESTRA DE DATOS
+        $sampleAgendas = DB::connection('offline')->table('agendas')
+            ->whereIn('sync_status', ['pending', 'error'])
+            ->limit(3)
+            ->get();
+        
+        Log::info('📊 Diagnóstico completado', [
+            'total_agendas' => $totalAgendas,
+            'pending_agendas' => $pendingAgendas,
+            'sample_count' => $sampleAgendas->count()
+        ]);
+        
+        return [
+            'success' => true,
+            'sqlite_available' => true,
+            'total_agendas' => $totalAgendas,
+            'pending_agendas' => $pendingAgendas,
+            'sample_data' => $sampleAgendas->toArray()
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en diagnóstico', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'sqlite_available' => false
+        ];
+    }
+}
+
 }

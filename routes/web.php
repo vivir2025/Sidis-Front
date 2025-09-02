@@ -71,6 +71,8 @@ Route::middleware('custom.auth')->group(function () {
   // Rutas de sincronización
     Route::post('/agendas/sync-pending', [AgendaController::class, 'syncPending'])->name('agendas.sync-pending');
     Route::get('/agendas/pending-count', [AgendaController::class, 'pendingCount'])->name('agendas.pending-count');
+    Route::post('/sync-agendas', [AgendaController::class, 'syncPendingAgendas'])->name('agendas.sync');
+Route::get('/agendas/test-sync', [AgendaController::class, 'testSyncManual'])->name('agendas.test-sync');
      // Agendas
     Route::prefix('agendas')->name('agendas.')->group(function () {
         Route::get('/', [AgendaController::class, 'index'])->name('index');
@@ -82,6 +84,14 @@ Route::middleware('custom.auth')->group(function () {
         Route::put('/{uuid}', [AgendaController::class, 'update'])->name('update');
         Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
     });
+
+    // routes/web.php - AGREGAR TEMPORALMENTE
+Route::get('/agendas/diagnostic', function() {
+    $offlineService = app(\App\Services\OfflineService::class);
+    $result = $offlineService->diagnosticSync();
+    return response()->json($result);
+})->middleware('custom.auth');
+
 
     // Citas
     Route::prefix('citas')->name('citas.')->group(function () {

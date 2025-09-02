@@ -17,16 +17,39 @@
                     <p class="text-muted mb-0">Administrar agendas médicas y horarios de atención</p>
                 </div>
                 
-                <div class="d-flex gap-2">
-                    <!-- ✅ BOTÓN DE SINCRONIZACIÓN -->
-                    <button type="button" id="btnSincronizar" class="btn btn-outline-warning position-relative" onclick="sincronizarPendientes()" style="display: none;">
+                <!-- Header Actions -->
+                <div class="d-flex align-items-center gap-2">
+                    <!-- Estado de Conexión -->
+                    @if($isOffline)
+                        <span class="badge bg-warning me-2">
+                            <i class="fas fa-wifi-slash"></i> Modo Offline
+                        </span>
+                    @else
+                        <span class="badge bg-success me-2">
+                            <i class="fas fa-wifi"></i> Conectado
+                        </span>
+                    @endif
+                    
+                    <!-- ✅ BOTONES DE SINCRONIZACIÓN (igual que pacientes) -->
+                    @if($isOffline)
+                        <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncAgendas()">
+                            <i class="fas fa-sync-alt"></i> Sincronizar
+                        </button>
+                    @endif
+
+                    <button type="button" class="btn btn-success btn-sm me-2" onclick="syncAllPendingAgendasData()">
+                        <i class="fas fa-sync-alt"></i> Forzar Sync
+                    </button>
+                    
+                    <!-- ✅ BOTÓN DE SINCRONIZACIÓN AUTOMÁTICA -->
+                    <button type="button" id="btnSincronizar" class="btn btn-outline-warning position-relative me-2" onclick="sincronizarPendientes()" style="display: none;">
                         <i class="fas fa-sync-alt"></i> Sincronizar
                         <span id="badgePendientes" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
                             0
                         </span>
                     </button>
                     
-                    <button type="button" class="btn btn-outline-secondary" onclick="refreshAgendas()">
+                    <button type="button" class="btn btn-outline-secondary me-2" onclick="refreshAgendas()">
                         <i class="fas fa-sync-alt"></i> Actualizar
                     </button>
                     
@@ -37,6 +60,20 @@
             </div>
         </div>
     </div>
+
+    <!-- ✅ ALERTA OFFLINE (igual que pacientes) -->
+    @if($isOffline)
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <div class="d-flex align-items-start">
+                <i class="fas fa-exclamation-triangle me-3 mt-1"></i>
+                <div class="flex-grow-1">
+                    <strong>Modo Offline Activo</strong>
+                    <p class="mb-0">Trabajando con datos locales. Los cambios se sincronizarán cuando vuelva la conexión.</p>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
 
     <!-- Filtros -->
     <div class="card mb-4">
@@ -99,7 +136,13 @@
             <h5 class="card-title mb-0">
                 <i class="fas fa-list me-2"></i>Lista de Agendas
             </h5>
-            <div id="totalRegistros" class="badge bg-primary">0 registros</div>
+            <div class="d-flex align-items-center gap-2">
+                <!-- ✅ INDICADOR DE CARGA -->
+                <div id="loadingIndicator" class="d-none">
+                    <i class="fas fa-spinner fa-spin me-2"></i>Cargando...
+                </div>
+                <div id="totalRegistros" class="badge bg-primary">0 registros</div>
+            </div>
         </div>
         <div class="card-body">
             <!-- Loading -->
@@ -158,64 +201,97 @@
 <script>
 let currentPage = 1;
 let isLoading = false;
+let currentFilters = {};
 
-// ✅ CARGAR AGENDAS
-async function loadAgendas(page = 1, showLoading = true) {
+// ✅ CARGAR AGENDAS AL INICIAR (igual que pacientes)
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Iniciando carga de agendas');
+    
+    // Establecer fecha por defecto (hoy)
+    document.getElementById('fecha_desde').value = new Date().toISOString().split('T')[0];
+    
+    // Cargar agendas iniciales
+    loadAgendas(1);
+    
+    // ✅ VERIFICAR PENDIENTES AL CARGAR
+    checkPendingSync();
+    
+    // ✅ VERIFICAR PENDIENTES CADA 30 SEGUNDOS
+    setInterval(checkPendingSync, 30000);
+});
+
+// ✅ FUNCIÓN PRINCIPAL PARA CARGAR AGENDAS (mejorada como pacientes)
+function loadAgendas(page = 1, filters = {}) {
     if (isLoading) return;
     
-    try {
-        isLoading = true;
-        
-        if (showLoading) {
-            document.getElementById('loadingAgendas').style.display = 'block';
-            document.getElementById('tablaAgendas').style.display = 'none';
-            document.getElementById('estadoVacio').style.display = 'none';
+    currentPage = page;
+    currentFilters = filters;
+    
+    console.log('📥 Cargando agendas', { page, filters });
+    showLoading(true);
+    
+    const formData = new FormData(document.getElementById('filtrosForm'));
+    const params = new URLSearchParams();
+    
+    // Agregar filtros del formulario
+    for (let [key, value] of formData.entries()) {
+        if (value && value.trim() !== '') {
+            params.append(key, value.trim());
         }
-
-        const formData = new FormData(document.getElementById('filtrosForm'));
-        const params = new URLSearchParams();
-        
-        // Agregar filtros
-        for (let [key, value] of formData.entries()) {
-            if (value.trim() !== '') {
-                params.append(key, value);
-            }
+    }
+    
+    // Agregar filtros adicionales
+    Object.keys(filters).forEach(key => {
+        if (filters[key] && filters[key].trim() !== '') {
+            params.set(key, filters[key].trim());
         }
+    });
+    
+    params.append('page', page);
+    
+    fetch(`{{ route('agendas.index') }}?${params}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => {
+        console.log('📡 Respuesta recibida:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('✅ Datos procesados:', data);
         
-        params.append('page', page);
-
-        const response = await fetch(`/agendas?${params.toString()}`, {
-            method: 'GET',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }
-        });
-
-        const data = await response.json();
-
         if (data.success) {
-            displayAgendas(data.data, data.meta);
+            displayAgendas(data.data || [], data.meta || {});
             
-            if (data.message) {
-                showToast(data.offline ? 'warning' : 'success', data.message);
+            if (data.offline) {
+                showAlert('info', data.message || 'Datos cargados desde almacenamiento local', 'Modo Offline');
+            } else {
+                console.log('✅ Datos cargados desde servidor');
             }
         } else {
-            throw new Error(data.error || 'Error cargando agendas');
+            console.error('❌ Error en respuesta:', data.error);
+            showAlert('error', data.error || 'Error cargando agendas');
+            showEmptyState();
         }
-
-    } catch (error) {
-        console.error('Error cargando agendas:', error);
-        showAlert('error', 'Error cargando agendas: ' + error.message);
+    })
+    .catch(error => {
+        console.error('💥 Error de conexión:', error);
+        showAlert('error', 'Error de conexión al cargar agendas');
         showEmptyState();
-    } finally {
-        isLoading = false;
-        document.getElementById('loadingAgendas').style.display = 'none';
-    }
+    })
+    .finally(() => {
+        showLoading(false);
+    });
 }
 
-// ✅ MOSTRAR AGENDAS EN TABLA
+// ✅ MOSTRAR AGENDAS EN TABLA (mejorada)
 function displayAgendas(agendas, meta) {
+    console.log('🎨 Renderizando agendas:', agendas.length);
+    
     const tbody = document.getElementById('agendasTableBody');
     const tabla = document.getElementById('tablaAgendas');
     const estadoVacio = document.getElementById('estadoVacio');
@@ -237,11 +313,14 @@ function displayAgendas(agendas, meta) {
     
     updatePagination(meta);
     updateRegistrosInfo(meta);
+    
+    console.log(`✅ ${agendas.length} agendas renderizadas en la tabla`);
 }
 
-// ✅ CREAR FILA DE AGENDA
+// ✅ CREAR FILA DE AGENDA (mejorada)
 function createAgendaRow(agenda) {
     const row = document.createElement('tr');
+    row.setAttribute('data-uuid', agenda.uuid);
     
     // Estado badge
     const estadoBadge = getEstadoBadge(agenda.estado);
@@ -256,6 +335,12 @@ function createAgendaRow(agenda) {
     const cupos = agenda.cupos_disponibles || 0;
     const cuposClass = cupos > 0 ? 'text-success' : 'text-warning';
     
+    // Consultorio
+    const consultorio = agenda.consultorio || 'Sin asignar';
+    
+    // Etiqueta
+    const etiqueta = agenda.etiqueta || 'Sin etiqueta';
+    
     row.innerHTML = `
         <td>
             <div class="fw-semibold">${fecha}</div>
@@ -263,30 +348,30 @@ function createAgendaRow(agenda) {
         </td>
         <td>
             <div>${horario}</div>
-            <small class="text-muted">Intervalo: ${agenda.intervalo}min</small>
+            <small class="text-muted">Intervalo: ${agenda.intervalo || 15}min</small>
         </td>
         <td>
-            <div class="fw-semibold">${agenda.consultorio}</div>
+            <div class="fw-semibold">${consultorio}</div>
         </td>
         <td>
             <span class="badge ${agenda.modalidad === 'Telemedicina' ? 'bg-info' : 'bg-secondary'}">
-                ${agenda.modalidad}
+                ${agenda.modalidad || 'Ambulatoria'}
             </span>
         </td>
-        <td>${agenda.etiqueta}</td>
+        <td>${etiqueta}</td>
         <td>${estadoBadge}</td>
         <td>
             <span class="${cuposClass} fw-semibold">${cupos}</span>
         </td>
         <td>
             <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-primary" onclick="verAgenda('${agenda.uuid}')" title="Ver">
+                <a href="/agendas/${agenda.uuid}" class="btn btn-outline-info" title="Ver detalles">
                     <i class="fas fa-eye"></i>
-                </button>
-                <button type="button" class="btn btn-outline-warning" onclick="editarAgenda('${agenda.uuid}')" title="Editar">
+                </a>
+                <a href="/agendas/${agenda.uuid}/edit" class="btn btn-outline-warning" title="Editar">
                     <i class="fas fa-edit"></i>
-                </button>
-                <button type="button" class="btn btn-outline-danger" onclick="eliminarAgenda('${agenda.uuid}', '${agenda.fecha} - ${agenda.consultorio}')" title="Eliminar">
+                </a>
+                <button type="button" class="btn btn-outline-danger" onclick="eliminarAgenda('${agenda.uuid}', '${fecha} - ${consultorio}')" title="Eliminar">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -296,10 +381,10 @@ function createAgendaRow(agenda) {
     return row;
 }
 
-// ✅ VERIFICAR REGISTROS PENDIENTES
+// ✅ VERIFICAR REGISTROS PENDIENTES (actualizada para usar la API correcta)
 async function checkPendingSync() {
     try {
-        const response = await fetch('/agendas/pending-count', {
+        const response = await fetch('/agendas/test-sync', {
             method: 'GET',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
@@ -309,21 +394,21 @@ async function checkPendingSync() {
 
         const data = await response.json();
 
-        if (data.success && data.data.total > 0) {
+        if (data.success && data.pending_count > 0) {
             document.getElementById('btnSincronizar').style.display = 'inline-block';
             document.getElementById('badgePendientes').style.display = 'inline-block';
-            document.getElementById('badgePendientes').textContent = data.data.total;
+            document.getElementById('badgePendientes').textContent = data.pending_count;
         } else {
             document.getElementById('btnSincronizar').style.display = 'none';
             document.getElementById('badgePendientes').style.display = 'none';
         }
 
     } catch (error) {
-        console.error('Error verificando pendientes:', error);
+        console.error('Error verificando pendientes de agendas:', error);
     }
 }
 
-// ✅ SINCRONIZAR REGISTROS PENDIENTES
+// ✅ SINCRONIZAR REGISTROS PENDIENTES (actualizada)
 async function sincronizarPendientes() {
     const btnSincronizar = document.getElementById('btnSincronizar');
     const originalHTML = btnSincronizar.innerHTML;
@@ -333,7 +418,7 @@ async function sincronizarPendientes() {
         btnSincronizar.disabled = true;
         btnSincronizar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
 
-        const response = await fetch('/agendas/sync-pending', {
+        const response = await fetch('/sync-agendas', {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
@@ -351,8 +436,8 @@ async function sincronizarPendientes() {
                     <div class="text-start">
                         <p><strong>Resultados:</strong></p>
                         <ul>
-                            <li>✅ Registros sincronizados: ${data.data.totals.success}</li>
-                            ${data.data.totals.errors > 0 ? `<li>❌ Errores: ${data.data.totals.errors}</li>` : ''}
+                            <li>✅ Agendas sincronizadas: ${data.synced_count || 0}</li>
+                            ${data.failed_count > 0 ? `<li>❌ Errores: ${data.failed_count}</li>` : ''}
                         </ul>
                     </div>
                 `,
@@ -361,9 +446,9 @@ async function sincronizarPendientes() {
             });
 
             // Ocultar botón si no hay más pendientes
-            if (data.data.totals.success > 0) {
+            if (data.synced_count > 0) {
                 checkPendingSync();
-                loadAgendas(currentPage, false);
+                loadAgendas(currentPage, currentFilters);
             }
 
         } else {
@@ -371,7 +456,7 @@ async function sincronizarPendientes() {
         }
 
     } catch (error) {
-        console.error('Error sincronizando:', error);
+        console.error('Error sincronizando agendas:', error);
         Swal.fire('Error', 'Error sincronizando: ' + error.message, 'error');
     } finally {
         btnSincronizar.disabled = false;
@@ -379,7 +464,85 @@ async function sincronizarPendientes() {
     }
 }
 
-// ✅ UTILIDADES
+// ✅ NUEVAS FUNCIONES DE SINCRONIZACIÓN (igual que pacientes)
+function syncAgendas() {
+    console.log('🔄 Iniciando sincronización de agendas');
+    showLoading(true);
+    
+    fetch('/sync-agendas', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire({
+                title: '¡Sincronización Exitosa!',
+                html: `
+                    <div class="text-start">
+                        <p><strong>Resultados:</strong></p>
+                        <ul>
+                            <li>✅ Agendas sincronizadas: ${data.synced_count || 0}</li>
+                            ${data.failed_count > 0 ? `<li>❌ Errores: ${data.failed_count}</li>` : ''}
+                        </ul>
+                    </div>
+                `,
+                icon: 'success',
+                confirmButtonText: 'Entendido'
+            });
+            loadAgendas(currentPage, currentFilters);
+            checkPendingSync();
+        } else {
+            Swal.fire('Error', data.error || 'Error en sincronización', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error sincronizando agendas:', error);
+        Swal.fire('Error', 'Error de conexión para sincronizar', 'error');
+    })
+    .finally(() => {
+        showLoading(false);
+    });
+}
+
+function syncAllPendingAgendasData() {
+    Swal.fire({
+        title: '¿Forzar Sincronización?',
+        text: 'Esto sincronizará todas las agendas pendientes',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, sincronizar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            syncAgendas();
+        }
+    });
+}
+
+// ✅ MOSTRAR/OCULTAR LOADING (mejorada)
+function showLoading(show) {
+    const loadingAgendas = document.getElementById('loadingAgendas');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    
+    if (show) {
+        if (loadingAgendas) loadingAgendas.style.display = 'block';
+        if (loadingIndicator) loadingIndicator.classList.remove('d-none');
+        document.getElementById('tablaAgendas').style.display = 'none';
+        document.getElementById('estadoVacio').style.display = 'none';
+    } else {
+        if (loadingAgendas) loadingAgendas.style.display = 'none';
+        if (loadingIndicator) loadingIndicator.classList.add('d-none');
+    }
+}
+
+// ✅ UTILIDADES (mejoradas)
 function getEstadoBadge(estado) {
     const badges = {
         'ACTIVO': '<span class="badge bg-success">Activo</span>',
@@ -398,8 +561,10 @@ function showEmptyState() {
     document.getElementById('tablaAgendas').style.display = 'none';
     document.getElementById('estadoVacio').style.display = 'block';
     document.getElementById('totalRegistros').textContent = '0 registros';
+    document.getElementById('infoRegistros').textContent = '';
 }
 
+// ✅ PAGINACIÓN (mejorada como pacientes)
 function updatePagination(meta) {
     const nav = document.getElementById('paginacionNav');
     
@@ -414,21 +579,47 @@ function updatePagination(meta) {
     if (meta.current_page > 1) {
         paginationHTML += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page - 1})">
+                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page - 1}, currentFilters); return false;">
                     <i class="fas fa-chevron-left"></i>
                 </a>
             </li>
         `;
     }
     
-    // Páginas
+    // Páginas numeradas
     const startPage = Math.max(1, meta.current_page - 2);
     const endPage = Math.min(meta.last_page, meta.current_page + 2);
     
-    for (let i = startPage; i <= endPage; i++) {
+    if (startPage > 1) {
         paginationHTML += `
-            <li class="page-item ${i === meta.current_page ? 'active' : ''}">
-                <a class="page-link" href="#" onclick="loadAgendas(${i})">${i}</a>
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="loadAgendas(1, currentFilters); return false;">1</a>
+            </li>
+        `;
+        if (startPage > 2) {
+            paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === meta.current_page) {
+            paginationHTML += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            paginationHTML += `
+                <li class="page-item">
+                    <a class="page-link" href="#" onclick="loadAgendas(${i}, currentFilters); return false;">${i}</a>
+                </li>
+            `;
+        }
+    }
+    
+    if (endPage < meta.last_page) {
+        if (endPage < meta.last_page - 1) {
+            paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        paginationHTML += `
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="loadAgendas(${meta.last_page}, currentFilters); return false;">${meta.last_page}</a>
             </li>
         `;
     }
@@ -437,7 +628,7 @@ function updatePagination(meta) {
     if (meta.current_page < meta.last_page) {
         paginationHTML += `
             <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page + 1})">
+                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page + 1}, currentFilters); return false;">
                     <i class="fas fa-chevron-right"></i>
                 </a>
             </li>
@@ -464,7 +655,7 @@ function updateRegistrosInfo(meta) {
     }
 }
 
-// ✅ ACCIONES
+// ✅ ACCIONES (mejoradas)
 function verAgenda(uuid) {
     window.location.href = `/agendas/${uuid}`;
 }
@@ -500,7 +691,7 @@ async function eliminarAgenda(uuid, descripcion) {
 
             if (data.success) {
                 Swal.fire('¡Eliminado!', data.message, 'success');
-                loadAgendas(currentPage, false);
+                loadAgendas(currentPage, currentFilters);
                 checkPendingSync(); // Verificar pendientes después de eliminar
             } else {
                 throw new Error(data.error);
@@ -514,23 +705,54 @@ async function eliminarAgenda(uuid, descripcion) {
 }
 
 function refreshAgendas() {
-    loadAgendas(currentPage);
+    loadAgendas(currentPage, currentFilters);
     checkPendingSync(); // Verificar pendientes también
 }
 
 function limpiarFiltros() {
     document.getElementById('filtrosForm').reset();
-    loadAgendas(1);
+    // Restablecer fecha por defecto
+    document.getElementById('fecha_desde').value = new Date().toISOString().split('T')[0];
+    currentFilters = {};
+    loadAgendas(1, {});
 }
 
-// ✅ EVENTOS
+// ✅ MANEJAR FORMULARIO DE BÚSQUEDA (mejorado como pacientes)
 document.getElementById('filtrosForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    currentPage = 1;
-    loadAgendas(1);
+    
+    const formData = new FormData(this);
+    const filters = {};
+    
+    for (let [key, value] of formData.entries()) {
+        if (value && value.trim()) {
+                        filters[key] = value.trim();
+        }
+    }
+    
+    console.log('🔍 Aplicando filtros:', filters);
+    loadAgendas(1, filters);
 });
 
-// ✅ TOAST HELPER
+// ✅ MOSTRAR ALERTAS (igual que pacientes)
+function showAlert(type, message, title = '') {
+    const iconMap = {
+        'success': 'success',
+        'error': 'error',
+        'warning': 'warning',
+        'info': 'info'
+    };
+    
+    Swal.fire({
+        icon: iconMap[type] || 'info',
+        title: title || (type === 'error' ? 'Error' : 'Información'),
+        text: message,
+        timer: type === 'success' ? 3000 : undefined,
+        showConfirmButton: type !== 'success'
+    });
+}
+
+// ✅ TOAST HELPER (mejorado)
 function showToast(type, message) {
     const toastContainer = document.getElementById('toast-container') || createToastContainer();
     
@@ -568,21 +790,6 @@ function createToastContainer() {
     document.body.appendChild(container);
     return container;
 }
-
-// ✅ INICIALIZAR
-document.addEventListener('DOMContentLoaded', function() {
-    // Establecer fecha por defecto (hoy)
-    document.getElementById('fecha_desde').value = new Date().toISOString().split('T')[0];
-    
-    // Cargar agendas iniciales
-    loadAgendas(1);
-    
-    // ✅ VERIFICAR PENDIENTES AL CARGAR
-    checkPendingSync();
-    
-    // ✅ VERIFICAR PENDIENTES CADA 30 SEGUNDOS
-    setInterval(checkPendingSync, 30000);
-});
 </script>
 @endpush
 @endsection
