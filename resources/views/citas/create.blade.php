@@ -377,13 +377,17 @@ function mostrarAgendas(agendas) {
     let html = '';
     agendas.forEach(agenda => {
         const fecha = new Date(agenda.fecha).toLocaleDateString('es-ES');
-        const cupos = agenda.cupos_disponibles || 0;
-        const cuposClass = cupos > 0 ? 'text-success' : 'text-warning';
+        const cuposDisponibles = agenda.cupos_disponibles || 0;
+        const cuposTotales = agenda.cupos_totales || 0;
+        const citasAgendadas = agenda.citas_agendadas || 0;
+        
+        const cuposClass = cuposDisponibles > 0 ? 'text-success' : 'text-warning';
+        const cardClass = cuposDisponibles > 0 ? '' : 'opacity-50';
         
         html += `
             <div class="col-md-6 col-lg-4 mb-3">
-                <div class="card agenda-card ${agendaSeleccionada?.uuid === agenda.uuid ? 'border-primary' : ''}" 
-                     onclick="seleccionarAgenda('${agenda.uuid}')">
+                <div class="card agenda-card ${cardClass} ${agendaSeleccionada?.uuid === agenda.uuid ? 'border-primary' : ''}" 
+                     onclick="${cuposDisponibles > 0 ? `seleccionarAgenda('${agenda.uuid}')` : 'alertaSinCupos()'}">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <h6 class="card-title mb-0">${agenda.consultorio}</h6>
@@ -405,10 +409,19 @@ function mostrarAgendas(agendas) {
                         
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">Intervalo: ${agenda.intervalo}min</small>
-                            <span class="${cuposClass} fw-semibold">
-                                <i class="fas fa-users me-1"></i>${cupos} cupos
-                            </span>
+                            <div class="text-end">
+                                <span class="${cuposClass} fw-semibold">
+                                    <i class="fas fa-users me-1"></i>${cuposDisponibles}/${cuposTotales}
+                                </span>
+                                <br>
+                                <small class="text-muted">${citasAgendadas} agendadas</small>
+                            </div>
                         </div>
+                        
+                        ${cuposDisponibles <= 0 ? 
+                            '<div class="mt-2"><span class="badge bg-warning text-dark w-100">Sin cupos disponibles</span></div>' : 
+                            ''
+                        }
                     </div>
                 </div>
             </div>
@@ -416,6 +429,16 @@ function mostrarAgendas(agendas) {
     });
     
     container.innerHTML = html;
+}
+
+// ✅ AGREGAR FUNCIÓN PARA ALERTA SIN CUPOS
+function alertaSinCupos() {
+    Swal.fire({
+        title: 'Sin cupos disponibles',
+        text: 'Esta agenda no tiene cupos disponibles. Por favor seleccione otra agenda.',
+        icon: 'warning',
+        confirmButtonText: 'Entendido'
+    });
 }
 
 // ✅ SELECCIONAR AGENDA

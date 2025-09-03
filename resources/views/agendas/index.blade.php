@@ -30,7 +30,7 @@
                         </span>
                     @endif
                     
-                    <!-- ✅ BOTONES DE SINCRONIZACIÓN (igual que pacientes) -->
+                    <!-- ✅ BOTONES DE SINCRONIZACIÓN -->
                     @if($isOffline)
                         <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncAgendas()">
                             <i class="fas fa-sync-alt"></i> Sincronizar
@@ -61,7 +61,7 @@
         </div>
     </div>
 
-    <!-- ✅ ALERTA OFFLINE (igual que pacientes) -->
+    <!-- ✅ ALERTA OFFLINE -->
     @if($isOffline)
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <div class="d-flex align-items-start">
@@ -203,27 +203,33 @@ let currentPage = 1;
 let isLoading = false;
 let currentFilters = {};
 
-// ✅ CARGAR AGENDAS AL INICIAR (igual que pacientes)
+// ✅ CORRECCIÓN COMPLETA: Cargar agendas al iniciar
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Iniciando carga de agendas');
     
-    // Establecer fecha por defecto (hoy)
-    document.getElementById('fecha_desde').value = new Date().toISOString().split('T')[0];
+    // ✅ CORRECCIÓN: Establecer fecha de hoy por defecto para mostrar agendas del día
+    const fechaDesde = document.getElementById('fecha_desde');
+    const hoy = new Date();
+    const fechaHoy = hoy.getFullYear() + '-' + 
+                   String(hoy.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(hoy.getDate()).padStart(2, '0');
     
-    // Cargar agendas iniciales
+    fechaDesde.value = fechaHoy;
+    console.log('📅 Fecha por defecto establecida:', fechaHoy);
+    
+    // Cargar agendas del día actual
     loadAgendas(1);
     
-    // ✅ VERIFICAR PENDIENTES AL CARGAR
+    // Verificar pendientes
     checkPendingSync();
-    
-    // ✅ VERIFICAR PENDIENTES CADA 30 SEGUNDOS
     setInterval(checkPendingSync, 30000);
 });
 
-// ✅ FUNCIÓN PRINCIPAL PARA CARGAR AGENDAS (mejorada como pacientes)
+// ✅ CORRECCIÓN: Función principal para cargar agendas
 function loadAgendas(page = 1, filters = {}) {
     if (isLoading) return;
     
+    isLoading = true;
     currentPage = page;
     currentFilters = filters;
     
@@ -235,19 +241,21 @@ function loadAgendas(page = 1, filters = {}) {
     
     // Agregar filtros del formulario
     for (let [key, value] of formData.entries()) {
-        if (value && value.trim() !== '') {
-            params.append(key, value.trim());
+        if (value && value.toString().trim() !== '') {
+            params.append(key, value.toString().trim());
         }
     }
     
     // Agregar filtros adicionales
     Object.keys(filters).forEach(key => {
-        if (filters[key] && filters[key].trim() !== '') {
-            params.set(key, filters[key].trim());
+        if (filters[key] && filters[key].toString().trim() !== '') {
+            params.set(key, filters[key].toString().trim());
         }
     });
     
     params.append('page', page);
+    
+    console.log('🔍 Parámetros de búsqueda:', params.toString());
     
     fetch(`{{ route('agendas.index') }}?${params}`, {
         method: 'GET',
@@ -284,11 +292,12 @@ function loadAgendas(page = 1, filters = {}) {
         showEmptyState();
     })
     .finally(() => {
+        isLoading = false;
         showLoading(false);
     });
 }
 
-// ✅ MOSTRAR AGENDAS EN TABLA (mejorada)
+// ✅ CORRECCIÓN: Mostrar agendas en tabla con fechas corregidas
 function displayAgendas(agendas, meta) {
     console.log('🎨 Renderizando agendas:', agendas.length);
     
@@ -317,7 +326,7 @@ function displayAgendas(agendas, meta) {
     console.log(`✅ ${agendas.length} agendas renderizadas en la tabla`);
 }
 
-// ✅ CREAR FILA DE AGENDA (mejorada)
+// ✅ CORRECCIÓN: Crear fila de agenda con formateo de fecha correcto
 function createAgendaRow(agenda) {
     const row = document.createElement('tr');
     row.setAttribute('data-uuid', agenda.uuid);
@@ -325,11 +334,28 @@ function createAgendaRow(agenda) {
     // Estado badge
     const estadoBadge = getEstadoBadge(agenda.estado);
     
-    // Formatear fecha
-    const fecha = new Date(agenda.fecha).toLocaleDateString('es-ES');
+    // ✅ CORRECCIÓN: Formatear fecha correctamente sin problemas de zona horaria
+    let fecha = 'Fecha inválida';
+    let diaSemana = '';
+    
+    try {
+        // Crear fecha directamente desde el string sin conversión UTC
+        const partesFecha = agenda.fecha.split('-');
+        const fechaObj = new Date(parseInt(partesFecha[0]), parseInt(partesFecha[1]) - 1, parseInt(partesFecha[2]));
+        
+        fecha = fechaObj.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+        
+        diaSemana = getDayName(fechaObj.getDay());
+    } catch (error) {
+        console.error('Error formateando fecha:', agenda.fecha, error);
+    }
     
     // Formatear horario
-    const horario = `${agenda.hora_inicio} - ${agenda.hora_fin}`;
+    const horario = `${agenda.hora_inicio || '--:--'} - ${agenda.hora_fin || '--:--'}`;
     
     // Cupos disponibles
     const cupos = agenda.cupos_disponibles || 0;
@@ -344,7 +370,7 @@ function createAgendaRow(agenda) {
     row.innerHTML = `
         <td>
             <div class="fw-semibold">${fecha}</div>
-            <small class="text-muted">${getDayName(agenda.fecha)}</small>
+            <small class="text-muted">${diaSemana}</small>
         </td>
         <td>
             <div>${horario}</div>
@@ -381,7 +407,36 @@ function createAgendaRow(agenda) {
     return row;
 }
 
-// ✅ VERIFICAR REGISTROS PENDIENTES (actualizada para usar la API correcta)
+// ✅ CORRECCIÓN: Función getDayName mejorada
+function getDayName(dayIndex) {
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    return days[dayIndex] || '';
+}
+
+// ✅ CORRECCIÓN PRINCIPAL: Función limpiarFiltros completamente corregida
+function limpiarFiltros() {
+    console.log('🧹 Limpiando todos los filtros');
+    
+    // Limpiar completamente el formulario
+    const form = document.getElementById('filtrosForm');
+    form.reset();
+    
+    // ✅ LIMPIAR TODOS LOS CAMPOS INDIVIDUALMENTE
+    document.getElementById('fecha_desde').value = '';
+    document.getElementById('fecha_hasta').value = '';
+    document.getElementById('estado').value = '';
+    document.getElementById('modalidad').value = '';
+    document.getElementById('consultorio').value = '';
+    
+    // ✅ LIMPIAR FILTROS ACTUALES
+    currentFilters = {};
+    
+    // ✅ CARGAR TODAS LAS AGENDAS SIN FILTROS
+    console.log('✅ Cargando todas las agendas sin filtros');
+    loadAgendas(1, {});
+}
+
+// ✅ Verificar registros pendientes
 async function checkPendingSync() {
     try {
         const response = await fetch('/agendas/test-sync', {
@@ -408,13 +463,12 @@ async function checkPendingSync() {
     }
 }
 
-// ✅ SINCRONIZAR REGISTROS PENDIENTES (actualizada)
+// ✅ Sincronizar registros pendientes
 async function sincronizarPendientes() {
     const btnSincronizar = document.getElementById('btnSincronizar');
     const originalHTML = btnSincronizar.innerHTML;
     
     try {
-        // Mostrar loading
         btnSincronizar.disabled = true;
         btnSincronizar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
 
@@ -445,7 +499,6 @@ async function sincronizarPendientes() {
                 confirmButtonText: 'Entendido'
             });
 
-            // Ocultar botón si no hay más pendientes
             if (data.synced_count > 0) {
                 checkPendingSync();
                 loadAgendas(currentPage, currentFilters);
@@ -464,7 +517,7 @@ async function sincronizarPendientes() {
     }
 }
 
-// ✅ NUEVAS FUNCIONES DE SINCRONIZACIÓN (igual que pacientes)
+// ✅ Funciones de sincronización
 function syncAgendas() {
     console.log('🔄 Iniciando sincronización de agendas');
     showLoading(true);
@@ -526,7 +579,7 @@ function syncAllPendingAgendasData() {
     });
 }
 
-// ✅ MOSTRAR/OCULTAR LOADING (mejorada)
+// ✅ Mostrar/ocultar loading
 function showLoading(show) {
     const loadingAgendas = document.getElementById('loadingAgendas');
     const loadingIndicator = document.getElementById('loadingIndicator');
@@ -542,7 +595,7 @@ function showLoading(show) {
     }
 }
 
-// ✅ UTILIDADES (mejoradas)
+// ✅ Utilidades
 function getEstadoBadge(estado) {
     const badges = {
         'ACTIVO': '<span class="badge bg-success">Activo</span>',
@@ -552,11 +605,6 @@ function getEstadoBadge(estado) {
     return badges[estado] || '<span class="badge bg-secondary">Desconocido</span>';
 }
 
-function getDayName(fecha) {
-    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    return days[new Date(fecha).getDay()];
-}
-
 function showEmptyState() {
     document.getElementById('tablaAgendas').style.display = 'none';
     document.getElementById('estadoVacio').style.display = 'block';
@@ -564,7 +612,7 @@ function showEmptyState() {
     document.getElementById('infoRegistros').textContent = '';
 }
 
-// ✅ PAGINACIÓN (mejorada como pacientes)
+// ✅ Paginación
 function updatePagination(meta) {
     const nav = document.getElementById('paginacionNav');
     
@@ -655,7 +703,7 @@ function updateRegistrosInfo(meta) {
     }
 }
 
-// ✅ ACCIONES (mejoradas)
+// ✅ Acciones
 function verAgenda(uuid) {
     window.location.href = `/agendas/${uuid}`;
 }
@@ -671,7 +719,7 @@ async function eliminarAgenda(uuid, descripcion) {
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc3545',
-        cancelButtonColor: '#6c757d',
+                cancelButtonColor: '#6c757d',
         confirmButtonText: 'Sí, eliminar',
         cancelButtonText: 'Cancelar'
     });
@@ -692,7 +740,7 @@ async function eliminarAgenda(uuid, descripcion) {
             if (data.success) {
                 Swal.fire('¡Eliminado!', data.message, 'success');
                 loadAgendas(currentPage, currentFilters);
-                checkPendingSync(); // Verificar pendientes después de eliminar
+                checkPendingSync();
             } else {
                 throw new Error(data.error);
             }
@@ -706,18 +754,10 @@ async function eliminarAgenda(uuid, descripcion) {
 
 function refreshAgendas() {
     loadAgendas(currentPage, currentFilters);
-    checkPendingSync(); // Verificar pendientes también
+    checkPendingSync();
 }
 
-function limpiarFiltros() {
-    document.getElementById('filtrosForm').reset();
-    // Restablecer fecha por defecto
-    document.getElementById('fecha_desde').value = new Date().toISOString().split('T')[0];
-    currentFilters = {};
-    loadAgendas(1, {});
-}
-
-// ✅ MANEJAR FORMULARIO DE BÚSQUEDA (mejorado como pacientes)
+// ✅ CORRECCIÓN: Manejar formulario de búsqueda
 document.getElementById('filtrosForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
@@ -725,8 +765,8 @@ document.getElementById('filtrosForm').addEventListener('submit', function(e) {
     const filters = {};
     
     for (let [key, value] of formData.entries()) {
-        if (value && value.trim()) {
-                        filters[key] = value.trim();
+        if (value && value.toString().trim() !== '') {
+            filters[key] = value.toString().trim();
         }
     }
     
@@ -734,7 +774,7 @@ document.getElementById('filtrosForm').addEventListener('submit', function(e) {
     loadAgendas(1, filters);
 });
 
-// ✅ MOSTRAR ALERTAS (igual que pacientes)
+// ✅ Mostrar alertas
 function showAlert(type, message, title = '') {
     const iconMap = {
         'success': 'success',
@@ -752,7 +792,7 @@ function showAlert(type, message, title = '') {
     });
 }
 
-// ✅ TOAST HELPER (mejorado)
+// ✅ Toast helper
 function showToast(type, message) {
     const toastContainer = document.getElementById('toast-container') || createToastContainer();
     
@@ -793,3 +833,4 @@ function createToastContainer() {
 </script>
 @endpush
 @endsection
+

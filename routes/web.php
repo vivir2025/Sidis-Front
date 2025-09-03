@@ -92,7 +92,8 @@ Route::get('/agendas/diagnostic', function() {
     return response()->json($result);
 })->middleware('custom.auth');
 
-
+Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAgenda'])
+    ->name('agendas.diagnostic');
     // Citas
     Route::prefix('citas')->name('citas.')->group(function () {
         Route::get('/', [CitaController::class, 'index'])->name('index');
