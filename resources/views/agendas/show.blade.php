@@ -1,55 +1,61 @@
 {{-- resources/views/agendas/show.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Ver Agenda - SIDIS')
+@section('title', 'Detalles de Agenda - SIDIS')
 
 @section('content')
 <div class="container-fluid">
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-start">
                 <div>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item">
+                                <a href="{{ route('agendas.index') }}">
+                                    <i class="fas fa-calendar-alt"></i> Agendas
+                                </a>
+                            </li>
+                            <li class="breadcrumb-item active">Detalles</li>
+                        </ol>
+                    </nav>
                     <h1 class="h3 mb-0">
-                        <i class="fas fa-calendar-alt text-primary me-2"></i>
-                        Detalles de la Agenda
+                        <i class="fas fa-calendar-check text-primary me-2"></i>
+                        Detalles de Agenda
                     </h1>
                     <p class="text-muted mb-0">Información completa de la agenda médica</p>
                 </div>
                 
+                <!-- Header Actions -->
                 <div class="d-flex align-items-center gap-2">
-                    <a href="{{ route('agendas.index') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left"></i> Volver
-                    </a>
+                    <!-- Estado de Conexión -->
+                    @if($isOffline)
+                        <span class="badge bg-warning me-2">
+                            <i class="fas fa-wifi-slash"></i> Modo Offline
+                        </span>
+                    @else
+                        <span class="badge bg-success me-2">
+                            <i class="fas fa-wifi"></i> Conectado
+                        </span>
+                    @endif
                     
-                    @if($agenda['estado'] !== 'ANULADA')
-                        <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning">
+                    <!-- Botones de Acción -->
+                    <div class="btn-group">
+                        <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning btn-sm">
                             <i class="fas fa-edit"></i> Editar
                         </a>
-                    @endif
+                        <button type="button" class="btn btn-danger btn-sm" onclick="eliminarAgenda('{{ $agenda['uuid'] }}', '{{ $agenda['fecha'] }} - {{ $agenda['consultorio'] }}')">
+                            <i class="fas fa-trash"></i> Eliminar
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                    </div>
                     
-                    <button type="button" class="btn btn-danger" onclick="eliminarAgenda('{{ $agenda['uuid'] }}', '{{ formatearFecha($agenda['fecha']) }} - {{ $agenda['consultorio'] }}')">
-                        <i class="fas fa-trash"></i> Eliminar
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Estado de la Agenda -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="alert {{ getAlertClass($agenda['estado']) }} d-flex align-items-center" role="alert">
-                <i class="fas {{ getEstadoIcon($agenda['estado']) }} me-3"></i>
-                <div class="flex-grow-1">
-                    <strong>Estado: {{ ucfirst(strtolower($agenda['estado'])) }}</strong>
-                    @if($agenda['estado'] === 'ANULADA')
-                        <p class="mb-0">Esta agenda ha sido anulada y no está disponible para citas.</p>
-                    @elseif($agenda['estado'] === 'LLENA')
-                        <p class="mb-0">Esta agenda está completa. No hay cupos disponibles.</p>
-                    @else
-                        <p class="mb-0">Esta agenda está activa y disponible para programar citas.</p>
-                    @endif
+                    <a href="{{ route('agendas.index') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Volver
+                    </a>
                 </div>
             </div>
         </div>
@@ -58,371 +64,337 @@
     <div class="row">
         <!-- Información Principal -->
         <div class="col-lg-8">
-            <div class="card">
-                <div class="card-header">
+            <!-- Datos Básicos -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
                     <h5 class="card-title mb-0">
-                        <i class="fas fa-info-circle me-2"></i>Información de la Agenda
+                        <i class="fas fa-info-circle me-2"></i>
+                        Información Básica
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="row g-4">
                         <!-- Fecha y Horario -->
                         <div class="col-md-6">
-                            <div class="info-group">
+                            <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-calendar me-2 text-primary"></i>Fecha
+                                    <i class="fas fa-calendar text-primary me-2"></i>Fecha
                                 </label>
                                 <div class="info-value">
-                                    <div class="fw-bold">{{ formatearFecha($agenda['fecha']) }}</div>
-                                    <small class="text-muted">{{ getDayName($agenda['fecha']) }}</small>
+                                    <span class="fw-bold fs-5" id="fechaAgenda">{{ $agenda['fecha'] ?? 'No disponible' }}</span>
+                                    <div class="text-muted small" id="diaSemana">
+                                        <!-- Se llena con JavaScript -->
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
+                        
                         <div class="col-md-6">
-                            <div class="info-group">
+                            <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-clock me-2 text-primary"></i>Horario
+                                    <i class="fas fa-clock text-primary me-2"></i>Horario
                                 </label>
                                 <div class="info-value">
-                                    <div class="fw-bold">{{ $agenda['hora_inicio'] }} - {{ $agenda['hora_fin'] }}</div>
-                                    <small class="text-muted">Intervalo: {{ $agenda['intervalo'] ?? 15 }} minutos</small>
+                                    <span class="fw-bold fs-5">
+                                        {{ $agenda['hora_inicio'] ?? '--:--' }} - {{ $agenda['hora_fin'] ?? '--:--' }}
+                                    </span>
+                                    <div class="text-muted small">
+                                        Intervalo: {{ $agenda['intervalo'] ?? '15' }} minutos
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Modalidad y Consultorio -->
+                        
+                        <!-- Consultorio y Modalidad -->
                         <div class="col-md-6">
-                            <div class="info-group">
+                            <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-laptop-medical me-2 text-primary"></i>Modalidad
+                                    <i class="fas fa-door-open text-primary me-2"></i>Consultorio
                                 </label>
                                 <div class="info-value">
-                                    <span class="badge {{ $agenda['modalidad'] === 'Telemedicina' ? 'bg-info' : 'bg-secondary' }} fs-6">
+                                    <span class="fw-bold">{{ $agenda['consultorio'] ?? 'Sin asignar' }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label class="info-label">
+                                    <i class="fas fa-laptop-medical text-primary me-2"></i>Modalidad
+                                </label>
+                                <div class="info-value">
+                                    <span class="badge {{ ($agenda['modalidad'] ?? '') === 'Telemedicina' ? 'bg-info' : 'bg-secondary' }} fs-6">
                                         {{ $agenda['modalidad'] ?? 'Ambulatoria' }}
                                     </span>
                                 </div>
                             </div>
                         </div>
-
+                        
+                        <!-- Etiqueta y Estado -->
                         <div class="col-md-6">
-                            <div class="info-group">
+                            <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-door-open me-2 text-primary"></i>Consultorio
+                                    <i class="fas fa-tag text-primary me-2"></i>Etiqueta
                                 </label>
                                 <div class="info-value">
-                                    <div class="fw-bold">{{ $agenda['consultorio'] ?? 'No especificado' }}</div>
+                                    <span class="fw-bold">{{ $agenda['etiqueta'] ?? 'Sin etiqueta' }}</span>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Etiqueta -->
-                        <div class="col-12">
-                            <div class="info-group">
+                        
+                        <div class="col-md-6">
+                            <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-tag me-2 text-primary"></i>Etiqueta
+                                    <i class="fas fa-flag text-primary me-2"></i>Estado
                                 </label>
                                 <div class="info-value">
-                                    <div class="fw-bold">{{ $agenda['etiqueta'] ?? 'Sin etiqueta' }}</div>
+                                    @php
+                                        $estado = $agenda['estado'] ?? 'ACTIVO';
+                                        $badgeClass = match($estado) {
+                                            'ACTIVO' => 'bg-success',
+                                            'ANULADA' => 'bg-danger',
+                                            'LLENA' => 'bg-warning',
+                                            default => 'bg-secondary'
+                                        };
+                                    @endphp
+                                    <span class="badge {{ $badgeClass }} fs-6">{{ $estado }}</span>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Proceso y Brigada -->
-                        @if(!empty($agenda['proceso']) || !empty($agenda['brigada']))
-                            <div class="col-md-6">
-                                <div class="info-group">
-                                    <label class="info-label">
-                                        <i class="fas fa-cogs me-2 text-primary"></i>Proceso
-                                    </label>
-                                    <div class="info-value">
-                                        @if(!empty($agenda['proceso']))
-                                            <div class="fw-bold">{{ $agenda['proceso']['nombre'] ?? 'Proceso no especificado' }}</div>
-                                            @if(!empty($agenda['proceso']['n_cups']))
-                                                <small class="text-muted">CUPS: {{ $agenda['proceso']['n_cups'] }}</small>
-                                            @endif
-                                        @else
-                                            <span class="text-muted">No asignado</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="col-md-6">
-                                <div class="info-group">
-                                    <label class="info-label">
-                                        <i class="fas fa-users me-2 text-primary"></i>Brigada
-                                    </label>
-                                    <div class="info-value">
-                                        @if(!empty($agenda['brigada']))
-                                            <div class="fw-bold">{{ $agenda['brigada']['nombre'] ?? 'Brigada no especificada' }}</div>
-                                        @else
-                                            <span class="text-muted">No asignada</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endif
                     </div>
                 </div>
             </div>
 
-            <!-- Información de Cupos -->
-<div class="card mt-4">
-    <div class="card-header">
-        <h5 class="card-title mb-0">
-            <i class="fas fa-users me-2"></i>Información de Cupos
-        </h5>
-    </div>
-    <div class="card-body">
-        {{-- ✅ DEBUG TEMPORAL - AGREGAR ESTO --}}
-        @if(config('app.debug'))
-        <div class="alert alert-info mb-3">
-            <strong>🔍 DEBUG - Información detallada:</strong>
-            <br><strong>UUID Agenda:</strong> {{ $agenda['uuid'] }}
-            <br><strong>Total calculado:</strong> {{ calcularTotalCupos($agenda) }}
-            <br><strong>Ocupados calculados:</strong> {{ calcularCuposOcupados($agenda) }}
-            <br><strong>Cupos disponibles (BD):</strong> {{ $agenda['cupos_disponibles'] ?? 'null' }}
-            <br><strong>Intervalo:</strong> {{ $agenda['intervalo'] ?? 'null' }} minutos
-            <br><strong>Horario:</strong> {{ $agenda['hora_inicio'] }} - {{ $agenda['hora_fin'] }}
-            
-            {{-- Intentar mostrar citas --}}
-            @php
-                $citasDebug = obtenerCitasDeAgenda($agenda['uuid']);
-            @endphp
-            <br><strong>Citas encontradas:</strong> {{ count($citasDebug) }}
-            @if(count($citasDebug) > 0)
-                <br><strong>Primeras citas:</strong>
-                @foreach(array_slice($citasDebug, 0, 3) as $cita)
-                    <br>- {{ $cita['uuid'] ?? 'sin-uuid' }} ({{ $cita['estado'] ?? 'sin-estado' }})
-                @endforeach
-            @endif
-        </div>
-        @endif
-                    <!-- Barra de Progreso -->
-                    <div class="mt-3">
-                        <div class="progress" style="height: 10px;">
-                            <div class="progress-bar bg-success" role="progressbar" 
-                                 style="width: {{ calcularPorcentajeOcupacion($agenda) }}%" 
-                                 aria-valuenow="{{ calcularPorcentajeOcupacion($agenda) }}" 
-                                 aria-valuemin="0" aria-valuemax="100">
-                            </div>
-                        </div>
-                        <small class="text-muted">Porcentaje de ocupación de la agenda</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-{{-- ✅ DEBUG TEMPORAL - EXPLORAR CITAS --}}
-@if(config('app.debug'))
-<div class="alert alert-warning mb-3">
-    <strong>🔍 EXPLORANDO CITAS - Información detallada:</strong>
-    
-    {{-- Verificar OfflineService --}}
-    @php
-        try {
-            $offlineService = app(\App\Services\OfflineService::class);
-            $user = auth()->user() ?? session('usuario');
-            $sedeId = $user['sede_id'] ?? 1;
-            
-            echo "<br><strong>🔍 OfflineService:</strong>";
-            echo "<br>- Usuario existe: " . ($user ? 'SÍ' : 'NO');
-            echo "<br>- Sede ID: " . $sedeId;
-            
-            // Intentar obtener TODAS las citas sin filtros
-            $todasCitas = $offlineService->getCitasOffline($sedeId);
-            echo "<br>- Total citas en OfflineService: " . count($todasCitas);
-            
-            if (count($todasCitas) > 0) {
-                echo "<br><strong>📋 Primeras 3 citas:</strong>";
-                foreach (array_slice($todasCitas, 0, 3) as $i => $cita) {
-                    echo "<br>  Cita " . ($i+1) . ":";
-                    echo "<br>    - UUID: " . ($cita['uuid'] ?? 'NULL');
-                    echo "<br>    - Agenda UUID: " . ($cita['agenda_uuid'] ?? 'NULL');
-                    echo "<br>    - Estado: " . ($cita['estado'] ?? 'NULL');
-                    echo "<br>    - Fecha: " . ($cita['fecha_hora'] ?? $cita['fecha'] ?? 'NULL');
-                }
-            }
-            
-        } catch (\Exception $e) {
-            echo "<br>❌ Error OfflineService: " . $e->getMessage();
-        }
-    @endphp
-    
-    {{-- Verificar base de datos directa --}}
-    @php
-        try {
-            echo "<br><br><strong>🔍 Base de Datos Directa:</strong>";
-            
-            // Verificar si existe la tabla citas
-            $tablas = \DB::select("SHOW TABLES LIKE 'citas'");
-            echo "<br>- Tabla 'citas' existe: " . (count($tablas) > 0 ? 'SÍ' : 'NO');
-            
-            if (count($tablas) > 0) {
-                // Contar todas las citas
-                $totalCitas = \DB::table('citas')->count();
-                echo "<br>- Total citas en BD: " . $totalCitas;
-                
-                if ($totalCitas > 0) {
-                    // Mostrar estructura de las primeras citas
-                    $primerasCitas = \DB::table('citas')->limit(3)->get();
-                    echo "<br><strong>📋 Primeras 3 citas de BD:</strong>";
-                    foreach ($primerasCitas as $i => $cita) {
-                        echo "<br>  Cita BD " . ($i+1) . ":";
-                        echo "<br>    - ID: " . ($cita->id ?? 'NULL');
-                        echo "<br>    - UUID: " . ($cita->uuid ?? 'NULL');
-                        echo "<br>    - Agenda UUID: " . ($cita->agenda_uuid ?? 'NULL');
-                        echo "<br>    - Agenda ID: " . ($cita->agenda_id ?? 'NULL');
-                        echo "<br>    - Estado: " . ($cita->estado ?? 'NULL');
-                    }
-                    
-                    // Buscar específicamente por esta agenda
-                    $citasEstaAgenda = \DB::table('citas')
-                        ->where('agenda_uuid', $agenda['uuid'])
-                        ->get();
-                    echo "<br>- Citas con agenda_uuid '{$agenda['uuid']}': " . count($citasEstaAgenda);
-                    
-                    // Buscar por agenda_id si existe
-                    if (isset($agenda['id'])) {
-                        $citasAgendaId = \DB::table('citas')
-                            ->where('agenda_id', $agenda['id'])
-                            ->get();
-                        echo "<br>- Citas con agenda_id '{$agenda['id']}': " . count($citasAgendaId);
-                    }
-                }
-            }
-            
-        } catch (\Exception $e) {
-            echo "<br>❌ Error BD: " . $e->getMessage();
-        }
-    @endphp
-    
-    {{-- Verificar otras posibles tablas --}}
-    @php
-        try {
-            echo "<br><br><strong>🔍 Otras tablas posibles:</strong>";
-            
-            $tablasRelacionadas = ['appointments', 'cita', 'agendamiento', 'reservas'];
-            foreach ($tablasRelacionadas as $tabla) {
-                $existe = \DB::select("SHOW TABLES LIKE '{$tabla}'");
-                if (count($existe) > 0) {
-                    $count = \DB::table($tabla)->count();
-                    echo "<br>- Tabla '{$tabla}': {$count} registros";
-                }
-            }
-            
-        } catch (\Exception $e) {
-            echo "<br>❌ Error verificando tablas: " . $e->getMessage();
-        }
-    @endphp
-    
-    {{-- Información de la agenda actual --}}
-    <br><br><strong>📋 Datos de la agenda actual:</strong>
-    @foreach($agenda as $key => $value)
-        @if(is_string($value) || is_numeric($value))
-            <br>- {{ $key }}: {{ $value }}
-        @endif
-    @endforeach
-</div>
-@endif
-
-        <!-- Panel Lateral -->
-        <div class="col-lg-4">
-            <!-- Información del Sistema -->
-            <div class="card">
-                <div class="card-header">
+            <!-- Información Adicional -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
                     <h5 class="card-title mb-0">
-                        <i class="fas fa-cog me-2"></i>Información del Sistema
+                        <i class="fas fa-plus-circle me-2"></i>
+                        Información Adicional
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="info-group mb-3">
-                        <label class="info-label">UUID</label>
-                        <div class="info-value">
-                            <code class="small">{{ $agenda['uuid'] }}</code>
-                        </div>
-                    </div>
-
-                    @if(!empty($agenda['sede']))
-                        <div class="info-group mb-3">
-                            <label class="info-label">Sede</label>
-                            <div class="info-value">{{ $agenda['sede']['nombre'] ?? 'Sede no especificada' }}</div>
-                        </div>
-                    @endif
-
-                    @if(!empty($agenda['usuario_creo']))
-                        <div class="info-group mb-3">
-                            <label class="info-label">Creado por</label>
-                            <div class="info-value">{{ $agenda['usuario_creo']['nombre_completo'] ?? 'Usuario no especificado' }}</div>
-                        </div>
-                    @endif
-
-                    <div class="info-group mb-3">
-                        <label class="info-label">Fecha de Creación</label>
-                        <div class="info-value">
-                            {{ formatearFechaHora($agenda['created_at'] ?? null) }}
-                        </div>
-                    </div>
-
-                    @if(!empty($agenda['updated_at']) && $agenda['updated_at'] !== $agenda['created_at'])
-                        <div class="info-group mb-3">
-                            <label class="info-label">Última Actualización</label>
-                            <div class="info-value">
-                                {{ formatearFechaHora($agenda['updated_at']) }}
+                    <div class="row g-4">
+                        <!-- Proceso -->
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label class="info-label">
+                                    <i class="fas fa-cogs text-info me-2"></i>Proceso
+                                </label>
+                                <div class="info-value">
+                                    @if(!empty($agenda['proceso']['nombre']))
+                                        <span class="fw-bold">{{ $agenda['proceso']['nombre'] }}</span>
+                                        @if(!empty($agenda['proceso']['n_cups']))
+                                            <div class="text-muted small">CUPS: {{ $agenda['proceso']['n_cups'] }}</div>
+                                        @endif
+                                    @else
+                                        <span class="text-muted">No asignado</span>
+                                    @endif
+                                </div>
                             </div>
                         </div>
-                    @endif
-
-                    <!-- Estado de Sincronización -->
-                    @if(isset($agenda['sync_status']))
-                        <div class="info-group mb-3">
-                            <label class="info-label">Estado de Sincronización</label>
-                            <div class="info-value">
-                                @if($agenda['sync_status'] === 'synced')
-                                    <span class="badge bg-success">Sincronizado</span>
-                                @elseif($agenda['sync_status'] === 'pending')
-                                    <span class="badge bg-warning">Pendiente</span>
-                                @else
-                                    <span class="badge bg-danger">Error</span>
-                                @endif
+                        
+                        <!-- Brigada -->
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label class="info-label">
+                                    <i class="fas fa-users text-info me-2"></i>Brigada
+                                </label>
+                                <div class="info-value">
+                                    @if(!empty($agenda['brigada']['nombre']))
+                                        <span class="fw-bold">{{ $agenda['brigada']['nombre'] }}</span>
+                                    @else
+                                        <span class="text-muted">No asignada</span>
+                                    @endif
+                                </div>
                             </div>
                         </div>
-                    @endif
+                        
+                        <!-- Usuario Creador -->
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label class="info-label">
+                                    <i class="fas fa-user text-info me-2"></i>Creado por
+                                </label>
+                                <div class="info-value">
+                                    @if(!empty($agenda['usuario']['nombre_completo']))
+                                        <span class="fw-bold">{{ $agenda['usuario']['nombre_completo'] }}</span>
+                                    @else
+                                        <span class="text-muted">Usuario no disponible</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Sede -->
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label class="info-label">
+                                    <i class="fas fa-building text-info me-2"></i>Sede
+                                </label>
+                                <div class="info-value">
+                                    @if(!empty($agenda['sede']['nombre']))
+                                        <span class="fw-bold">{{ $agenda['sede']['nombre'] }}</span>
+                                    @else
+                                        <span class="text-muted">Sede no disponible</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Citas de la Agenda -->
+            <div class="card">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-calendar-plus me-2"></i>
+                        Citas Programadas
+                    </h5>
+                    <button type="button" class="btn btn-light btn-sm" onclick="refreshCitas()">
+                        <i class="fas fa-sync-alt"></i> Actualizar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <!-- Loading Citas -->
+                    <div id="loadingCitas" class="text-center py-4" style="display: none;">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Cargando citas...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Cargando citas...</p>
+                    </div>
+
+                    <!-- Lista de Citas -->
+                    <div id="citasContainer">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+
+                    <!-- Estado vacío -->
+                    <div id="citasVacio" class="text-center py-4" style="display: none;">
+                        <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                        <h6 class="text-muted">No hay citas programadas</h6>
+                        <p class="text-muted small">Esta agenda aún no tiene citas asignadas</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Lateral -->
+        <div class="col-lg-4">
+            <!-- Resumen de Cupos -->
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Resumen de Cupos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <div class="position-relative d-inline-block">
+                            <canvas id="cuposChart" width="150" height="150"></canvas>
+                            <div class="position-absolute top-50 start-50 translate-middle text-center">
+                                <div class="fw-bold fs-4" id="cuposDisponiblesNum">0</div>
+                                <div class="small text-muted">Disponibles</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <div class="fw-bold text-primary fs-5" id="totalCupos">0</div>
+                                <div class="small text-muted">Total</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <div class="fw-bold text-danger fs-5" id="cuposOcupados">0</div>
+                                <div class="small text-muted">Ocupados</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <div class="fw-bold text-success fs-5" id="cuposLibres">0</div>
+                                <div class="small text-muted">Libres</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <div class="progress" style="height: 20px;">
+                            <div id="progressOcupados" class="progress-bar bg-danger" role="progressbar" style="width: 0%"></div>
+                            <div id="progressDisponibles" class="progress-bar bg-success" role="progressbar" style="width: 100%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2 small text-muted">
+                            <span>Ocupación: <span id="porcentajeOcupacion">0%</span></span>
+                            <span>Disponibilidad: <span id="porcentajeDisponibilidad">100%</span></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Acciones Rápidas -->
-            <div class="card mt-4">
-                <div class="card-header">
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white">
                     <h5 class="card-title mb-0">
-                        <i class="fas fa-bolt me-2"></i>Acciones Rápidas
+                        <i class="fas fa-bolt me-2"></i>
+                        Acciones Rápidas
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        @if($agenda['estado'] === 'ACTIVO')
-                            <a href="/citas/create?agenda={{ $agenda['uuid'] }}" class="btn btn-success">
-                                <i class="fas fa-plus"></i> Programar Cita
-                            </a>
-                        @endif
-                        
-                        <a href="/citas?agenda={{ $agenda['uuid'] }}" class="btn btn-info">
-                            <i class="fas fa-list"></i> Ver Citas de esta Agenda
+                        <a href="/citas/create?agenda={{ $agenda['uuid'] }}" class="btn btn-success">
+                            <i class="fas fa-plus"></i> Nueva Cita
                         </a>
-                        
-                        @if($agenda['estado'] !== 'ANULADA')
-                            <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning">
-                                <i class="fas fa-edit"></i> Editar Agenda
-                            </a>
-                        @endif
-                        
-                        <button type="button" class="btn btn-outline-primary" onclick="duplicarAgenda('{{ $agenda['uuid'] }}')">
+                        <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning">
+                            <i class="fas fa-edit"></i> Editar Agenda
+                        </a>
+                        <button type="button" class="btn btn-info" onclick="duplicarAgenda()">
                             <i class="fas fa-copy"></i> Duplicar Agenda
                         </button>
-                        
-                        <button type="button" class="btn btn-outline-secondary" onclick="imprimirAgenda()">
-                            <i class="fas fa-print"></i> Imprimir
+                        <button type="button" class="btn btn-outline-primary" onclick="exportarAgenda()">
+                            <i class="fas fa-download"></i> Exportar
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Información del Sistema -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-info me-2"></i>
+                        Información del Sistema
+                    </h6>
+                </div>
+                <div class="card-body small">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <strong>UUID:</strong>
+                            <code class="small">{{ $agenda['uuid'] ?? 'No disponible' }}</code>
+                        </div>
+                        <div class="col-6">
+                            <strong>Creado:</strong><br>
+                            <span class="text-muted" id="fechaCreacion">
+                                {{ isset($agenda['created_at']) ? \Carbon\Carbon::parse($agenda['created_at'])->format('d/m/Y H:i') : 'No disponible' }}
+                            </span>
+                        </div>
+                        <div class="col-6">
+                            <strong>Actualizado:</strong><br>
+                            <span class="text-muted" id="fechaActualizacion">
+                                {{ isset($agenda['updated_at']) ? \Carbon\Carbon::parse($agenda['updated_at'])->format('d/m/Y H:i') : 'No disponible' }}
+                            </span>
+                        </div>
+                        @if($isOffline)
+                        <div class="col-12 mt-2">
+                            <div class="alert alert-warning alert-sm mb-0">
+                                <i class="fas fa-wifi-slash me-1"></i>
+                                <small>Datos desde almacenamiento local</small>
+                            </div>
+                        </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -432,16 +404,20 @@
 
 @push('styles')
 <style>
-.info-group {
-    margin-bottom: 1rem;
+.info-item {
+    padding: 1rem;
+    border: 1px solid #e9ecef;
+    border-radius: 0.375rem;
+    background-color: #f8f9fa;
+    height: 100%;
 }
 
 .info-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #6c757d;
-    margin-bottom: 0.25rem;
     display: block;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
 }
 
 .info-value {
@@ -449,36 +425,495 @@
     color: #212529;
 }
 
-.alert-success {
-    background-color: #d1e7dd;
-    border-color: #badbcc;
-    color: #0f5132;
+.cita-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background-color: #ffffff;
+    transition: all 0.2s ease;
 }
 
-.alert-warning {
-    background-color: #fff3cd;
-    border-color: #ffecb5;
-    color: #664d03;
+.cita-item:hover {
+    border-color: #007bff;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 123, 255, 0.075);
 }
 
-.alert-danger {
-    background-color: #f8d7da;
-    border-color: #f5c2c7;
-    color: #842029;
+.estado-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
 }
 
-.progress {
-    border-radius: 10px;
+@media print {
+    .btn, .card-header .btn, .no-print {
+        display: none !important;
+    }
+    
+    .card {
+        border: 1px solid #000 !important;
+        break-inside: avoid;
+    }
+    
+    .card-header {
+        background-color: #f8f9fa !important;
+        color: #000 !important;
+    }
 }
 
-.progress-bar {
-    border-radius: 10px;
+.chart-container {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    margin: 0 auto;
 }
 </style>
 @endpush
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// Variables globales
+const agendaUuid = '{{ $agenda["uuid"] }}';
+let cuposChart = null;
+let citasData = [];
+
+// Inicializar al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Inicializando vista de agenda');
+    
+    // Formatear fecha y día de la semana
+    formatearFechaAgenda();
+    
+    // Cargar datos de cupos y citas
+    loadAgendaData();
+    
+    // Inicializar gráfico
+    initCuposChart();
+    
+    // Cargar citas
+    loadCitas();
+});
+
+// Formatear fecha de la agenda
+function formatearFechaAgenda() {
+    const fechaElement = document.getElementById('fechaAgenda');
+    const diaSemanaElement = document.getElementById('diaSemana');
+    
+    if (!fechaElement) return;
+    
+    const fechaStr = '{{ $agenda["fecha"] ?? "" }}';
+    if (!fechaStr) return;
+    
+    try {
+        const partes = fechaStr.split('-');
+        const fecha = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+        
+        // Formatear fecha
+        const fechaFormateada = fecha.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        
+        // Día de la semana
+        const diaSemana = fecha.toLocaleDateString('es-ES', { weekday: 'long' });
+        
+        fechaElement.textContent = fechaFormateada;
+        if (diaSemanaElement) {
+            diaSemanaElement.textContent = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1);
+        }
+        
+    } catch (error) {
+        console.error('Error formateando fecha:', error);
+    }
+}
+
+// Cargar datos de la agenda (cupos)
+async function loadAgendaData() {
+    try {
+        console.log('📊 Cargando datos de cupos para agenda:', agendaUuid);
+        
+        const response = await fetch(`/api/v1/agendas/${agendaUuid}/citas/count`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer {{ session("api_token") }}',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        });
+        
+        console.log('📊 Respuesta de cupos - Status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('📊 Datos de cupos recibidos:', data);
+        
+        if (data.success) {
+            updateCuposDisplay(data.data);
+            updateCuposChart(data.data);
+        } else {
+            throw new Error(data.message || 'Error desconocido en respuesta de cupos');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error cargando datos de cupos:', error);
+        
+        // ✅ USAR DATOS CALCULADOS DEL BACKEND COMO FALLBACK
+        const defaultData = {
+            citas_count: {{ $agenda['citas_count'] ?? 0 }},
+            total_cupos: {{ $agenda['total_cupos'] ?? 0 }},
+            cupos_disponibles: {{ $agenda['cupos_disponibles'] ?? 0 }}
+        };
+        
+        console.log('📊 Usando datos de fallback:', defaultData);
+        updateCuposDisplay(defaultData);
+        updateCuposChart(defaultData);
+        
+        // Mostrar notificación de error
+        showAlert('warning', 'No se pudieron cargar los datos actualizados de cupos. Mostrando datos locales.', 'Advertencia');
+    }
+}
+// Actualizar display de cupos
+function updateCuposDisplay(data) {
+    const totalCupos = data.total_cupos || 0;
+    const cuposOcupados = data.citas_count || 0;
+    const cuposDisponibles = data.cupos_disponibles || (totalCupos - cuposOcupados);
+    
+    // Actualizar números
+    document.getElementById('totalCupos').textContent = totalCupos;
+    document.getElementById('cuposOcupados').textContent = cuposOcupados;
+    document.getElementById('cuposLibres').textContent = cuposDisponibles;
+    document.getElementById('cuposDisponiblesNum').textContent = cuposDisponibles;
+    
+    // Calcular porcentajes
+    const porcentajeOcupacion = totalCupos > 0 ? Math.round((cuposOcupados / totalCupos) * 100) : 0;
+    const porcentajeDisponibilidad = 100 - porcentajeOcupacion;
+    
+    document.getElementById('porcentajeOcupacion').textContent = porcentajeOcupacion + '%';
+    document.getElementById('porcentajeDisponibilidad').textContent = porcentajeDisponibilidad + '%';
+    
+    // Actualizar barra de progreso
+    document.getElementById('progressOcupados').style.width = porcentajeOcupacion + '%';
+    document.getElementById('progressDisponibles').style.width = porcentajeDisponibilidad + '%';
+    
+    console.log('✅ Cupos actualizados:', {
+        total: totalCupos,
+        ocupados: cuposOcupados,
+        disponibles: cuposDisponibles,
+        porcentajeOcupacion: porcentajeOcupacion
+    });
+}
+
+// Inicializar gráfico de cupos
+function initCuposChart() {
+    const ctx = document.getElementById('cuposChart');
+    if (!ctx) return;
+    
+    cuposChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ocupados', 'Disponibles'],
+            datasets: [{
+                data: [0, 100],
+                backgroundColor: ['#dc3545', '#28a745'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: false,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            return `${label}: ${value}%`;
+                        }
+                    }
+                }
+            },
+            cutout: '70%'
+        }
+    });
+}
+
+// Actualizar gráfico de cupos
+function updateCuposChart(data) {
+    if (!cuposChart) return;
+    
+    const totalCupos = data.total_cupos || 0;
+    const cuposOcupados = data.citas_count || 0;
+    
+    const porcentajeOcupacion = totalCupos > 0 ? Math.round((cuposOcupados / totalCupos) * 100) : 0;
+    const porcentajeDisponibilidad = 100 - porcentajeOcupacion;
+    
+    cuposChart.data.datasets[0].data = [porcentajeOcupacion, porcentajeDisponibilidad];
+    cuposChart.update();
+}
+
+// Cargar citas de la agenda
+async function loadCitas() {
+    const loadingElement = document.getElementById('loadingCitas');
+    const containerElement = document.getElementById('citasContainer');
+    const vacioElement = document.getElementById('citasVacio');
+    
+    try {
+        // Mostrar loading
+        if (loadingElement) loadingElement.style.display = 'block';
+        if (containerElement) containerElement.style.display = 'none';
+        if (vacioElement) vacioElement.style.display = 'none';
+        
+        console.log('📋 Cargando citas para agenda:', agendaUuid);
+        
+        const response = await fetch(`/api/v1/agendas/${agendaUuid}/citas`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer {{ session("api_token") }}',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        });
+        
+        console.log('📋 Respuesta de citas - Status:', response.status);
+        
+        if (!response.ok) {
+            // Si es 404, probablemente la ruta no existe en el backend
+            if (response.status === 404) {
+                throw new Error('La ruta para obtener citas no está disponible. Verifique la configuración del backend.');
+            }
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('📋 Datos de citas recibidos:', data);
+        
+        if (data.success) {
+            citasData = data.data || [];
+            displayCitas(citasData);
+        } else {
+            throw new Error(data.message || 'Error desconocido cargando citas');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error cargando citas:', error);
+        
+        // ✅ INTENTAR CARGAR CITAS DESDE DATOS OFFLINE/LOCALES
+        try {
+            console.log('🔄 Intentando cargar citas desde datos locales...');
+            
+            // Si hay citas en los datos de la agenda del backend
+            @if(isset($agenda['citas']) && is_array($agenda['citas']))
+                const citasLocales = @json($agenda['citas']);
+                console.log('📋 Usando citas locales:', citasLocales);
+                citasData = citasLocales;
+                displayCitas(citasData);
+            @else
+                // No hay citas locales disponibles
+                showCitasError('No se pudieron cargar las citas. ' + error.message);
+            @endif
+            
+        } catch (localError) {
+            console.error('❌ Error cargando citas locales:', localError);
+            showCitasError('Error cargando citas: ' + error.message);
+        }
+        
+    } finally {
+        // Ocultar loading
+        if (loadingElement) loadingElement.style.display = 'none';
+    }
+}
+
+// Mostrar citas en el contenedor
+function displayCitas(citas) {
+    const container = document.getElementById('citasContainer');
+    const vacio = document.getElementById('citasVacio');
+    
+    if (!citas || citas.length === 0) {
+        container.style.display = 'none';
+        vacio.style.display = 'block';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    // Ordenar citas por hora
+    citas.sort((a, b) => {
+        const horaA = a.fecha_inicio || a.hora_cita || '';
+        const horaB = b.fecha_inicio || b.hora_cita || '';
+        return horaA.localeCompare(horaB);
+    });
+    
+    citas.forEach(cita => {
+        const citaElement = createCitaElement(cita);
+        container.appendChild(citaElement);
+    });
+    
+    container.style.display = 'block';
+    vacio.style.display = 'none';
+    
+    console.log(`✅ ${citas.length} citas mostradas`);
+}
+
+// Crear elemento de cita
+function createCitaElement(cita) {
+    const div = document.createElement('div');
+    div.className = 'cita-item';
+    div.setAttribute('data-cita-uuid', cita.uuid);
+    
+    // Formatear hora
+    let hora = 'Sin hora';
+    try {
+        if (cita.fecha_inicio) {
+            const fechaInicio = new Date(cita.fecha_inicio);
+            hora = fechaInicio.toLocaleTimeString('es-ES', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        } else if (cita.hora_cita) {
+            hora = cita.hora_cita;
+        }
+    } catch (error) {
+        console.error('Error formateando hora de cita:', error);
+    }
+    
+    // Estado de la cita
+    const estadoBadge = getCitaEstadoBadge(cita.estado);
+    
+    // Información del paciente
+    const pacienteInfo = getPacienteInfo(cita);
+    
+    div.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center mb-2">
+                    <div class="me-3">
+                        <i class="fas fa-clock text-primary me-1"></i>
+                        <strong>${hora}</strong>
+                    </div>
+                    <div>
+                        ${estadoBadge}
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <div class="fw-semibold">
+                        <i class="fas fa-user text-muted me-1"></i>
+                        ${pacienteInfo.nombre}
+                    </div>
+                    ${pacienteInfo.documento ? `<small class="text-muted">Doc: ${pacienteInfo.documento}</small>` : ''}
+                </div>
+                
+                ${cita.motivo ? `
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-comment-medical me-1"></i>
+                            ${cita.motivo}
+                        </small>
+                    </div>
+                ` : ''}
+                
+                ${cita.nota ? `
+                    <div class="mb-2">
+                        <small class="text-info">
+                            <i class="fas fa-sticky-note me-1"></i>
+                            ${cita.nota}
+                        </small>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <div class="ms-3">
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-info" onclick="verCita('${cita.uuid}')" title="Ver cita">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-warning" onclick="editarCita('${cita.uuid}')" title="Editar cita">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return div;
+}
+
+// Obtener badge de estado de cita
+function getCitaEstadoBadge(estado) {
+    const badges = {
+        'PROGRAMADA': '<span class="badge bg-primary estado-badge">Programada</span>',
+        'EN_ATENCION': '<span class="badge bg-warning estado-badge">En Atención</span>',
+        'ATENDIDA': '<span class="badge bg-success estado-badge">Atendida</span>',
+        'CANCELADA': '<span class="badge bg-danger estado-badge">Cancelada</span>',
+        'NO_ASISTIO': '<span class="badge bg-secondary estado-badge">No Asistió</span>',
+        'REAGENDADA': '<span class="badge bg-info estado-badge">Reagendada</span>'
+    };
+    
+    return badges[estado] || '<span class="badge bg-secondary estado-badge">Desconocido</span>';
+}
+
+// Obtener información del paciente
+function getPacienteInfo(cita) {
+    let nombre = 'Paciente no identificado';
+    let documento = '';
+    
+    if (cita.paciente) {
+        if (cita.paciente.nombre_completo) {
+            nombre = cita.paciente.nombre_completo;
+        } else if (cita.paciente.nombre && cita.paciente.apellido) {
+            nombre = `${cita.paciente.nombre} ${cita.paciente.apellido}`;
+        }
+        
+        if (cita.paciente.documento) {
+            documento = cita.paciente.documento;
+        }
+    }
+    
+    return { nombre, documento };
+}
+
+// Mostrar error en citas
+function showCitasError(message) {
+    const container = document.getElementById('citasContainer');
+    const vacio = document.getElementById('citasVacio');
+    
+    container.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+        </div>
+    `;
+    
+    container.style.display = 'block';
+    vacio.style.display = 'none';
+}
+
+// Actualizar datos (botón refresh)
+function refreshCitas() {
+    loadCitas();
+    loadAgendaData();
+}
+
+// Acciones de citas
+function verCita(uuid) {
+    window.location.href = `/citas/${uuid}`;
+}
+
+function editarCita(uuid) {
+    window.location.href = `/citas/${uuid}/edit`;
+}
+
+// Acciones de agenda
 async function eliminarAgenda(uuid, descripcion) {
     const result = await Swal.fire({
         title: '¿Eliminar Agenda?',
@@ -506,7 +941,7 @@ async function eliminarAgenda(uuid, descripcion) {
 
             if (data.success) {
                 Swal.fire('¡Eliminado!', data.message, 'success').then(() => {
-                    window.location.href = '{{ route("agendas.index") }}';
+                    window.location.href = '/agendas';
                 });
             } else {
                 throw new Error(data.error);
@@ -519,279 +954,75 @@ async function eliminarAgenda(uuid, descripcion) {
     }
 }
 
-function duplicarAgenda(uuid) {
+function duplicarAgenda() {
     Swal.fire({
-        title: '¿Duplicar Agenda?',
-        text: 'Se creará una nueva agenda con los mismos datos',
+        title: 'Duplicar Agenda',
+        text: '¿Desea crear una nueva agenda con los mismos datos?',
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#28a745',
+        confirmButtonColor: '#007bff',
         cancelButtonColor: '#6c757d',
         confirmButtonText: 'Sí, duplicar',
         cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = `/agendas/create?duplicate=${uuid}`;
+            // Redirigir a crear con parámetros de la agenda actual
+            const params = new URLSearchParams({
+                duplicate: agendaUuid,
+                modalidad: '{{ $agenda["modalidad"] ?? "" }}',
+                consultorio: '{{ $agenda["consultorio"] ?? "" }}',
+                hora_inicio: '{{ $agenda["hora_inicio"] ?? "" }}',
+                hora_fin: '{{ $agenda["hora_fin"] ?? "" }}',
+                intervalo: '{{ $agenda["intervalo"] ?? "" }}',
+                etiqueta: '{{ $agenda["etiqueta"] ?? "" }}'
+            });
+            
+            window.location.href = `/agendas/create?${params.toString()}`;
         }
     });
 }
 
-function imprimirAgenda() {
-    window.print();
+function exportarAgenda() {
+    Swal.fire({
+        title: 'Exportar Agenda',
+        text: 'Seleccione el formato de exportación',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'PDF',
+        cancelButtonText: 'Excel',
+        showDenyButton: true,
+        denyButtonText: 'Cancelar',
+        denyButtonColor: '#6c757d'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Exportar PDF
+            window.open(`/agendas/${agendaUuid}/export/pdf`, '_blank');
+        } else if (result.dismiss === Swal.DismissReason.cancel) {
+            // Exportar Excel
+            window.open(`/agendas/${agendaUuid}/export/excel`, '_blank');
+        }
+    });
+}
+
+// Utilidades
+function showAlert(type, message, title = '') {
+    const iconMap = {
+        'success': 'success',
+        'error': 'error',
+        'warning': 'warning',
+        'info': 'info'
+    };
+    
+    Swal.fire({
+        icon: iconMap[type] || 'info',
+        title: title || (type === 'error' ? 'Error' : 'Información'),
+        text: message,
+        timer: type === 'success' ? 3000 : undefined,
+        showConfirmButton: type !== 'success'
+    });
 }
 </script>
 @endpush
 @endsection
-
-@php
-function formatearFecha($fecha) {
-    if (!$fecha) return 'No especificada';
-    try {
-        return \Carbon\Carbon::parse($fecha)->format('d/m/Y');
-    } catch (\Exception $e) {
-        return $fecha;
-    }
-}
-
-function formatearFechaHora($fechaHora) {
-    if (!$fechaHora) return 'No especificada';
-    try {
-        return \Carbon\Carbon::parse($fechaHora)->format('d/m/Y H:i');
-    } catch (\Exception $e) {
-        return $fechaHora;
-    }
-}
-
-function getDayName($fecha) {
-    if (!$fecha) return '';
-    try {
-        $days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-        return $days[\Carbon\Carbon::parse($fecha)->dayOfWeek];
-    } catch (\Exception $e) {
-        return '';
-    }
-}
-
-function getAlertClass($estado) {
-    return match($estado) {
-        'ACTIVO' => 'alert-success',
-        'LLENA' => 'alert-warning',
-        'ANULADA' => 'alert-danger',
-        default => 'alert-info'
-    };
-}
-
-function getEstadoIcon($estado) {
-    return match($estado) {
-        'ACTIVO' => 'fa-check-circle',
-        'LLENA' => 'fa-exclamation-triangle',
-        'ANULADA' => 'fa-times-circle',
-        default => 'fa-info-circle'
-    };
-}
-
-// ✅ CALCULAR TOTAL DE CUPOS POSIBLES
-function calcularTotalCupos($agenda) {
-    try {
-        if (empty($agenda['hora_inicio']) || empty($agenda['hora_fin'])) {
-            return 0;
-        }
-
-        $intervalo = (int) ($agenda['intervalo'] ?? 15);
-        if ($intervalo <= 0) $intervalo = 15;
-
-        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
-        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
-        
-        $duracionMinutos = $fin->diffInMinutes($inicio);
-        
-        if ($duracionMinutos <= 0) return 0;
-        
-        return floor($duracionMinutos / $intervalo);
-        
-    } catch (\Exception $e) {
-        return 0;
-    }
-}
-
-// ✅ OBTENER CITAS REALES DE ESTA AGENDA
-function obtenerCitasDeAgenda($agendaUuid) {
-    try {
-        \Log::info('🔍 Iniciando búsqueda de citas', [
-            'agenda_uuid' => $agendaUuid
-        ]);
-        
-        // Método 1: Intentar con OfflineService
-        try {
-            $offlineService = app(\App\Services\OfflineService::class);
-            $user = auth()->user() ?? session('usuario');
-            $sedeId = $user['sede_id'] ?? 1;
-            
-            \Log::info('🔍 Datos del usuario', [
-                'user_exists' => $user ? 'sí' : 'no',
-                'sede_id' => $sedeId
-            ]);
-            
-            // Obtener TODAS las citas primero
-            $todasLasCitas = $offlineService->getCitasOffline($sedeId);
-            
-            \Log::info('🔍 Total de citas encontradas', [
-                'total_citas' => count($todasLasCitas)
-            ]);
-            
-            // Mostrar algunas citas para debug
-            if (count($todasLasCitas) > 0) {
-                $primerasCitas = array_slice($todasLasCitas, 0, 3);
-                foreach ($primerasCitas as $index => $cita) {
-                    \Log::info("🔍 Cita ejemplo #{$index}", [
-                        'uuid' => $cita['uuid'] ?? 'sin-uuid',
-                        'agenda_uuid' => $cita['agenda_uuid'] ?? 'sin-agenda-uuid',
-                        'estado' => $cita['estado'] ?? 'sin-estado',
-                        'fecha_hora' => $cita['fecha_hora'] ?? 'sin-fecha'
-                    ]);
-                }
-            }
-            
-            // Filtrar por agenda específica
-            $citasDeEstaAgenda = array_filter($todasLasCitas, function($cita) use ($agendaUuid) {
-                $citaAgendaUuid = $cita['agenda_uuid'] ?? null;
-                $coincide = $citaAgendaUuid === $agendaUuid;
-                
-                if (!$coincide) {
-                    \Log::debug('❌ Cita no coincide', [
-                        'cita_agenda_uuid' => $citaAgendaUuid,
-                        'buscando_agenda_uuid' => $agendaUuid
-                    ]);
-                }
-                
-                return $coincide;
-            });
-            
-            \Log::info('🔍 Citas filtradas por agenda', [
-                'agenda_uuid' => $agendaUuid,
-                'citas_de_esta_agenda' => count($citasDeEstaAgenda)
-            ]);
-            
-            // Filtrar solo citas activas
-            $citasActivas = array_filter($citasDeEstaAgenda, function($cita) {
-                $estado = $cita['estado'] ?? '';
-                $esActiva = !in_array($estado, ['CANCELADA', 'NO_ASISTIO']);
-                
-                \Log::debug('🔍 Estado de cita', [
-                    'uuid' => $cita['uuid'] ?? 'sin-uuid',
-                    'estado' => $estado,
-                    'es_activa' => $esActiva ? 'sí' : 'no'
-                ]);
-                
-                return $esActiva;
-            });
-            
-            \Log::info('✅ Resultado final de citas', [
-                'agenda_uuid' => $agendaUuid,
-                'total_citas' => count($todasLasCitas),
-                'citas_de_agenda' => count($citasDeEstaAgenda),
-                'citas_activas' => count($citasActivas)
-            ]);
-            
-            return $citasActivas;
-            
-        } catch (\Exception $e) {
-            \Log::error('❌ Error con OfflineService', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
-        
-        // Método 2: Intentar directamente con la base de datos
-        try {
-            \Log::info('🔍 Intentando con base de datos directa');
-            
-            $citas = \DB::table('citas')
-                ->where('agenda_uuid', $agendaUuid)
-                ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
-                ->get()
-                ->toArray();
-            
-            \Log::info('✅ Citas desde BD directa', [
-                'agenda_uuid' => $agendaUuid,
-                'citas_encontradas' => count($citas)
-            ]);
-            
-            return $citas;
-            
-        } catch (\Exception $e) {
-            \Log::error('❌ Error con BD directa', [
-                'error' => $e->getMessage()
-            ]);
-        }
-        
-        return [];
-        
-    } catch (\Exception $e) {
-        \Log::error('❌ Error general obteniendo citas', [
-            'agenda_uuid' => $agendaUuid,
-            'error' => $e->getMessage()
-        ]);
-        return [];
-    }
-}
-
-// ✅ CALCULAR CUPOS OCUPADOS BASADO EN CITAS REALES
-function calcularCuposOcupados($agenda) {
-    try {
-        $agendaUuid = $agenda['uuid'] ?? null;
-        if (!$agendaUuid) return 0;
-        
-        $citas = obtenerCitasDeAgenda($agendaUuid);
-        $ocupados = count($citas);
-        
-        \Log::info('✅ Cupos ocupados calculados desde citas', [
-            'agenda_uuid' => $agendaUuid,
-            'citas_encontradas' => $ocupados
-        ]);
-        
-        return $ocupados;
-        
-    } catch (\Exception $e) {
-        \Log::error('❌ Error calculando cupos ocupados', [
-            'error' => $e->getMessage()
-        ]);
-        return 0;
-    }
-}
-
-// ✅ CALCULAR CUPOS DISPONIBLES
-function calcularCuposDisponibles($agenda) {
-    try {
-        $total = calcularTotalCupos($agenda);
-        $ocupados = calcularCuposOcupados($agenda);
-        $disponibles = max(0, $total - $ocupados);
-        
-        \Log::info('✅ Cupos disponibles calculados', [
-            'agenda_uuid' => $agenda['uuid'] ?? 'sin-uuid',
-            'total' => $total,
-            'ocupados' => $ocupados,
-            'disponibles' => $disponibles
-        ]);
-        
-        return $disponibles;
-        
-    } catch (\Exception $e) {
-        return 0;
-    }
-}
-
-// ✅ CALCULAR PORCENTAJE DE OCUPACIÓN
-function calcularPorcentajeOcupacion($agenda) {
-    try {
-        $total = calcularTotalCupos($agenda);
-        if ($total === 0) return 0;
-        
-        $ocupados = calcularCuposOcupados($agenda);
-        return round(($ocupados / $total) * 100);
-        
-    } catch (\Exception $e) {
-        return 0;
-    }
-}
-@endphp

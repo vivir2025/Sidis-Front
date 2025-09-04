@@ -330,30 +330,80 @@ private function resolveBrigadaId($brigadaValue, array $masterData): mixed
 
     // ... resto de métodos sin cambios
 
-    public function show(string $uuid)
-    {
-        try {
-            $result = $this->agendaService->show($uuid);
+   public function show(string $uuid)
+{
+    try {
+        $result = $this->agendaService->show($uuid);
 
-            if (!$result['success']) {
-                abort(404, $result['error']);
-            }
-
-            $usuario = $this->authService->usuario();
-            $isOffline = $this->authService->isOffline();
-            $agenda = $result['data'];
-
-            return view('agendas.show', compact('agenda', 'usuario', 'isOffline'));
-            
-        } catch (\Exception $e) {
-            Log::error('Error en AgendaController@show', [
-                'uuid' => $uuid,
-                'error' => $e->getMessage()
-            ]);
-
-            abort(500, 'Error interno del servidor');
+        if (!$result['success']) {
+            abort(404, $result['error']);
         }
+
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
+        $agenda = $result['data'];
+
+        // ✅ CALCULAR CUPOS Y CITAS ADICIONALES
+        $agenda = $this->enrichAgendaData($agenda);
+
+        return view('agendas.show', compact('agenda', 'usuario', 'isOffline'));
+        
+    } catch (\Exception $e) {
+        Log::error('Error en AgendaController@show', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+
+        abort(500, 'Error interno del servidor');
     }
+}
+
+/**
+ * ✅ NUEVO: Enriquecer datos de agenda
+ */
+private function enrichAgendaData(array $agenda): array
+{
+    try {
+        // Calcular cupos totales
+        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        $duracionMinutos = $fin->diffInMinutes($inicio);
+        $totalCupos = floor($duracionMinutos / $intervalo);
+        
+        // Obtener número de citas (si está disponible)
+        $citasCount = 0;
+        if (isset($agenda['citas']) && is_array($agenda['citas'])) {
+            $citasCount = count(array_filter($agenda['citas'], function($cita) {
+                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            }));
+        }
+        
+        // Calcular cupos disponibles
+        $cuposDisponibles = max(0, $totalCupos - $citasCount);
+        
+        // Agregar datos calculados
+        $agenda['total_cupos'] = $totalCupos;
+        $agenda['citas_count'] = $citasCount;
+        $agenda['cupos_disponibles'] = $cuposDisponibles;
+        
+        return $agenda;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo datos de agenda', [
+            'error' => $e->getMessage(),
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+        ]);
+        
+        // Valores por defecto en caso de error
+        $agenda['total_cupos'] = 0;
+        $agenda['citas_count'] = 0;
+        $agenda['cupos_disponibles'] = 0;
+        
+        return $agenda;
+    }
+}
 
     public function edit(string $uuid)
     {

@@ -83,6 +83,14 @@ Route::get('/agendas/test-sync', [AgendaController::class, 'testSyncManual'])->n
         Route::get('/{uuid}/edit', [AgendaController::class, 'edit'])->name('edit');
         Route::put('/{uuid}', [AgendaController::class, 'update'])->name('update');
         Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
+         Route::get('/{uuid}/citas', [AgendaController::class, 'getCitas'])
+        ->name('citas')
+        ->where('uuid', '[0-9a-f-]{36}');
+    
+    Route::get('/{uuid}/citas/count', [AgendaController::class, 'getCitasCount'])
+        ->name('citas.count')
+        ->where('uuid', '[0-9a-f-]{36}');
+        
     });
 
     // routes/web.php - AGREGAR TEMPORALMENTE

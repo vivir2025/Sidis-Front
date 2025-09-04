@@ -288,60 +288,230 @@ private function isValidUuid(string $uuid): bool
     /**
      * ✅ MOSTRAR AGENDA
      */
-    public function show(string $uuid): array
-    {
-        try {
-            // Intentar obtener online
-            if ($this->apiService->isOnline()) {
-                try {
-                    $response = $this->apiService->get("/agendas/{$uuid}");
+   public function show(string $uuid): array
+{
+    try {
+        // Intentar obtener online
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$uuid}");
+                
+                if ($response['success']) {
+                    $agendaData = $response['data'];
+                    $this->offlineService->storeAgendaOffline($agendaData, false);
                     
-                    if ($response['success']) {
-                        $agendaData = $response['data'];
-                        $this->offlineService->storeAgendaOffline($agendaData, false);
-                        
-                        return [
-                            'success' => true,
-                            'data' => $agendaData,
-                            'offline' => false
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Error obteniendo agenda desde API', [
-                        'error' => $e->getMessage()
-                    ]);
+                    return [
+                        'success' => true,
+                        'data' => $agendaData,
+                        'offline' => false
+                    ];
                 }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo agenda desde API', [
+                    'error' => $e->getMessage()
+                ]);
             }
+        }
 
-            // Buscar offline
-            $agenda = $this->offlineService->getAgendaOffline($uuid);
-            
-            if (!$agenda) {
-                return [
-                    'success' => false,
-                    'error' => 'Agenda no encontrada'
-                ];
-            }
-
-            return [
-                'success' => true,
-                'data' => $agenda,
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo agenda', [
-                'error' => $e->getMessage(),
-                'uuid' => $uuid
-            ]);
-            
+        // Buscar offline
+        $agenda = $this->offlineService->getAgendaOffline($uuid);
+        
+        if (!$agenda) {
             return [
                 'success' => false,
-                'error' => 'Error interno'
+                'error' => 'Agenda no encontrada'
             ];
         }
-    }
 
+        // ✅ ENRIQUECER CON RELACIONES SI ESTÁN DISPONIBLES
+        $agenda = $this->enrichAgendaWithRelations($agenda);
+
+        return [
+            'success' => true,
+            'data' => $agenda,
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo agenda', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno'
+        ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Enriquecer agenda con relaciones
+ */
+private function enrichAgendaWithRelations(array $agenda): array
+{
+    try {
+        // Obtener datos maestros para relaciones
+        $masterData = $this->offlineService->getMasterDataOffline();
+        
+        // ✅ CORREGIR: Enriquecer proceso
+        if (!empty($agenda['proceso_id']) && isset($masterData['procesos'])) {
+            foreach ($masterData['procesos'] as $proceso) {
+                // ✅ VERIFICAR QUE EXISTE LA CLAVE 'id' ANTES DE USARLA
+                $procesoId = $proceso['id'] ?? null;
+                $procesoUuid = $proceso['uuid'] ?? null;
+                
+                if (($procesoId && $procesoId == $agenda['proceso_id']) || 
+                    ($procesoUuid && $procesoUuid == $agenda['proceso_id'])) {
+                    $agenda['proceso'] = $proceso;
+                    break;
+                }
+            }
+        }
+        
+        // ✅ CORREGIR: Enriquecer brigada
+        if (!empty($agenda['brigada_id']) && isset($masterData['brigadas'])) {
+            foreach ($masterData['brigadas'] as $brigada) {
+                // ✅ VERIFICAR QUE EXISTE LA CLAVE 'id' ANTES DE USARLA
+                $brigadaId = $brigada['id'] ?? null;
+                $brigadaUuid = $brigada['uuid'] ?? null;
+                
+                if (($brigadaId && $brigadaId == $agenda['brigada_id']) || 
+                    ($brigadaUuid && $brigadaUuid == $agenda['brigada_id'])) {
+                    $agenda['brigada'] = $brigada;
+                    break;
+                }
+            }
+        }
+        
+        // Datos por defecto para usuario y sede
+        if (!isset($agenda['usuario'])) {
+            $agenda['usuario'] = [
+                'nombre_completo' => 'Usuario del Sistema'
+            ];
+        }
+        
+        if (!isset($agenda['sede'])) {
+            $agenda['sede'] = [
+                'nombre' => 'Sede Principal'
+            ];
+        }
+        
+        return $agenda;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo agenda con relaciones', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+        ]);
+        
+        return $agenda;
+    }
+}
+/**
+ * ✅ NUEVO: Verificar si SQLite está disponible (método faltante)
+ */
+private function isSQLiteAvailable(): bool
+{
+    return $this->offlineService->isSQLiteAvailable();
+}
+
+
+private function enrichAgendaData(array $agenda): array
+{
+    try {
+        // Calcular cupos totales
+        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        if ($intervalo <= 0) $intervalo = 15;
+        
+        $duracionMinutos = $fin->diffInMinutes($inicio);
+        $totalCupos = floor($duracionMinutos / $intervalo);
+        
+        // ✅ OBTENER CITAS REALES DE LA AGENDA
+        $citasCount = $this->getCitasCountForAgenda($agenda['uuid']);
+        
+        // Calcular cupos disponibles
+        $cuposDisponibles = max(0, $totalCupos - $citasCount);
+        
+        // Agregar datos calculados
+        $agenda['total_cupos'] = $totalCupos;
+        $agenda['citas_count'] = $citasCount;
+        $agenda['cupos_disponibles'] = $cuposDisponibles;
+        
+        Log::info('✅ Cupos calculados para agenda', [
+            'uuid' => $agenda['uuid'],
+            'total_cupos' => $totalCupos,
+            'citas_count' => $citasCount,
+            'cupos_disponibles' => $cuposDisponibles,
+            'duracion_minutos' => $duracionMinutos,
+            'intervalo' => $intervalo
+        ]);
+        
+        return $agenda;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo datos de agenda', [
+            'error' => $e->getMessage(),
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+        ]);
+        
+        // Valores por defecto en caso de error
+        $agenda['total_cupos'] = 0;
+        $agenda['citas_count'] = 0;
+        $agenda['cupos_disponibles'] = 0;
+        
+        return $agenda;
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener conteo real de citas para una agenda
+ */
+private function getCitasCountForAgenda(string $agendaUuid): int
+{
+    try {
+        // ✅ INTENTAR DESDE API PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$agendaUuid}/citas/count");
+                
+                if ($response['success'] && isset($response['data']['citas_count'])) {
+                    return (int) $response['data']['citas_count'];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo conteo de citas desde API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // ✅ CONTAR DESDE DATOS OFFLINE
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $count = DB::connection('offline')
+                ->table('citas')
+                ->where('agenda_uuid', $agendaUuid)
+                ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
+                ->whereNull('deleted_at')
+                ->count();
+                
+            return $count;
+        }
+        
+        return 0;
+        
+    } catch (\Exception $e) {
+        Log::error('Error contando citas para agenda', [
+            'agenda_uuid' => $agendaUuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return 0;
+    }
+}
     /**
      * ✅ ACTUALIZAR AGENDA
      */
