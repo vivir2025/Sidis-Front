@@ -79,18 +79,17 @@ Route::get('/agendas/test-sync', [AgendaController::class, 'testSyncManual'])->n
         Route::get('/create', [AgendaController::class, 'create'])->name('create');
         Route::post('/', [AgendaController::class, 'store'])->name('store');
         Route::get('/disponibles', [AgendaController::class, 'disponibles'])->name('disponibles');
-        Route::get('/{uuid}', [AgendaController::class, 'show'])->name('show');
-        Route::get('/{uuid}/edit', [AgendaController::class, 'edit'])->name('edit');
-        Route::put('/{uuid}', [AgendaController::class, 'update'])->name('update');
-        Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
          Route::get('/{uuid}/citas', [AgendaController::class, 'getCitas'])
         ->name('citas')
         ->where('uuid', '[0-9a-f-]{36}');
-    
-    Route::get('/{uuid}/citas/count', [AgendaController::class, 'getCitasCount'])
+         Route::get('/{uuid}/citas/count', [AgendaController::class, 'getCitasCount'])
         ->name('citas.count')
         ->where('uuid', '[0-9a-f-]{36}');
-        
+        Route::get('/{uuid}', [AgendaController::class, 'show'])->name('show');
+        Route::get('/{uuid}/edit', [AgendaController::class, 'edit'])->name('edit');
+        Route::put('/{uuid}', [AgendaController::class, 'update'])->name('update');
+         Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
+       
     });
 
     // routes/web.php - AGREGAR TEMPORALMENTE

@@ -743,4 +743,128 @@ private function getDefaultMasterData(): array
             ], 500);
         }
     }
+
+    public function getCitas(string $uuid)
+{
+    try {
+        $result = $this->agendaService->show($uuid);
+        
+        if (!$result['success']) {
+            return response()->json([
+                'success' => false,
+                'error' => $result['error']
+            ], 404);
+        }
+
+        // Obtener citas desde la API o datos offline
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$uuid}/citas");
+                if ($response['success']) {
+                    return response()->json($response);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo citas desde API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // Obtener desde datos offline
+        $agenda = $result['data'];
+        $citas = $agenda['citas'] ?? [];
+
+        return response()->json([
+            'success' => true,
+            'data' => $citas,
+            'offline' => true
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo citas de agenda', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener conteo de citas de una agenda
+ */
+public function getCitasCount(string $uuid)
+{
+    try {
+        // Intentar desde API primero
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$uuid}/citas/count");
+                if ($response['success']) {
+                    return response()->json($response);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo conteo desde API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // Obtener desde datos offline
+        $result = $this->agendaService->show($uuid);
+        
+        if (!$result['success']) {
+            return response()->json([
+                'success' => false,
+                'error' => $result['error']
+            ], 404);
+        }
+
+        $agenda = $result['data'];
+        
+        // Calcular cupos
+        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        $duracionMinutos = $fin->diffInMinutes($inicio);
+        $totalCupos = floor($duracionMinutos / $intervalo);
+        
+        // Contar citas activas
+        $citasCount = 0;
+        if (isset($agenda['citas']) && is_array($agenda['citas'])) {
+            $citasCount = count(array_filter($agenda['citas'], function($cita) {
+                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            }));
+        }
+        
+        $cuposDisponibles = max(0, $totalCupos - $citasCount);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'citas_count' => $citasCount,
+                'total_cupos' => $totalCupos,
+                'cupos_disponibles' => $cuposDisponibles,
+                'duracion_minutos' => $duracionMinutos,
+                'intervalo' => $intervalo
+            ],
+            'offline' => true
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo conteo de citas', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
 }
