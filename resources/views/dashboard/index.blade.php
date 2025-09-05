@@ -121,7 +121,7 @@
                     </div>
                     <h5 class="card-title">Citas</h5>
                     <p class="text-muted mb-3">Agenda de citas</p>
-                    <a href="#" class="btn btn-outline-success btn-sm">
+                    <a href="{{ route('agendas.index') }}" class="btn btn-outline-success btn-sm">
                         <i class="fas fa-arrow-right me-1"></i>Ver más
                     </a>
                 </div>
