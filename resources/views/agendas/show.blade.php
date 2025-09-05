@@ -42,9 +42,6 @@
                     
                     <!-- Botones de Acción -->
                     <div class="btn-group">
-                        <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning btn-sm">
-                            <i class="fas fa-edit"></i> Editar
-                        </a>
                         <button type="button" class="btn btn-danger btn-sm" onclick="eliminarAgenda('{{ $agenda['uuid'] }}', '{{ $agenda['fecha'] }} - {{ $agenda['consultorio'] }}')">
                             <i class="fas fa-trash"></i> Eliminar
                         </button>
@@ -167,7 +164,7 @@
 
             <!-- Información Adicional -->
             <div class="card mb-4">
-                <div class="card-header bg-info text-white">
+                <div class="card-header bg-primary text-white">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-plus-circle me-2"></i>
                         Información Adicional
@@ -179,7 +176,7 @@
                         <div class="col-md-6">
                             <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-cogs text-info me-2"></i>Proceso
+                                    <i class="fas fa-cogs text-primary me-2"></i>Proceso
                                 </label>
                                 <div class="info-value">
                                     @if(!empty($agenda['proceso']['nombre']))
@@ -198,7 +195,7 @@
                         <div class="col-md-6">
                             <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-users text-info me-2"></i>Brigada
+                                    <i class="fas fa-users text-primary me-2"></i>Brigada
                                 </label>
                                 <div class="info-value">
                                     @if(!empty($agenda['brigada']['nombre']))
@@ -214,7 +211,7 @@
                         <div class="col-md-6">
                             <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-user text-info me-2"></i>Creado por
+                                    <i class="fas fa-user text-primary me-2"></i>Creado por
                                 </label>
                                 <div class="info-value">
                                     @if(!empty($agenda['usuario']['nombre_completo']))
@@ -230,7 +227,7 @@
                         <div class="col-md-6">
                             <div class="info-item">
                                 <label class="info-label">
-                                    <i class="fas fa-building text-info me-2"></i>Sede
+                                    <i class="fas fa-building text-primary me-2"></i>Sede
                                 </label>
                                 <div class="info-value">
                                     @if(!empty($agenda['sede']['nombre']))
@@ -247,7 +244,7 @@
 
             <!-- Citas de la Agenda -->
             <div class="card">
-                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-calendar-plus me-2"></i>
                         Citas Programadas
@@ -284,7 +281,7 @@
         <div class="col-lg-4">
             <!-- Resumen de Cupos -->
             <div class="card mb-4">
-                <div class="card-header bg-warning text-dark">
+                <div class="card-header bg-primary text-white">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-chart-pie me-2"></i>
                         Resumen de Cupos
@@ -337,7 +334,7 @@
 
             <!-- Acciones Rápidas -->
             <div class="card mb-4">
-                <div class="card-header bg-secondary text-white">
+                <div class="card-header bg-primary text-white">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-bolt me-2"></i>
                         Acciones Rápidas
@@ -348,12 +345,6 @@
                         <a href="/citas/create?agenda={{ $agenda['uuid'] }}" class="btn btn-success">
                             <i class="fas fa-plus"></i> Nueva Cita
                         </a>
-                        <a href="{{ route('agendas.edit', $agenda['uuid']) }}" class="btn btn-warning">
-                            <i class="fas fa-edit"></i> Editar Agenda
-                        </a>
-                        <button type="button" class="btn btn-info" onclick="duplicarAgenda()">
-                            <i class="fas fa-copy"></i> Duplicar Agenda
-                        </button>
                         <button type="button" class="btn btn-outline-primary" onclick="exportarAgenda()">
                             <i class="fas fa-download"></i> Exportar
                         </button>
@@ -363,7 +354,7 @@
 
             <!-- Información del Sistema -->
             <div class="card">
-                <div class="card-header bg-light">
+                <div class="card-header bg-primary text-white">
                     <h6 class="card-title mb-0">
                         <i class="fas fa-info me-2"></i>
                         Información del Sistema
@@ -528,17 +519,16 @@ function formatearFechaAgenda() {
     }
 }
 
-// Cargar datos de la agenda (cupos)
 async function loadAgendaData() {
     try {
         console.log('📊 Cargando datos de cupos para agenda:', agendaUuid);
         
-        const response = await fetch(`/api/v1/agendas/${agendaUuid}/citas/count`, {
+        // ✅ USAR RUTA WEB EN LUGAR DE API
+        const response = await fetch(`/agendas/${agendaUuid}/citas/count`, {
             method: 'GET',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json',
-                'Authorization': 'Bearer {{ session("api_token") }}',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             }
         });
@@ -573,8 +563,12 @@ async function loadAgendaData() {
         updateCuposDisplay(defaultData);
         updateCuposChart(defaultData);
         
-        // Mostrar notificación de error
-        showAlert('warning', 'No se pudieron cargar los datos actualizados de cupos. Mostrando datos locales.', 'Advertencia');
+        // ✅ NO MOSTRAR ADVERTENCIA SI HAY DATOS LOCALES VÁLIDOS
+        if (defaultData.total_cupos > 0) {
+            console.log('✅ Usando datos locales válidos');
+        } else {
+            showAlert('warning', 'No se pudieron cargar los datos de cupos.', 'Advertencia');
+        }
     }
 }
 // Actualizar display de cupos
@@ -674,12 +668,12 @@ async function loadCitas() {
         
         console.log('📋 Cargando citas para agenda:', agendaUuid);
         
-        const response = await fetch(`/api/v1/agendas/${agendaUuid}/citas`, {
+        // ✅ USAR RUTA WEB EN LUGAR DE API
+        const response = await fetch(`/agendas/${agendaUuid}/citas`, {
             method: 'GET',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json',
-                'Authorization': 'Bearer {{ session("api_token") }}',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             }
         });
@@ -687,10 +681,6 @@ async function loadCitas() {
         console.log('📋 Respuesta de citas - Status:', response.status);
         
         if (!response.ok) {
-            // Si es 404, probablemente la ruta no existe en el backend
-            if (response.status === 404) {
-                throw new Error('La ruta para obtener citas no está disponible. Verifique la configuración del backend.');
-            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
@@ -707,11 +697,10 @@ async function loadCitas() {
     } catch (error) {
         console.error('❌ Error cargando citas:', error);
         
-        // ✅ INTENTAR CARGAR CITAS DESDE DATOS OFFLINE/LOCALES
+        // ✅ USAR CITAS DESDE DATOS LOCALES
         try {
-            console.log('🔄 Intentando cargar citas desde datos locales...');
+            console.log('🔄 Usando citas desde datos locales...');
             
-            // Si hay citas en los datos de la agenda del backend
             @if(isset($agenda['citas']) && is_array($agenda['citas']))
                 const citasLocales = @json($agenda['citas']);
                 console.log('📋 Usando citas locales:', citasLocales);
@@ -719,7 +708,8 @@ async function loadCitas() {
                 displayCitas(citasData);
             @else
                 // No hay citas locales disponibles
-                showCitasError('No se pudieron cargar las citas. ' + error.message);
+                console.log('📋 No hay citas locales, mostrando estado vacío');
+                showCitasEmpty();
             @endif
             
         } catch (localError) {
@@ -732,6 +722,16 @@ async function loadCitas() {
         if (loadingElement) loadingElement.style.display = 'none';
     }
 }
+
+// ✅ NUEVA FUNCIÓN: Mostrar estado vacío sin error
+function showCitasEmpty() {
+    const container = document.getElementById('citasContainer');
+    const vacio = document.getElementById('citasVacio');
+    
+    if (container) container.style.display = 'none';
+    if (vacio) vacio.style.display = 'block';
+}
+
 
 // Mostrar citas en el contenedor
 function displayCitas(citas) {
@@ -952,34 +952,6 @@ async function eliminarAgenda(uuid, descripcion) {
             Swal.fire('Error', 'Error eliminando agenda: ' + error.message, 'error');
         }
     }
-}
-
-function duplicarAgenda() {
-    Swal.fire({
-        title: 'Duplicar Agenda',
-        text: '¿Desea crear una nueva agenda con los mismos datos?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#007bff',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Sí, duplicar',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Redirigir a crear con parámetros de la agenda actual
-            const params = new URLSearchParams({
-                duplicate: agendaUuid,
-                modalidad: '{{ $agenda["modalidad"] ?? "" }}',
-                consultorio: '{{ $agenda["consultorio"] ?? "" }}',
-                hora_inicio: '{{ $agenda["hora_inicio"] ?? "" }}',
-                hora_fin: '{{ $agenda["hora_fin"] ?? "" }}',
-                intervalo: '{{ $agenda["intervalo"] ?? "" }}',
-                etiqueta: '{{ $agenda["etiqueta"] ?? "" }}'
-            });
-            
-            window.location.href = `/agendas/create?${params.toString()}`;
-        }
-    });
 }
 
 function exportarAgenda() {

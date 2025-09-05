@@ -69,7 +69,7 @@ class OfflineService
     /**
      * ✅ CORREGIDO: Verificar si SQLite está disponible
      */
-    private function isSQLiteAvailable(): bool
+    public function isSQLiteAvailable(): bool
     {
         try {
             DB::connection('offline')->getPdo();
@@ -1661,7 +1661,7 @@ private function createCitasTable(): void
         }
     }
 
-  public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
+public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
 {
     try {
         if (empty($agendaData['uuid'])) {
@@ -1675,8 +1675,8 @@ private function createCitasTable(): void
             $agendaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
-        $offlineData = [
-            'id' => $agendaData['id'] ?? null,
+        // ✅ PREPARAR DATOS PARA SQLITE
+        $sqliteData = [
             'uuid' => $agendaData['uuid'],
             'sede_id' => (int) $agendaData['sede_id'],
             'modalidad' => $agendaData['modalidad'] ?? 'Ambulatoria',
@@ -1692,28 +1692,29 @@ private function createCitasTable(): void
             'brigada_id' => $agendaData['brigada_id'] ?? null,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
-            'operation_type' => $needsSync ? 'create' : 'sync', // ✅ AGREGAR ESTO
-            'original_data' => $needsSync ? json_encode($agendaData) : null, // ✅ AGREGAR ESTO
+            'operation_type' => $needsSync ? 'create' : 'sync',
+            'original_data' => $needsSync ? json_encode($agendaData) : null,
             'created_at' => $agendaData['created_at'] ?? now()->toISOString(),
             'updated_at' => now()->toISOString(),
             'deleted_at' => $agendaData['deleted_at'] ?? null
         ];
 
+        // ✅ GUARDAR EN SQLITE
         if ($this->isSQLiteAvailable()) {
             DB::connection('offline')->table('agendas')->updateOrInsert(
                 ['uuid' => $agendaData['uuid']],
-                $offlineData
+                $sqliteData
             );
         }
 
-        // También guardar en JSON como backup
-        $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $offlineData);
+        // ✅ CORREGIR: Usar $agendaData en lugar de $offlineData
+        $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $agendaData);
 
         Log::debug('✅ Agenda almacenada offline', [
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'],
-            'sync_status' => $offlineData['sync_status']
+            'sync_status' => $sqliteData['sync_status']
         ]);
 
     } catch (\Exception $e) {
@@ -1723,6 +1724,7 @@ private function createCitasTable(): void
         ]);
     }
 }
+
 
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {

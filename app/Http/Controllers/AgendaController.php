@@ -343,6 +343,11 @@ private function resolveBrigadaId($brigadaValue, array $masterData): mixed
         $isOffline = $this->authService->isOffline();
         $agenda = $result['data'];
 
+        // ✅ ENRIQUECER DATOS SI ESTAMOS OFFLINE
+        if ($isOffline || $result['offline']) {
+            $agenda = $this->enrichAgendaDataForView($agenda);
+        }
+
         // ✅ CALCULAR CUPOS Y CITAS ADICIONALES
         $agenda = $this->enrichAgendaData($agenda);
 
@@ -355,6 +360,238 @@ private function resolveBrigadaId($brigadaValue, array $masterData): mixed
         ]);
 
         abort(500, 'Error interno del servidor');
+    }
+}
+
+/**
+ * ✅ NUEVO: Enriquecer datos de agenda para la vista
+ */
+private function enrichAgendaDataForView(array $agenda): array
+{
+    try {
+        // Obtener datos maestros
+        $masterData = $this->getMasterData();
+        
+        // ✅ ENRIQUECER PROCESO
+        if (!empty($agenda['proceso_id']) && !isset($agenda['proceso'])) {
+            foreach ($masterData['procesos'] ?? [] as $proceso) {
+                if ($proceso['id'] == $agenda['proceso_id'] || 
+                    $proceso['uuid'] == $agenda['proceso_id']) {
+                    $agenda['proceso'] = $proceso;
+                    break;
+                }
+            }
+        }
+        
+        // ✅ ENRIQUECER BRIGADA
+        if (!empty($agenda['brigada_id']) && !isset($agenda['brigada'])) {
+            foreach ($masterData['brigadas'] ?? [] as $brigada) {
+                if ($brigada['id'] == $agenda['brigada_id'] || 
+                    $brigada['uuid'] == $agenda['brigada_id']) {
+                    $agenda['brigada'] = $brigada;
+                    break;
+                }
+            }
+        }
+        
+        // ✅ ENRIQUECER USUARIO (desde sesión actual si no está disponible)
+        if (!isset($agenda['usuario']) || empty($agenda['usuario']['nombre_completo'])) {
+            $currentUser = $this->authService->usuario();
+            $agenda['usuario'] = [
+                'nombre_completo' => $currentUser['nombre_completo'] ?? 'Usuario del Sistema',
+                'id' => $agenda['usuario_id'] ?? $currentUser['id'] ?? null
+            ];
+        }
+        
+        // ✅ ENRIQUECER SEDE (desde sesión actual si no está disponible)
+        if (!isset($agenda['sede']) || empty($agenda['sede']['nombre'])) {
+            $currentUser = $this->authService->usuario();
+            $agenda['sede'] = [
+                'nombre' => $currentUser['sede']['nombre'] ?? 'Sede Principal',
+                'id' => $agenda['sede_id'] ?? $currentUser['sede_id'] ?? null
+            ];
+        }
+        
+        // ✅ OBTENER CITAS OFFLINE SI NO ESTÁN PRESENTES
+        if (!isset($agenda['citas']) || !is_array($agenda['citas'])) {
+            $agenda['citas'] = $this->getCitasForAgendaOffline($agenda['uuid']);
+        }
+        
+        return $agenda;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo datos de agenda para vista', [
+            'error' => $e->getMessage(),
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+        ]);
+        
+        return $agenda;
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener citas de una agenda en modo offline
+ */
+private function getCitasForAgendaOffline(string $agendaUuid): array
+{
+    try {
+        $citas = [];
+        
+        // Intentar desde SQLite primero
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $citasDb = DB::connection('offline')
+                ->table('citas')
+                ->where('agenda_uuid', $agendaUuid)
+                ->whereNull('deleted_at')
+                ->orderBy('fecha_inicio')
+                ->get();
+                
+            foreach ($citasDb as $cita) {
+                $citaArray = (array) $cita;
+                
+                // Enriquecer con datos del paciente si está disponible
+                if (!empty($cita->paciente_uuid)) {
+                    $citaArray['paciente'] = $this->getPacienteDataOffline($cita->paciente_uuid);
+                }
+                
+                $citas[] = $citaArray;
+            }
+        } else {
+            // Fallback a archivos JSON
+            $citasPath = $this->offlineService->getStoragePath() . '/citas';
+            if (is_dir($citasPath)) {
+                $files = glob($citasPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && $data['agenda_uuid'] == $agendaUuid && empty($data['deleted_at'])) {
+                        // Enriquecer con datos del paciente
+                        if (!empty($data['paciente_uuid'])) {
+                            $data['paciente'] = $this->getPacienteDataOffline($data['paciente_uuid']);
+                        }
+                        $citas[] = $data;
+                    }
+                }
+                
+                // Ordenar por hora
+                usort($citas, function($a, $b) {
+                    return strcmp($a['fecha_inicio'] ?? '', $b['fecha_inicio'] ?? '');
+                });
+            }
+        }
+        
+        return $citas;
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo citas offline para agenda', [
+            'agenda_uuid' => $agendaUuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener datos de paciente offline
+ */
+private function getPacienteDataOffline(string $pacienteUuid): ?array
+{
+    try {
+        // Intentar desde SQLite
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $paciente = DB::connection('offline')
+                ->table('pacientes')
+                ->where('uuid', $pacienteUuid)
+                ->first();
+                
+            if ($paciente) {
+                return [
+                    'uuid' => $paciente->uuid,
+                    'documento' => $paciente->documento,
+                    'nombre_completo' => trim(
+                        ($paciente->primer_nombre ?? '') . ' ' . 
+                        ($paciente->segundo_nombre ?? '') . ' ' . 
+                        ($paciente->primer_apellido ?? '') . ' ' . 
+                        ($paciente->segundo_apellido ?? '')
+                    ),
+                    'nombre' => $paciente->primer_nombre,
+                    'apellido' => $paciente->primer_apellido
+                ];
+            }
+        }
+        
+        // Fallback a JSON
+        $pacienteData = $this->offlineService->getData('pacientes/' . $pacienteUuid . '.json');
+        if ($pacienteData) {
+            return [
+                'uuid' => $pacienteData['uuid'],
+                'documento' => $pacienteData['documento'],
+                'nombre_completo' => trim(
+                    ($pacienteData['primer_nombre'] ?? '') . ' ' . 
+                    ($pacienteData['segundo_nombre'] ?? '') . ' ' . 
+                    ($pacienteData['primer_apellido'] ?? '') . ' ' . 
+                    ($pacienteData['segundo_apellido'] ?? '')
+                ),
+                'nombre' => $pacienteData['primer_nombre'],
+                'apellido' => $pacienteData['primer_apellido']
+            ];
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo paciente offline', [
+            'uuid' => $pacienteUuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return null;
+    }
+}
+
+/**
+ * ✅ NUEVO: Endpoint para obtener citas de una agenda
+ */
+public function getCitas(string $uuid)
+{
+    try {
+        $result = $this->agendaService->getCitasForAgenda($uuid);
+        
+        return response()->json($result);
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo citas de agenda', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
+
+/**
+ * ✅ NUEVO: Endpoint para obtener conteo de citas
+ */
+public function getCitasCount(string $uuid)
+{
+    try {
+        $result = $this->agendaService->getCitasCountForAgenda($uuid);
+        
+        return response()->json($result);
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo conteo de citas', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
     }
 }
 
@@ -743,128 +980,4 @@ private function getDefaultMasterData(): array
             ], 500);
         }
     }
-
-    public function getCitas(string $uuid)
-{
-    try {
-        $result = $this->agendaService->show($uuid);
-        
-        if (!$result['success']) {
-            return response()->json([
-                'success' => false,
-                'error' => $result['error']
-            ], 404);
-        }
-
-        // Obtener citas desde la API o datos offline
-        if ($this->apiService->isOnline()) {
-            try {
-                $response = $this->apiService->get("/agendas/{$uuid}/citas");
-                if ($response['success']) {
-                    return response()->json($response);
-                }
-            } catch (\Exception $e) {
-                Log::warning('Error obteniendo citas desde API', [
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
-
-        // Obtener desde datos offline
-        $agenda = $result['data'];
-        $citas = $agenda['citas'] ?? [];
-
-        return response()->json([
-            'success' => true,
-            'data' => $citas,
-            'offline' => true
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Error obteniendo citas de agenda', [
-            'uuid' => $uuid,
-            'error' => $e->getMessage()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => 'Error interno del servidor'
-        ], 500);
-    }
-}
-
-/**
- * ✅ NUEVO: Obtener conteo de citas de una agenda
- */
-public function getCitasCount(string $uuid)
-{
-    try {
-        // Intentar desde API primero
-        if ($this->apiService->isOnline()) {
-            try {
-                $response = $this->apiService->get("/agendas/{$uuid}/citas/count");
-                if ($response['success']) {
-                    return response()->json($response);
-                }
-            } catch (\Exception $e) {
-                Log::warning('Error obteniendo conteo desde API', [
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
-
-        // Obtener desde datos offline
-        $result = $this->agendaService->show($uuid);
-        
-        if (!$result['success']) {
-            return response()->json([
-                'success' => false,
-                'error' => $result['error']
-            ], 404);
-        }
-
-        $agenda = $result['data'];
-        
-        // Calcular cupos
-        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
-        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
-        $intervalo = (int) ($agenda['intervalo'] ?? 15);
-        
-        $duracionMinutos = $fin->diffInMinutes($inicio);
-        $totalCupos = floor($duracionMinutos / $intervalo);
-        
-        // Contar citas activas
-        $citasCount = 0;
-        if (isset($agenda['citas']) && is_array($agenda['citas'])) {
-            $citasCount = count(array_filter($agenda['citas'], function($cita) {
-                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
-            }));
-        }
-        
-        $cuposDisponibles = max(0, $totalCupos - $citasCount);
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'citas_count' => $citasCount,
-                'total_cupos' => $totalCupos,
-                'cupos_disponibles' => $cuposDisponibles,
-                'duracion_minutos' => $duracionMinutos,
-                'intervalo' => $intervalo
-            ],
-            'offline' => true
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Error obteniendo conteo de citas', [
-            'uuid' => $uuid,
-            'error' => $e->getMessage()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => 'Error interno del servidor'
-        ], 500);
-    }
-}
 }
