@@ -121,128 +121,301 @@ class AgendaService
         }
     }
 
-    /**
-     * ✅ CREAR AGENDA
-     */
-public function store(Request $request): JsonResponse
+   /**
+ * ✅ CREAR AGENDA
+ */
+public function store(array $data): array
 {
     try {
-        Log::info('🔍 AgendaController@store - Datos RAW recibidos', [
-            'all_data' => $request->all(),
-            'proceso_id_raw' => $request->input('proceso_id'),
-            'brigada_id_raw' => $request->input('brigada_id'),
-            'usuario_medico_uuid_raw' => $request->input('usuario_medico_uuid') // ✅ CAMBIAR NOMBRE
+        Log::info('🔍 AgendaService::store - Datos RAW recibidos', [
+            'all_data' => $data,
+            'proceso_id_raw' => $data['proceso_id'] ?? null,
+            'brigada_id_raw' => $data['brigada_id'] ?? null,
+            'usuario_medico_uuid_raw' => $data['usuario_medico_uuid'] ?? null
         ]);
 
-        // ✅ CAMBIAR VALIDACIÓN: usuario_medico_uuid en lugar de usuario_medico_id
-        $validated = $request->validate([
-            'sede_id' => 'required|exists:sedes,id',
-            'modalidad' => 'required|in:Telemedicina,Ambulatoria',
-            'fecha' => 'required|date|after_or_equal:today',
-            'consultorio' => 'required|string|max:50',
-            'hora_inicio' => 'required|date_format:H:i',
-            'hora_fin' => 'required|date_format:H:i|after:hora_inicio',
-            'intervalo' => 'required|string|max:10',
-            'etiqueta' => 'required|string|max:50',
-            'proceso_id' => 'nullable|exists:procesos,uuid',
-            'usuario_id' => 'required|exists:usuarios,id',
-            'brigada_id' => 'nullable|exists:brigadas,uuid',
-            'usuario_medico_uuid' => 'nullable|exists:usuarios,uuid', // ✅ CAMBIAR A UUID
+        // ✅ VALIDACIÓN MANUAL DE DATOS
+        $validated = $this->validateAgendaData($data);
+
+        // ✅ PREPARAR DATOS PARA ALMACENAR (SIN BUSCAR EN BD)
+        $agendaData = [
+            'uuid' => \Illuminate\Support\Str::uuid()->toString(),
+            'modalidad' => $validated['modalidad'],
+            'fecha' => $validated['fecha'],
+            'consultorio' => $validated['consultorio'],
+            'hora_inicio' => $validated['hora_inicio'],
+            'hora_fin' => $validated['hora_fin'],
+            'intervalo' => $validated['intervalo'], // Mantener como string
+            'etiqueta' => $validated['etiqueta'],
+            'estado' => 'ACTIVO',
+            'sede_id' => $validated['sede_id'],
+            'usuario_id' => $validated['usuario_id'],
+            'proceso_id' => $validated['proceso_id'] ?? null,
+            'brigada_id' => $validated['brigada_id'] ?? null,
+            'usuario_medico_id' => $validated['usuario_medico_uuid'] ?? null, // ✅ USAR UUID DIRECTAMENTE
+            'cupos_disponibles' => 0,
+            'created_at' => now()->toISOString(),
+            'updated_at' => now()->toISOString(),
+            'sync_status' => 'pending'
+        ];
+
+        Log::info('📝 Datos preparados para almacenar', [
+            'uuid' => $agendaData['uuid'],
+            'proceso_id' => $agendaData['proceso_id'],
+            'brigada_id' => $agendaData['brigada_id'],
+            'usuario_medico_id' => $agendaData['usuario_medico_id']
         ]);
 
-        // ✅ RESOLVER UUIDs A IDs PARA GUARDAR EN BD
-        if (!empty($validated['proceso_id'])) {
-            $proceso = \App\Models\Proceso::where('uuid', $validated['proceso_id'])->first();
-            $validated['proceso_id'] = $proceso ? $proceso->id : null;
-        }
-        
-        if (!empty($validated['brigada_id'])) {
-            $brigada = \App\Models\Brigada::where('uuid', $validated['brigada_id'])->first();
-            $validated['brigada_id'] = $brigada ? $brigada->id : null;
-        }
-
-        // ✅ NUEVO: RESOLVER usuario_medico_uuid A ID
-        if (!empty($validated['usuario_medico_uuid'])) {
-            $usuarioMedico = \App\Models\Usuario::where('uuid', $validated['usuario_medico_uuid'])->first();
-            $validated['usuario_medico_id'] = $usuarioMedico ? $usuarioMedico->id : null;
-            unset($validated['usuario_medico_uuid']); // ✅ REMOVER UUID DESPUÉS DE RESOLVER
-            
-            Log::info('✅ Usuario médico resuelto por UUID', [
-                'uuid' => $request->input('usuario_medico_uuid'),
-                'resolved_id' => $validated['usuario_medico_id']
-            ]);
-        }
-
-        // Validar que no exista conflicto de horarios
-        $conflicto = Agenda::where('sede_id', $validated['sede_id'])
-            ->where('consultorio', $validated['consultorio'])
-            ->where('fecha', $validated['fecha'])
-            ->where('estado', 'ACTIVO')
-            ->where(function ($query) use ($validated) {
-                $query->whereBetween('hora_inicio', [$validated['hora_inicio'], $validated['hora_fin']])
-                      ->orWhereBetween('hora_fin', [$validated['hora_inicio'], $validated['hora_fin']])
-                      ->orWhere(function ($q) use ($validated) {
-                          $q->where('hora_inicio', '<=', $validated['hora_inicio'])
-                            ->where('hora_fin', '>=', $validated['hora_fin']);
-                      });
-            })
-            ->exists();
-
-        if ($conflicto) {
-            return response()->json([
+        // ✅ VERIFICAR CONFLICTOS OFFLINE
+        if ($this->hasScheduleConflict($agendaData)) {
+            return [
                 'success' => false,
-                'message' => 'Ya existe una agenda activa en ese horario y consultorio'
-            ], 422);
+                'message' => 'Ya existe una agenda activa en ese horario y consultorio',
+                'error' => 'Conflicto de horarios'
+            ];
         }
 
-        // ✅ LOG ANTES DE CREAR
-        Log::info('📝 Creando agenda con datos', [
-            'validated_data' => $validated,
-            'usuario_medico_id_final' => $validated['usuario_medico_id'] ?? 'null'
-        ]);
+        // ✅ INTENTAR CREAR EN API SI HAY CONEXIÓN
+        if ($this->apiService->isOnline()) {
+            try {
+                $apiData = $this->prepareAgendaDataForApi($agendaData);
+                $response = $this->apiService->post('/agendas', $apiData);
+                
+                if ($response['success']) {
+                    // Actualizar con datos de la API
+                    if (isset($response['data']['id'])) {
+                        $agendaData['id'] = $response['data']['id'];
+                    }
+                    $agendaData['sync_status'] = 'synced';
+                    
+                    Log::info('✅ Agenda creada en API exitosamente');
+                } else {
+                    Log::warning('⚠️ Error creando en API, guardando offline', [
+                        'error' => $response['error'] ?? 'Error desconocido'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Excepción creando en API, guardando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
 
-        $agenda = Agenda::create($validated);
-        $agenda->load(['sede', 'proceso', 'usuario', 'brigada', 'usuarioMedico']); // ✅ CARGAR RELACIÓN
+        // ✅ GUARDAR OFFLINE
+        $this->offlineService->storeAgendaOffline($agendaData, $agendaData['sync_status'] === 'pending');
 
-        // ✅ LOG DESPUÉS DE CREAR
-        Log::info('✅ Agenda creada', [
-            'id' => $agenda->id,
-            'uuid' => $agenda->uuid,
-            'usuario_medico_id_saved' => $agenda->usuario_medico_id,
-            'usuario_medico_loaded' => $agenda->usuarioMedico ? $agenda->usuarioMedico->nombre_completo : 'null'
-        ]);
+        // ✅ ENRIQUECER DATOS PARA RESPUESTA
+        $enrichedData = $this->enrichAgendaDataForResponse($agendaData);
 
-        return response()->json([
+        return [
             'success' => true,
-            'data' => $agenda,
-            'message' => 'Agenda creada exitosamente'
-        ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        Log::error('❌ Error de validación en agenda', [
-            'errors' => $e->errors(),
-            'input' => $request->all()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Datos de validación incorrectos',
-            'errors' => $e->errors()
-        ], 422);
+            'data' => $enrichedData,
+            'message' => $agendaData['sync_status'] === 'synced' 
+                ? 'Agenda creada exitosamente' 
+                : 'Agenda creada (se sincronizará cuando haya conexión)'
+        ];
 
     } catch (\Exception $e) {
         Log::error('💥 Error crítico creando agenda', [
             'error' => $e->getMessage(),
-            'input' => $request->all(),
+            'input' => $data,
             'trace' => $e->getTraceAsString()
         ]);
 
-        return response()->json([
+        return [
             'success' => false,
-            'message' => 'Error interno del servidor'
-        ], 500);
+            'message' => 'Error interno del servidor',
+            'error' => $e->getMessage()
+        ];
     }
 }
+
+/**
+ * ✅ VALIDACIÓN MANUAL DE DATOS (SIN CAMBIOS)
+ */
+private function validateAgendaData(array $data): array
+{
+    $errors = [];
+    
+    // Validaciones requeridas
+    if (empty($data['sede_id'])) {
+        $errors['sede_id'] = 'El campo sede_id es requerido';
+    }
+    
+    if (empty($data['modalidad']) || !in_array($data['modalidad'], ['Telemedicina', 'Ambulatoria'])) {
+        $errors['modalidad'] = 'El campo modalidad debe ser Telemedicina o Ambulatoria';
+    }
+    
+    if (empty($data['fecha'])) {
+        $errors['fecha'] = 'El campo fecha es requerido';
+    } elseif (strtotime($data['fecha']) < strtotime('today')) {
+        $errors['fecha'] = 'La fecha debe ser hoy o posterior';
+    }
+    
+    if (empty($data['consultorio'])) {
+        $errors['consultorio'] = 'El campo consultorio es requerido';
+    }
+    
+    if (empty($data['hora_inicio'])) {
+        $errors['hora_inicio'] = 'El campo hora_inicio es requerido';
+    }
+    
+    if (empty($data['hora_fin'])) {
+        $errors['hora_fin'] = 'El campo hora_fin es requerido';
+    } elseif (!empty($data['hora_inicio']) && $data['hora_fin'] <= $data['hora_inicio']) {
+        $errors['hora_fin'] = 'La hora de fin debe ser posterior a la hora de inicio';
+    }
+    
+    if (empty($data['intervalo'])) {
+        $errors['intervalo'] = 'El campo intervalo es requerido';
+    }
+    
+    if (empty($data['etiqueta'])) {
+        $errors['etiqueta'] = 'El campo etiqueta es requerido';
+    }
+    
+    if (empty($data['usuario_id'])) {
+        $errors['usuario_id'] = 'El campo usuario_id es requerido';
+    }
+    
+    if (!empty($errors)) {
+        throw new \Exception('Errores de validación: ' . json_encode($errors));
+    }
+    
+    return $data;
+}
+
+/**
+ * ✅ NUEVO: Verificar conflictos de horario offline
+ */
+private function hasScheduleConflict(array $agendaData): bool
+{
+    try {
+        // Verificar en SQLite si está disponible
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $conflict = DB::connection('offline')
+                ->table('agendas')
+                ->where('sede_id', $agendaData['sede_id'])
+                ->where('consultorio', $agendaData['consultorio'])
+                ->where('fecha', $agendaData['fecha'])
+                ->where('estado', 'ACTIVO')
+                ->whereNull('deleted_at')
+                ->where(function ($query) use ($agendaData) {
+                    $query->whereBetween('hora_inicio', [$agendaData['hora_inicio'], $agendaData['hora_fin']])
+                          ->orWhereBetween('hora_fin', [$agendaData['hora_inicio'], $agendaData['hora_fin']])
+                          ->orWhere(function ($q) use ($agendaData) {
+                              $q->where('hora_inicio', '<=', $agendaData['hora_inicio'])
+                                ->where('hora_fin', '>=', $agendaData['hora_fin']);
+                          });
+                })
+                ->exists();
+                
+            return $conflict;
+        }
+        
+        // Fallback: verificar en archivos JSON
+        $existingAgendas = $this->offlineService->getAgendasOffline($agendaData['sede_id'], [
+            'fecha' => $agendaData['fecha'],
+            'consultorio' => $agendaData['consultorio'],
+            'estado' => 'ACTIVO'
+        ]);
+        
+        foreach ($existingAgendas as $existing) {
+            if ($this->hasTimeOverlap($agendaData, $existing)) {
+                return true;
+            }
+        }
+        
+        return false;
+        
+    } catch (\Exception $e) {
+        Log::warning('⚠️ Error verificando conflictos, continuando', [
+            'error' => $e->getMessage()
+        ]);
+        return false; // En caso de error, permitir creación
+    }
+}
+
+/**
+ * ✅ NUEVO: Verificar solapamiento de horarios
+ */
+private function hasTimeOverlap(array $newAgenda, array $existingAgenda): bool
+{
+    $newStart = strtotime($newAgenda['hora_inicio']);
+    $newEnd = strtotime($newAgenda['hora_fin']);
+    $existingStart = strtotime($existingAgenda['hora_inicio']);
+    $existingEnd = strtotime($existingAgenda['hora_fin']);
+    
+    return ($newStart < $existingEnd) && ($newEnd > $existingStart);
+}
+
+
+
+/**
+ * ✅ NUEVO: Enriquecer datos para respuesta
+ */
+private function enrichAgendaDataForResponse(array $agendaData): array
+{
+    try {
+        // Obtener datos maestros para enriquecer
+        $masterData = $this->offlineService->getMasterDataOffline();
+        
+        // Enriquecer proceso
+        if (!empty($agendaData['proceso_id']) && isset($masterData['procesos'])) {
+            foreach ($masterData['procesos'] as $proceso) {
+                if ($proceso['id'] == $agendaData['proceso_id'] || $proceso['uuid'] == $agendaData['proceso_id']) {
+                    $agendaData['proceso'] = $proceso;
+                    break;
+                }
+            }
+        }
+        
+        // Enriquecer brigada
+        if (!empty($agendaData['brigada_id']) && isset($masterData['brigadas'])) {
+            foreach ($masterData['brigadas'] as $brigada) {
+                if ($brigada['id'] == $agendaData['brigada_id'] || $brigada['uuid'] == $agendaData['brigada_id']) {
+                    $agendaData['brigada'] = $brigada;
+                    break;
+                }
+            }
+        }
+        
+        // Enriquecer usuario médico
+        if (!empty($agendaData['usuario_medico_id']) && isset($masterData['usuarios_con_especialidad'])) {
+            foreach ($masterData['usuarios_con_especialidad'] as $usuario) {
+                if ($usuario['id'] == $agendaData['usuario_medico_id'] || $usuario['uuid'] == $agendaData['usuario_medico_id']) {
+                    $agendaData['usuario_medico'] = $usuario;
+                    break;
+                }
+            }
+        }
+        
+        // Datos por defecto para usuario y sede
+        if (!isset($agendaData['usuario'])) {
+            $currentUser = $this->authService->usuario();
+            $agendaData['usuario'] = [
+                'nombre_completo' => $currentUser['nombre_completo'] ?? 'Usuario del Sistema'
+            ];
+        }
+        
+        if (!isset($agendaData['sede'])) {
+            $currentUser = $this->authService->usuario();
+            $agendaData['sede'] = [
+                'nombre' => $currentUser['sede']['nombre'] ?? 'Sede Principal'
+            ];
+        }
+        
+        return $agendaData;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo datos de respuesta', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return $agendaData;
+    }
+}
+
 
 
 // ✅ NUEVO MÉTODO PARA VALIDAR Y LIMPIAR DATOS
@@ -292,8 +465,7 @@ private function validateAndCleanAgendaData(array $data): array
         $data['brigada_id'] = null;
     }
 
-   
-    // ✅ CAMBIAR: LIMPIAR usuario_medico_uuid EN LUGAR DE usuario_medico_id
+    // ✅ LIMPIAR usuario_medico_uuid
     if (isset($data['usuario_medico_uuid']) && $data['usuario_medico_uuid'] !== null && $data['usuario_medico_uuid'] !== '') {
         if (is_string($data['usuario_medico_uuid']) && $this->isValidUuid($data['usuario_medico_uuid'])) {
             Log::info('✅ usuario_medico_uuid válido (UUID)', ['usuario_medico_uuid' => $data['usuario_medico_uuid']]);
@@ -314,6 +486,7 @@ private function validateAndCleanAgendaData(array $data): array
 
     return $data;
 }
+
 private function isValidUuid(string $uuid): bool
 {
     // ✅ PATRÓN MÁS FLEXIBLE - No requiere versión 4 específica
@@ -760,48 +933,76 @@ private function enrichAgendaData(array $agenda): array
      * ✅ NUEVO: Preparar datos de agenda para la API
      */
     private function prepareAgendaDataForApi(array $agenda): array
-    {
-        // ✅ MAPEAR SOLO LOS CAMPOS QUE LA API ESPERA CON TIPOS CORRECTOS
-        $apiData = [
-            'modalidad' => $agenda['modalidad'] ?? 'Ambulatoria',
-            'fecha' => $agenda['fecha'],
-            'consultorio' => (string) ($agenda['consultorio'] ?? ''), // ✅ Asegurar string
-            'hora_inicio' => $agenda['hora_inicio'],
-            'hora_fin' => $agenda['hora_fin'],
-            'intervalo' => (int) ($agenda['intervalo'] ?? 15), // ✅ Convertir a entero
-            'etiqueta' => $agenda['etiqueta'] ?? '',
-            'estado' => $agenda['estado'] ?? 'ACTIVO',
-            'sede_id' => (int) ($agenda['sede_id'] ?? 1), // ✅ Convertir a entero
-            'usuario_id' => (int) ($agenda['usuario_id'] ?? 1), // ✅ Convertir a entero
-        ];
+{
+    // ✅ MAPEAR SOLO LOS CAMPOS QUE LA API ESPERA CON TIPOS CORRECTOS
+    $apiData = [
+        'modalidad' => $agenda['modalidad'] ?? 'Ambulatoria',
+        'fecha' => $agenda['fecha'],
+        'consultorio' => (string) ($agenda['consultorio'] ?? ''), // ✅ Asegurar string
+        'hora_inicio' => $agenda['hora_inicio'],
+        'hora_fin' => $agenda['hora_fin'],
+        'intervalo' => (int) ($agenda['intervalo'] ?? 15), // ✅ Convertir a entero
+        'etiqueta' => $agenda['etiqueta'] ?? '',
+        'estado' => $agenda['estado'] ?? 'ACTIVO',
+        'sede_id' => (int) ($agenda['sede_id'] ?? 1), // ✅ Convertir a entero
+        'usuario_id' => (int) ($agenda['usuario_id'] ?? 1), // ✅ Convertir a entero
+    ];
 
-        // ✅ MANEJAR CAMPOS OPCIONALES CORRECTAMENTE
-        if (!empty($agenda['proceso_id']) && $agenda['proceso_id'] !== 'null') {
-            $apiData['proceso_id'] = (int) $agenda['proceso_id'];
-        }
-        
-        if (!empty($agenda['brigada_id']) && $agenda['brigada_id'] !== 'null') {
-            $apiData['brigada_id'] = (int) $agenda['brigada_id'];
-        }
-
-        // ✅ LIMPIAR CAMPOS VACÍOS
-        $apiData = array_filter($apiData, function($value) {
-            return $value !== null && $value !== '';
-        });
-
-        // ✅ ASEGURAR CAMPOS OBLIGATORIOS
-        if (empty($apiData['fecha'])) {
-            throw new \Exception('Fecha es requerida');
-        }
-        if (empty($apiData['hora_inicio'])) {
-            throw new \Exception('Hora de inicio es requerida');
-        }
-        if (empty($apiData['hora_fin'])) {
-            throw new \Exception('Hora de fin es requerida');
-        }
-
-        return $apiData;
+    // ✅ MANEJAR CAMPOS OPCIONALES CORRECTAMENTE
+    if (!empty($agenda['proceso_id']) && $agenda['proceso_id'] !== 'null') {
+        $apiData['proceso_id'] = (int) $agenda['proceso_id'];
     }
+    
+    if (!empty($agenda['brigada_id']) && $agenda['brigada_id'] !== 'null') {
+        $apiData['brigada_id'] = (int) $agenda['brigada_id'];
+    }
+
+    // ✅ NUEVO: MANEJAR USUARIO MÉDICO CORRECTAMENTE
+    $usuarioMedicoValue = null;
+    
+    // Buscar en ambos campos posibles (offline puede usar cualquiera)
+    if (!empty($agenda['usuario_medico_uuid']) && $agenda['usuario_medico_uuid'] !== 'null') {
+        $usuarioMedicoValue = $agenda['usuario_medico_uuid'];
+    } elseif (!empty($agenda['usuario_medico_id']) && $agenda['usuario_medico_id'] !== 'null') {
+        $usuarioMedicoValue = $agenda['usuario_medico_id'];
+    }
+    
+    if ($usuarioMedicoValue) {
+        $apiData['usuario_medico_uuid'] = $usuarioMedicoValue; // ✅ LA API ESPERA ESTE NOMBRE
+        
+        Log::info('✅ Usuario médico agregado a datos de API', [
+            'usuario_medico_uuid' => $usuarioMedicoValue,
+            'agenda_uuid' => $agenda['uuid'] ?? 'sin-uuid',
+            'found_in_field' => !empty($agenda['usuario_medico_uuid']) ? 'usuario_medico_uuid' : 'usuario_medico_id'
+        ]);
+    }
+
+    // ✅ LIMPIAR CAMPOS VACÍOS
+    $apiData = array_filter($apiData, function($value) {
+        return $value !== null && $value !== '';
+    });
+
+    // ✅ ASEGURAR CAMPOS OBLIGATORIOS
+    if (empty($apiData['fecha'])) {
+        throw new \Exception('Fecha es requerida');
+    }
+    if (empty($apiData['hora_inicio'])) {
+        throw new \Exception('Hora de inicio es requerida');
+    }
+    if (empty($apiData['hora_fin'])) {
+        throw new \Exception('Hora de fin es requerida');
+    }
+
+    // ✅ LOG FINAL PARA DEBUGGING
+    Log::info('📤 Datos finales preparados para API', [
+        'agenda_uuid' => $agenda['uuid'] ?? 'sin-uuid',
+        'has_usuario_medico' => isset($apiData['usuario_medico_uuid']),
+        'usuario_medico_uuid' => $apiData['usuario_medico_uuid'] ?? 'no-enviado',
+        'all_fields' => array_keys($apiData)
+    ]);
+
+    return $apiData;
+}
 
     /**
      * ✅ NUEVO: Obtener todas las agendas offline

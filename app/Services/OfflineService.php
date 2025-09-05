@@ -2333,36 +2333,26 @@ if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_
         ]);
     }
 }
-
-  // ✅ NUEVO: MANEJAR usuario_medico_id CORRECTAMENTE
+ // ✅ CORREGIDO: MANEJAR usuario_medico COMO UUID
     if (isset($data['usuario_medico_id']) && !empty($data['usuario_medico_id']) && $data['usuario_medico_id'] !== 'null') {
-        if (is_numeric($data['usuario_medico_id'])) {
-            $cleanData['usuario_medico_id'] = (int) $data['usuario_medico_id'];
-            Log::info('✅ usuario_medico_id incluido como entero', [
-                'original' => $data['usuario_medico_id'],
-                'clean' => $cleanData['usuario_medico_id']
-            ]);
-        } elseif (is_string($data['usuario_medico_id']) && $this->isValidUuid($data['usuario_medico_id'])) {
-            $cleanData['usuario_medico_id'] = $data['usuario_medico_id'];
-            Log::info('✅ usuario_medico_id incluido como UUID', [
-                'original' => $data['usuario_medico_id'],
-                'clean' => $cleanData['usuario_medico_id']
-            ]);
-        } else {
-            Log::warning('⚠️ usuario_medico_id inválido, omitiendo', [
-                'usuario_medico_id' => $data['usuario_medico_id']
-            ]);
-        }
+        // ✅ ENVIAR SIEMPRE COMO usuario_medico_uuid (EL BACKEND LO CONVIERTE)
+        $cleanData['usuario_medico_uuid'] = $data['usuario_medico_id'];
+        
+        Log::info('✅ usuario_medico_uuid agregado a datos de API', [
+            'original_field' => 'usuario_medico_id',
+            'api_field' => 'usuario_medico_uuid',
+            'value' => $data['usuario_medico_id']
+        ]);
     }
 
     Log::info('🧹 Datos finales limpiados para API', [
-        'clean_data' => $cleanData,
-        'has_proceso_id' => isset($cleanData['proceso_id']),
-        'has_brigada_id' => isset($cleanData['brigada_id']),
-        'has_usuario_medico_id' => isset($cleanData['usuario_medico_id']),
-        'intervalo_type' => gettype($cleanData['intervalo']) // ✅ Ahora será "string"
-    ]);
-
+    'clean_data' => $cleanData,
+    'has_proceso_id' => isset($cleanData['proceso_id']),
+    'has_brigada_id' => isset($cleanData['brigada_id']),
+    'has_usuario_medico_uuid' => isset($cleanData['usuario_medico_uuid']), 
+    'usuario_medico_uuid_value' => $cleanData['usuario_medico_uuid'] ?? 'no-enviado', 
+    'intervalo_type' => gettype($cleanData['intervalo'])
+]);
     return $cleanData;
 }
 

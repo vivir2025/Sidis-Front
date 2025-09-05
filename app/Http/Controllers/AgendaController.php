@@ -93,6 +93,15 @@ class AgendaController extends Controller
             'usuario_medico_id_raw' => $request->input('usuario_medico_id')
         ]);
 
+        // ✅ OBTENER USUARIO AUTENTICADO PRIMERO
+        $user = $this->authService->usuario();
+        
+        Log::info('✅ Usuario autenticado obtenido', [
+            'usuario_id' => $user['id'],
+            'sede_id' => $user['sede_id'],
+            'nombre' => $user['nombre_completo'] ?? 'Sin nombre'
+        ]);
+
         // ✅ VALIDACIÓN BÁSICA
         $validatedData = $request->validate([
             'modalidad' => 'required|in:Telemedicina,Ambulatoria',
@@ -107,7 +116,16 @@ class AgendaController extends Controller
             'usuario_medico_id' => 'nullable|string|max:100',
         ]);
 
-        // ✅ PROCESAR IDs CORRECTAMENTE
+        // ✅ AGREGAR CAMPOS REQUERIDOS DEL USUARIO
+        $validatedData['sede_id'] = $user['sede_id'];
+        $validatedData['usuario_id'] = $user['id'];
+        
+        Log::info('✅ Campos de usuario agregados', [
+            'sede_id' => $validatedData['sede_id'],
+            'usuario_id' => $validatedData['usuario_id']
+        ]);
+
+        // ✅ PROCESAR IDs CORRECTAMENTE (tu código existente)
         $masterData = $this->getMasterData();
         
         // ✅ RESOLVER proceso_id
@@ -148,6 +166,8 @@ class AgendaController extends Controller
         $validatedData['intervalo'] = (string) $validatedData['intervalo'];
         
         Log::info('📤 Datos finales para guardar', [
+            'sede_id' => $validatedData['sede_id'],          
+            'usuario_id' => $validatedData['usuario_id'],
             'proceso_id' => $validatedData['proceso_id'],
             'brigada_id' => $validatedData['brigada_id'],
             'intervalo' => $validatedData['intervalo'],
