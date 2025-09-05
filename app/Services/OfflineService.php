@@ -108,6 +108,11 @@ class OfflineService
                 $this->createProcesosTable();
                 Log::info('✅ Tabla procesos creada');
             }
+
+             if (!in_array('usuarios', $existingTables)) {
+                $this->createUsuariosTable();
+                Log::info('✅ Tabla usuarios creada');
+            }
             
             return;
         }
@@ -132,7 +137,7 @@ class OfflineService
         
         // ✅ AGREGAR ESTA LÍNEA QUE FALTA
         $this->createProcesosTable();
-        
+         $this->createUsuariosTable();
         // ✅ CREAR NUEVAS TABLAS
         $this->createAgendasTable();
         $this->createCitasTable();
@@ -167,7 +172,8 @@ class OfflineService
             estado TEXT DEFAULT "ACTIVO",
             proceso_id TEXT NULL, 
             usuario_id INTEGER,
-            brigada_id TEXT NULL,  
+            brigada_id TEXT NULL,
+            usuario_medico_id TEXT NULL,  
             cupos_disponibles INTEGER DEFAULT 0,
             sync_status TEXT DEFAULT "synced",
             error_message TEXT NULL,
@@ -436,6 +442,29 @@ private function createCitasTable(): void
         ');
     }
 
+    private function createUsuariosTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            documento TEXT,
+            nombre TEXT NOT NULL,
+            apellido TEXT,
+            nombre_completo TEXT,
+            login TEXT,
+            especialidad_id INTEGER,
+            especialidad_uuid TEXT,
+            especialidad_nombre TEXT,
+            sede_id INTEGER,
+            sede_nombre TEXT,
+            estado TEXT DEFAULT "ACTIVO",
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+}
+
 
 
     /**
@@ -471,6 +500,30 @@ private function createCitasTable(): void
             }
         }
     }
+    private function syncUsuariosConEspecialidad(array $data): void
+{
+    DB::connection('offline')->table('usuarios')->delete();
+    foreach ($data as $item) {
+        DB::connection('offline')->table('usuarios')->insert([
+            'uuid' => $item['uuid'],
+            'documento' => $item['documento'] ?? null,
+            'nombre' => $item['nombre'],
+            'apellido' => $item['apellido'] ?? null,
+            'nombre_completo' => $item['nombre_completo'],
+            'login' => $item['login'] ?? null,
+            'especialidad_id' => $item['especialidad']['id'] ?? null,
+            'especialidad_uuid' => $item['especialidad']['uuid'] ?? null,
+            'especialidad_nombre' => $item['especialidad']['nombre'] ?? null,
+            'sede_id' => $item['sede']['id'] ?? null,
+            'sede_nombre' => $item['sede']['nombre'] ?? null,
+            'estado' => 'ACTIVO',
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+    }
+    $this->updateSyncStatus('usuarios', count($data));
+}
+
 
     /**
      * ✅ NUEVO: Sincronizar a SQLite
@@ -568,6 +621,11 @@ private function createCitasTable(): void
         if (isset($masterData['procesos'])) {
             $this->syncProcesos($masterData['procesos']);
             $syncResults['procesos'] = count($masterData['procesos']);
+        }
+
+         if (isset($masterData['usuarios_con_especialidad'])) {
+        $this->syncUsuariosConEspecialidad($masterData['usuarios_con_especialidad']);
+        $syncResults['usuarios_con_especialidad'] = count($masterData['usuarios_con_especialidad']);
         }
 
         Log::info('✅ Sincronización SQLite completada', [
@@ -1033,6 +1091,30 @@ private function createCitasTable(): void
                 'n_cups' => $proceso->n_cups,
             ];
         })->toArray();
+
+          $usuarios = DB::connection('offline')->table('usuarios')->get();
+    $masterData['usuarios_con_especialidad'] = $usuarios->map(function ($usuario) {
+        return [
+            'id' => $usuario->id,
+            'uuid' => $usuario->uuid,
+            'documento' => $usuario->documento,
+            'nombre' => $usuario->nombre,
+            'apellido' => $usuario->apellido,
+            'nombre_completo' => $usuario->nombre_completo,
+            'login' => $usuario->login,
+            'especialidad_id' => $usuario->especialidad_id,
+            'especialidad' => [
+                'id' => $usuario->especialidad_id,
+                'uuid' => $usuario->especialidad_uuid,
+                'nombre' => $usuario->especialidad_nombre
+            ],
+            'sede_id' => $usuario->sede_id,
+            'sede' => [
+                'id' => $usuario->sede_id,
+                'nombre' => $usuario->sede_nombre
+            ]
+        ];
+    })->toArray();
 
 
 
@@ -1689,6 +1771,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'estado' => $agendaData['estado'] ?? 'ACTIVO',
             'proceso_id' => $agendaData['proceso_id'] ?? null,
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
+            'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? null,
             'brigada_id' => $agendaData['brigada_id'] ?? null,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
@@ -1714,6 +1797,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'],
+            'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? null,
             'sync_status' => $sqliteData['sync_status']
         ]);
 
@@ -2187,6 +2271,7 @@ private function cleanDataForApi(array $data): array
         'original_data' => $data,
         'proceso_id_original' => $data['proceso_id'] ?? 'no-set',
         'brigada_id_original' => $data['brigada_id'] ?? 'no-set',
+        'usuario_medico_id_original' => $data['usuario_medico_id'] ?? 'no-set',
         'intervalo_original' => $data['intervalo'] ?? 'no-set'
     ]);
 
@@ -2249,10 +2334,32 @@ if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_
     }
 }
 
+  // ✅ NUEVO: MANEJAR usuario_medico_id CORRECTAMENTE
+    if (isset($data['usuario_medico_id']) && !empty($data['usuario_medico_id']) && $data['usuario_medico_id'] !== 'null') {
+        if (is_numeric($data['usuario_medico_id'])) {
+            $cleanData['usuario_medico_id'] = (int) $data['usuario_medico_id'];
+            Log::info('✅ usuario_medico_id incluido como entero', [
+                'original' => $data['usuario_medico_id'],
+                'clean' => $cleanData['usuario_medico_id']
+            ]);
+        } elseif (is_string($data['usuario_medico_id']) && $this->isValidUuid($data['usuario_medico_id'])) {
+            $cleanData['usuario_medico_id'] = $data['usuario_medico_id'];
+            Log::info('✅ usuario_medico_id incluido como UUID', [
+                'original' => $data['usuario_medico_id'],
+                'clean' => $cleanData['usuario_medico_id']
+            ]);
+        } else {
+            Log::warning('⚠️ usuario_medico_id inválido, omitiendo', [
+                'usuario_medico_id' => $data['usuario_medico_id']
+            ]);
+        }
+    }
+
     Log::info('🧹 Datos finales limpiados para API', [
         'clean_data' => $cleanData,
         'has_proceso_id' => isset($cleanData['proceso_id']),
         'has_brigada_id' => isset($cleanData['brigada_id']),
+        'has_usuario_medico_id' => isset($cleanData['usuario_medico_id']),
         'intervalo_type' => gettype($cleanData['intervalo']) // ✅ Ahora será "string"
     ]);
 
@@ -2673,5 +2780,67 @@ public function diagnosticSync(): array
         ];
     }
 }
-
+public function recreateAgendasTable(): bool
+{
+    try {
+        Log::info('🔧 Recreando tabla agendas con nueva estructura...');
+        
+        if (!$this->isSQLiteAvailable()) {
+            Log::warning('⚠️ SQLite no disponible');
+            return false;
+        }
+        
+        // 1. Respaldar datos existentes
+        $existingAgendas = [];
+        try {
+            $existingAgendas = DB::connection('offline')
+                ->table('agendas')
+                ->get()
+                ->toArray();
+            Log::info('💾 Respaldadas ' . count($existingAgendas) . ' agendas existentes');
+        } catch (\Exception $e) {
+            Log::info('ℹ️ No hay datos existentes para respaldar');
+        }
+        
+        // 2. Eliminar tabla existente
+        DB::connection('offline')->statement('DROP TABLE IF EXISTS agendas');
+        Log::info('🗑️ Tabla agendas eliminada');
+        
+        // 3. Crear nueva tabla con estructura actualizada
+        $this->createAgendasTable();
+        Log::info('✅ Nueva tabla agendas creada');
+        
+        // 4. Restaurar datos existentes (si los hay)
+        if (!empty($existingAgendas)) {
+            foreach ($existingAgendas as $agenda) {
+                $agendaArray = (array) $agenda;
+                
+                // ✅ AGREGAR CAMPO FALTANTE CON VALOR POR DEFECTO
+                if (!isset($agendaArray['usuario_medico_id'])) {
+                    $agendaArray['usuario_medico_id'] = null;
+                }
+                
+                try {
+                    DB::connection('offline')->table('agendas')->insert($agendaArray);
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error restaurando agenda', [
+                        'uuid' => $agendaArray['uuid'] ?? 'sin-uuid',
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            Log::info('♻️ Datos restaurados: ' . count($existingAgendas) . ' agendas');
+        }
+        
+        Log::info('🎉 Tabla agendas recreada exitosamente');
+        return true;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error recreando tabla agendas', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine()
+        ]);
+        return false;
+    }
+}
 }

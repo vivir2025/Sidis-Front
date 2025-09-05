@@ -124,114 +124,134 @@ class AgendaService
     /**
      * ✅ CREAR AGENDA
      */
-public function store(array $data): array
+public function store(Request $request): JsonResponse
 {
     try {
-        Log::info('🔍 AgendaService::store - Datos recibidos', [
-            'data' => $data,
-            'proceso_id' => $data['proceso_id'] ?? 'no-set',
-            'brigada_id' => $data['brigada_id'] ?? 'no-set',
-            'intervalo' => $data['intervalo'] ?? 'no-set',
-            'intervalo_type' => gettype($data['intervalo'] ?? null)
+        Log::info('🔍 AgendaController@store - Datos RAW recibidos', [
+            'all_data' => $request->all(),
+            'proceso_id_raw' => $request->input('proceso_id'),
+            'brigada_id_raw' => $request->input('brigada_id'),
+            'usuario_medico_uuid_raw' => $request->input('usuario_medico_uuid') // ✅ CAMBIAR NOMBRE
         ]);
 
-        $user = $this->authService->usuario();
-        $data['sede_id'] = $user['sede_id'];
-        $data['usuario_id'] = $user['id'];
-
-        // ✅ VALIDAR Y LIMPIAR DATOS ANTES DE PROCESAR
-        $data = $this->validateAndCleanAgendaData($data);
-
-        Log::info('🧹 Datos después de limpiar', [
-            'data' => $data,
-            'proceso_id_final' => $data['proceso_id'],
-            'brigada_id_final' => $data['brigada_id'],
-            'intervalo_final' => $data['intervalo'],
-            'intervalo_type_final' => gettype($data['intervalo'])
+        // ✅ CAMBIAR VALIDACIÓN: usuario_medico_uuid en lugar de usuario_medico_id
+        $validated = $request->validate([
+            'sede_id' => 'required|exists:sedes,id',
+            'modalidad' => 'required|in:Telemedicina,Ambulatoria',
+            'fecha' => 'required|date|after_or_equal:today',
+            'consultorio' => 'required|string|max:50',
+            'hora_inicio' => 'required|date_format:H:i',
+            'hora_fin' => 'required|date_format:H:i|after:hora_inicio',
+            'intervalo' => 'required|string|max:10',
+            'etiqueta' => 'required|string|max:50',
+            'proceso_id' => 'nullable|exists:procesos,uuid',
+            'usuario_id' => 'required|exists:usuarios,id',
+            'brigada_id' => 'nullable|exists:brigadas,uuid',
+            'usuario_medico_uuid' => 'nullable|exists:usuarios,uuid', // ✅ CAMBIAR A UUID
         ]);
 
-        // Intentar crear online
-        if ($this->apiService->isOnline()) {
-            Log::info('🌐 Intentando crear online');
-            
-            $response = $this->apiService->post('/agendas', $data);
-            
-            Log::info('📥 Respuesta de API online', [
-                'success' => $response['success'] ?? false,
-                'error' => $response['error'] ?? null,
-                'response' => $response
-            ]);
-            
-            if ($response['success']) {
-                $agendaData = $response['data'];
-                $this->offlineService->storeAgendaOffline($agendaData, false);
-                
-                return [
-                    'success' => true,
-                    'data' => $agendaData,
-                    'message' => 'Agenda creada exitosamente',
-                    'offline' => false
-                ];
-            }
-            
-            Log::error('❌ Error creando online', [
-                'error' => $response['error'] ?? 'Error desconocido'
-            ]);
-            
-            return [
-                'success' => false,
-                'error' => $response['error'] ?? 'Error creando agenda'
-            ];
+        // ✅ RESOLVER UUIDs A IDs PARA GUARDAR EN BD
+        if (!empty($validated['proceso_id'])) {
+            $proceso = \App\Models\Proceso::where('uuid', $validated['proceso_id'])->first();
+            $validated['proceso_id'] = $proceso ? $proceso->id : null;
+        }
+        
+        if (!empty($validated['brigada_id'])) {
+            $brigada = \App\Models\Brigada::where('uuid', $validated['brigada_id'])->first();
+            $validated['brigada_id'] = $brigada ? $brigada->id : null;
         }
 
-        // ✅ CREAR OFFLINE CON DATOS LIMPIOS
-        Log::info('📱 Creando offline');
-        
-        $data['uuid'] = Str::uuid();
-        $data['estado'] = $data['estado'] ?? 'ACTIVO';
-        $data['sync_status'] = 'pending';
-        
-        Log::info('📤 Datos finales para offline', [
-            'uuid' => $data['uuid'],
-            'proceso_id' => $data['proceso_id'],
-            'brigada_id' => $data['brigada_id'],
-            'intervalo' => $data['intervalo'],
-            'sync_status' => $data['sync_status']
-        ]);
-        
-        // ✅ GUARDAR DATOS ORIGINALES LIMPIOS
-        $originalData = $data;
-        
-        $this->offlineService->storeAgendaOffline($data, true);
-        $this->offlineService->storePendingChange('post', '/agendas', $originalData);
+        // ✅ NUEVO: RESOLVER usuario_medico_uuid A ID
+        if (!empty($validated['usuario_medico_uuid'])) {
+            $usuarioMedico = \App\Models\Usuario::where('uuid', $validated['usuario_medico_uuid'])->first();
+            $validated['usuario_medico_id'] = $usuarioMedico ? $usuarioMedico->id : null;
+            unset($validated['usuario_medico_uuid']); // ✅ REMOVER UUID DESPUÉS DE RESOLVER
+            
+            Log::info('✅ Usuario médico resuelto por UUID', [
+                'uuid' => $request->input('usuario_medico_uuid'),
+                'resolved_id' => $validated['usuario_medico_id']
+            ]);
+        }
 
-        return [
+        // Validar que no exista conflicto de horarios
+        $conflicto = Agenda::where('sede_id', $validated['sede_id'])
+            ->where('consultorio', $validated['consultorio'])
+            ->where('fecha', $validated['fecha'])
+            ->where('estado', 'ACTIVO')
+            ->where(function ($query) use ($validated) {
+                $query->whereBetween('hora_inicio', [$validated['hora_inicio'], $validated['hora_fin']])
+                      ->orWhereBetween('hora_fin', [$validated['hora_inicio'], $validated['hora_fin']])
+                      ->orWhere(function ($q) use ($validated) {
+                          $q->where('hora_inicio', '<=', $validated['hora_inicio'])
+                            ->where('hora_fin', '>=', $validated['hora_fin']);
+                      });
+            })
+            ->exists();
+
+        if ($conflicto) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ya existe una agenda activa en ese horario y consultorio'
+            ], 422);
+        }
+
+        // ✅ LOG ANTES DE CREAR
+        Log::info('📝 Creando agenda con datos', [
+            'validated_data' => $validated,
+            'usuario_medico_id_final' => $validated['usuario_medico_id'] ?? 'null'
+        ]);
+
+        $agenda = Agenda::create($validated);
+        $agenda->load(['sede', 'proceso', 'usuario', 'brigada', 'usuarioMedico']); // ✅ CARGAR RELACIÓN
+
+        // ✅ LOG DESPUÉS DE CREAR
+        Log::info('✅ Agenda creada', [
+            'id' => $agenda->id,
+            'uuid' => $agenda->uuid,
+            'usuario_medico_id_saved' => $agenda->usuario_medico_id,
+            'usuario_medico_loaded' => $agenda->usuarioMedico ? $agenda->usuarioMedico->nombre_completo : 'null'
+        ]);
+
+        return response()->json([
             'success' => true,
-            'data' => $data,
-            'message' => 'Agenda creada (se sincronizará cuando vuelva la conexión)',
-            'offline' => true
-        ];
+            'data' => $agenda,
+            'message' => 'Agenda creada exitosamente'
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::error('❌ Error de validación en agenda', [
+            'errors' => $e->errors(),
+            'input' => $request->all()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Datos de validación incorrectos',
+            'errors' => $e->errors()
+        ], 422);
 
     } catch (\Exception $e) {
-        Log::error('💥 Error crítico en AgendaService::store', [
+        Log::error('💥 Error crítico creando agenda', [
             'error' => $e->getMessage(),
-            'data' => $data ?? [],
+            'input' => $request->all(),
             'trace' => $e->getTraceAsString()
         ]);
-        
-        return [
+
+        return response()->json([
             'success' => false,
-            'error' => 'Error interno: ' . $e->getMessage()
-        ];
+            'message' => 'Error interno del servidor'
+        ], 500);
     }
 }
+
 
 // ✅ NUEVO MÉTODO PARA VALIDAR Y LIMPIAR DATOS
 private function validateAndCleanAgendaData(array $data): array
 {
     Log::info('🧹 Limpiando datos de agenda', [
         'original_proceso_id' => $data['proceso_id'] ?? 'null',
-        'original_brigada_id' => $data['brigada_id'] ?? 'null'
+        'original_brigada_id' => $data['brigada_id'] ?? 'null',
+        'original_usuario_medico_uuid' => $data['usuario_medico_uuid'] ?? 'null'
     ]);
 
     // ✅ LIMPIAR proceso_id - ACEPTA ENTEROS Y UUIDs
@@ -272,14 +292,28 @@ private function validateAndCleanAgendaData(array $data): array
         $data['brigada_id'] = null;
     }
 
+   
+    // ✅ CAMBIAR: LIMPIAR usuario_medico_uuid EN LUGAR DE usuario_medico_id
+    if (isset($data['usuario_medico_uuid']) && $data['usuario_medico_uuid'] !== null && $data['usuario_medico_uuid'] !== '') {
+        if (is_string($data['usuario_medico_uuid']) && $this->isValidUuid($data['usuario_medico_uuid'])) {
+            Log::info('✅ usuario_medico_uuid válido (UUID)', ['usuario_medico_uuid' => $data['usuario_medico_uuid']]);
+            // Mantener como string UUID
+        } else {
+            Log::warning('⚠️ usuario_medico_uuid inválido, limpiando', ['usuario_medico_uuid' => $data['usuario_medico_uuid']]);
+            $data['usuario_medico_uuid'] = null;
+        }
+    } else {
+        $data['usuario_medico_uuid'] = null;
+    }
+
     Log::info('✅ Datos limpiados', [
         'clean_proceso_id' => $data['proceso_id'],
-        'clean_brigada_id' => $data['brigada_id']
+        'clean_brigada_id' => $data['brigada_id'],
+        'clean_usuario_medico_uuid' => $data['usuario_medico_uuid'] 
     ]);
 
     return $data;
 }
-
 private function isValidUuid(string $uuid): bool
 {
     // ✅ PATRÓN MÁS FLEXIBLE - No requiere versión 4 específica
@@ -369,6 +403,15 @@ private function enrichAgendaWithRelations(array $agenda): array
             foreach ($masterData['brigadas'] as $brigada) {
                 if ($brigada['id'] == $agenda['brigada_id'] || $brigada['uuid'] == $agenda['brigada_id']) {
                     $agenda['brigada'] = $brigada;
+                    break;
+                }
+            }
+        }
+          // ✅ NUEVO: ENRIQUECER USUARIO MÉDICO
+        if (!empty($agenda['usuario_medico_id']) && isset($masterData['usuarios_con_especialidad'])) {
+            foreach ($masterData['usuarios_con_especialidad'] as $usuario) {
+                if ($usuario['id'] == $agenda['usuario_medico_id'] || $usuario['uuid'] == $agenda['usuario_medico_id']) {
+                    $agenda['usuario_medico'] = $usuario;
                     break;
                 }
             }

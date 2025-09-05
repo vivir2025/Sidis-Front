@@ -73,6 +73,57 @@
                                 @enderror
                             </div>
 
+                            {{-- ✅ USUARIO MÉDICO - NUEVO CAMPO --}}
+<div class="col-md-6">
+    <label for="usuario_medico_id" class="form-label">
+        <i class="fas fa-user-md me-1"></i>Usuario Médico
+    </label>
+    <select class="form-select @error('usuario_medico_id') is-invalid @enderror" 
+            id="usuario_medico_id" name="usuario_medico_id">
+        <option value="">Seleccionar usuario médico (opcional)</option>
+        @if(isset($masterData['usuarios_con_especialidad']) && is_array($masterData['usuarios_con_especialidad']))
+            @foreach($masterData['usuarios_con_especialidad'] as $usuario)
+                @php
+                    $usuarioValue = $usuario['id'] ?? $usuario['uuid'] ?? '';
+                @endphp
+                
+                @if(!empty($usuarioValue))
+                    <option value="{{ $usuarioValue }}" 
+                            data-id="{{ $usuario['id'] ?? '' }}"
+                            data-uuid="{{ $usuario['uuid'] ?? '' }}"
+                            data-especialidad-id="{{ $usuario['especialidad']['id'] ?? '' }}"
+                            data-especialidad-nombre="{{ $usuario['especialidad']['nombre'] ?? '' }}"
+                            {{ old('usuario_medico_id') == $usuarioValue ? 'selected' : '' }}>
+                        {{ $usuario['nombre_completo'] ?? 'Usuario sin nombre' }}
+                        @if(isset($usuario['documento']) && !empty($usuario['documento']))
+                            ({{ $usuario['documento'] }})
+                        @endif
+                    </option>
+                @endif
+            @endforeach
+        @endif
+    </select>
+    @error('usuario_medico_id')
+        <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+    <div class="form-text">Campo opcional - Seleccione el médico responsable</div>
+</div>
+
+{{-- ✅ ESPECIALIDAD (SOLO LECTURA) - NUEVO CAMPO --}}
+<div class="col-md-6">
+    <label for="especialidad_display" class="form-label">
+        <i class="fas fa-stethoscope me-1"></i>Especialidad
+    </label>
+    <input type="text" 
+           class="form-control bg-light" 
+           id="especialidad_display" 
+           name="especialidad_display" 
+           value="" 
+           placeholder="Se mostrará según el usuario seleccionado"
+           readonly>
+    <div class="form-text">Se actualiza automáticamente según el usuario médico seleccionado</div>
+</div>
+
                             <!-- Consultorio -->
                             <div class="col-md-6">
                                 <label for="consultorio" class="form-label">
@@ -505,6 +556,114 @@ document.addEventListener('DOMContentLoaded', function() {
     // Calcular información inicial si hay valores
     calcularInformacion();
 });
+
+const usuarioMedicoSelect = document.getElementById('usuario_medico_id');
+const especialidadDisplay = document.getElementById('especialidad_display');
+
+if (usuarioMedicoSelect && especialidadDisplay) {
+    usuarioMedicoSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (selectedOption.value && selectedOption.dataset.especialidadNombre) {
+            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
+            
+            // Mostrar información adicional
+            showAlert('info', `Especialidad seleccionada: ${selectedOption.dataset.especialidadNombre}`);
+        } else {
+            especialidadDisplay.value = '';
+        }
+    });
+    
+    // Validación del usuario médico
+    usuarioMedicoSelect.addEventListener('change', function() {
+        const value = this.value;
+        if (!isValidSelection(value)) {
+            console.warn('Usuario médico inválido seleccionado:', value);
+            this.value = '';
+            especialidadDisplay.value = '';
+            showAlert('warning', 'Selección de usuario médico inválida');
+        }
+    });
+}
+
+// ✅ INICIALIZAR ESPECIALIDAD SI HAY VALOR PREVIO
+document.addEventListener('DOMContentLoaded', function() {
+    if (usuarioMedicoSelect && usuarioMedicoSelect.value) {
+        const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
+        if (selectedOption.dataset.especialidadNombre) {
+            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
+        }
+    }
+});
+function filterUsuariosBySede() {
+    const currentUser = @json($usuario ?? []);
+    const currentSedeId = currentUser.sede_id;
+    
+    if (usuarioMedicoSelect && currentSedeId) {
+        const options = usuarioMedicoSelect.querySelectorAll('option[data-sede-id]');
+        options.forEach(option => {
+            const optionSedeId = option.dataset.sedeId;
+            if (optionSedeId && optionSedeId != currentSedeId) {
+                option.style.display = 'none';
+            }
+        });
+    }
+}
+
+// ✅ VALIDACIÓN MEJORADA PARA USUARIO MÉDICO
+if (usuarioMedicoSelect) {
+    usuarioMedicoSelect.addEventListener('change', function() {
+        const value = this.value;
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (value && !isValidSelection(value)) {
+            console.warn('Usuario médico inválido seleccionado:', value);
+            this.value = '';
+            especialidadDisplay.value = '';
+            showAlert('warning', 'Selección de usuario médico inválida');
+            return;
+        }
+        
+        // Actualizar especialidad
+        if (selectedOption.dataset.especialidadNombre) {
+            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
+            
+            // Log para debug
+            console.log('Usuario médico seleccionado:', {
+                id: selectedOption.dataset.id,
+                uuid: selectedOption.dataset.uuid,
+                nombre: selectedOption.text,
+                especialidad: selectedOption.dataset.especialidadNombre
+            });
+        } else {
+            especialidadDisplay.value = '';
+        }
+    });
+}
+
+// ✅ INICIALIZAR AL CARGAR LA PÁGINA
+document.addEventListener('DOMContentLoaded', function() {
+    // Filtrar usuarios por sede si es necesario
+    // filterUsuariosBySede(); // Descomenta si quieres filtrar por sede
+    
+    // Inicializar especialidad si hay valor previo
+    if (usuarioMedicoSelect && usuarioMedicoSelect.value) {
+        const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
+        if (selectedOption.dataset.especialidadNombre) {
+            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
+        }
+    }
+});
+
+// ✅ FUNCIÓN PARA LIMPIAR SELECCIÓN
+function limpiarUsuarioMedico() {
+    if (usuarioMedicoSelect) {
+        usuarioMedicoSelect.value = '';
+    }
+    if (especialidadDisplay) {
+        especialidadDisplay.value = '';
+    }
+}
 </script>
 @endpush
 @endsection

@@ -89,7 +89,8 @@ class AgendaController extends Controller
         Log::info('🔍 AgendaController@store - Datos RAW recibidos', [
             'all_data' => $request->all(),
             'proceso_id_raw' => $request->input('proceso_id'),
-            'brigada_id_raw' => $request->input('brigada_id')
+            'brigada_id_raw' => $request->input('brigada_id'),
+            'usuario_medico_id_raw' => $request->input('usuario_medico_id')
         ]);
 
         // ✅ VALIDACIÓN BÁSICA
@@ -99,10 +100,11 @@ class AgendaController extends Controller
             'consultorio' => 'required|string|max:50',
             'hora_inicio' => 'required|date_format:H:i',
             'hora_fin' => 'required|date_format:H:i|after:hora_inicio',
-             'intervalo' => 'required|string|in:15,20,30,45,60', // ✅ CAMBIAR A INTEGER
+            'intervalo' => 'required|string|in:15,20,30,45,60', 
             'etiqueta' => 'required|string|max:50',
             'proceso_id' => 'nullable|string|max:100',
             'brigada_id' => 'nullable|string|max:100',
+            'usuario_medico_id' => 'nullable|string|max:100',
         ]);
 
         // ✅ PROCESAR IDs CORRECTAMENTE
@@ -133,6 +135,14 @@ class AgendaController extends Controller
         } else {
             $validatedData['brigada_id'] = null;
         }
+
+         if (!empty($validatedData['usuario_medico_id']) && $validatedData['usuario_medico_id'] !== '') {
+    $resolvedUsuarioMedicoUuid = $this->resolveUsuarioMedicoId($validatedData['usuario_medico_id'], $masterData);
+    $validatedData['usuario_medico_uuid'] = $resolvedUsuarioMedicoUuid; 
+    unset($validatedData['usuario_medico_id']); 
+} else {
+    $validatedData['usuario_medico_uuid'] = null; 
+}
 
         // ✅ ASEGURAR TIPOS CORRECTOS
         $validatedData['intervalo'] = (string) $validatedData['intervalo'];
@@ -180,6 +190,55 @@ class AgendaController extends Controller
         return back()->with('error', 'Error interno del servidor')->withInput();
     }
 }
+
+private function resolveUsuarioMedicoId($usuarioValue, array $masterData): mixed
+{
+    if (empty($usuarioValue) || $usuarioValue === 'null' || $usuarioValue === '') {
+        return null;
+    }
+
+    Log::info('🔍 Resolviendo usuario_medico_id', [
+        'input_value' => $usuarioValue,
+        'input_type' => gettype($usuarioValue),
+        'has_usuarios' => isset($masterData['usuarios_con_especialidad']),
+        'usuarios_count' => isset($masterData['usuarios_con_especialidad']) ? count($masterData['usuarios_con_especialidad']) : 0
+    ]);
+
+    // Si no hay usuarios en datos maestros, devolver null
+    if (!isset($masterData['usuarios_con_especialidad']) || empty($masterData['usuarios_con_especialidad'])) {
+        Log::warning('⚠️ No hay usuarios con especialidad en datos maestros');
+        return null;
+    }
+
+    // Buscar en datos maestros
+    foreach ($masterData['usuarios_con_especialidad'] as $usuario) {
+        // ✅ CAMBIO: Buscar por ID y devolver UUID
+        if (isset($usuario['id']) && (string)$usuario['id'] === (string)$usuarioValue) {
+            if (isset($usuario['uuid']) && !empty($usuario['uuid'])) {
+                Log::info('✅ Usuario médico encontrado por ID, devolviendo UUID', [
+                    'id' => $usuarioValue,
+                    'uuid_resuelto' => $usuario['uuid']
+                ]);
+                return $usuario['uuid']; // ✅ DEVOLVER UUID EN LUGAR DE ID
+            }
+        }
+        
+        // Coincidencia por UUID (mantener)
+        if (isset($usuario['uuid']) && $usuario['uuid'] === $usuarioValue) {
+            Log::info('✅ Usuario médico encontrado por UUID', [
+                'uuid' => $usuarioValue
+            ]);
+            return $usuario['uuid'];
+        }
+    }
+
+    Log::warning('⚠️ usuario_medico_id no encontrado en datos maestros', [
+        'usuario_value' => $usuarioValue
+    ]);
+
+    return null;
+}
+
 
     // ✅ NUEVO: Resolver proceso_id desde datos maestros
    private function resolveProcesoId($procesoValue, array $masterData): mixed
