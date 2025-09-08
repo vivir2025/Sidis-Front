@@ -36,16 +36,16 @@ return [
             'bulk_sync' => '/agendas/sync',
         ],
 
-         'citas' => [
+        'citas' => [
             'index' => '/citas',
             'store' => '/citas',
             'show' => '/citas/{uuid}',
             'update' => '/citas/{uuid}',
             'destroy' => '/citas/{uuid}',
             'del_dia' => '/citas/del-dia',
-            'por_agenda' => '/citas/agenda/{agenda_uuid}',
             'cambiar_estado' => '/citas/{uuid}/estado',
-            'bulk_sync' => '/citas/sync',
+            'por_agenda' => '/citas/agenda/{agenda_uuid}',
+            'horarios_disponibles' => '/citas/agenda/{agenda_uuid}/horarios'
         ],
     ],
     

@@ -1,0 +1,407 @@
+{{-- resources/views/citas/show.blade.php --}}
+@extends('layouts.app')
+
+@section('title', 'Detalle de Cita - SIDIS')
+
+@section('content')
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-calendar-check text-primary me-2"></i>
+                        Detalle de Cita
+                    </h1>
+                    <p class="text-muted mb-0">Información completa de la cita médica</p>
+                </div>
+                
+                <div>
+                    <a href="{{ route('citas.edit', $cita['uuid']) }}" class="btn btn-warning me-2">
+                        <i class="fas fa-edit"></i> Editar
+                    </a>
+                    <a href="{{ route('citas.index') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Volver
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Información Principal -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Información de la Cita
+                    </h5>
+                    <span class="badge bg-{{ $cita['estado'] === 'PROGRAMADA' ? 'primary' : ($cita['estado'] === 'ATENDIDA' ? 'success' : ($cita['estado'] === 'CANCELADA' ? 'danger' : 'warning')) }} fs-6">
+                        {{ ucfirst(str_replace('_', ' ', strtolower($cita['estado'] ?? 'PROGRAMADA'))) }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4">
+                        <!-- Información del Paciente -->
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-user me-2"></i>Paciente
+                            </h6>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Nombre Completo:</label>
+                                <p class="mb-1">{{ $cita['paciente']['nombre_completo'] ?? 'No disponible' }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Documento:</label>
+                                <p class="mb-1">{{ $cita['paciente']['documento'] ?? 'No disponible' }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Teléfono:</label>
+                                <p class="mb-1">{{ $cita['paciente']['telefono'] ?? 'No registrado' }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Información de la Agenda -->
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-calendar-alt me-2"></i>Agenda
+                            </h6>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Consultorio:</label>
+                                <p class="mb-1">{{ $cita['agenda']['consultorio'] ?? 'No disponible' }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Modalidad:</label>
+                                <p class="mb-1">
+                                    <span class="badge bg-{{ ($cita['agenda']['modalidad'] ?? '') === 'Telemedicina' ? 'info' : 'secondary' }}">
+                                        {{ $cita['agenda']['modalidad'] ?? 'No disponible' }}
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Etiqueta:</label>
+                                <p class="mb-1">{{ $cita['agenda']['etiqueta'] ?? 'No disponible' }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Información de Fechas y Horarios -->
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-clock me-2"></i>Horarios
+                            </h6>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Fecha:</label>
+                                <p class="mb-1">{{ \Carbon\Carbon::parse($cita['fecha'])->format('d/m/Y') }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Hora Inicio:</label>
+                                <p class="mb-1">{{ \Carbon\Carbon::parse($cita['fecha_inicio'])->format('H:i') }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Hora Fin:</label>
+                                <p class="mb-1">{{ \Carbon\Carbon::parse($cita['fecha_final'])->format('H:i') }}</p>
+                            </div>
+                            @if(!empty($cita['fecha_deseada']))
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Fecha Deseada:</label>
+                                <p class="mb-1">{{ \Carbon\Carbon::parse($cita['fecha_deseada'])->format('d/m/Y') }}</p>
+                            </div>
+                            @endif
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-clipboard-list me-2"></i>Detalles Médicos
+                            </h6>
+                            @if(!empty($cita['motivo']))
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Motivo:</label>
+                                <p class="mb-1">{{ $cita['motivo'] }}</p>
+                            </div>
+                            @endif
+                            @if(!empty($cita['patologia']))
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Patología:</label>
+                                <p class="mb-1">{{ $cita['patologia'] }}</p>
+                            </div>
+                            @endif
+                            @if(!empty($cita['cups_contratado_id']))
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">CUPS Contratado:</label>
+                                <p class="mb-1">{{ $cita['cups_contratado_id'] }}</p>
+                            </div>
+                            @endif
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-info me-2"></i>Información Adicional
+                            </h6>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Estado:</label>
+                                <p class="mb-1">
+                                    <span class="badge bg-{{ $cita['estado'] === 'PROGRAMADA' ? 'primary' : ($cita['estado'] === 'ATENDIDA' ? 'success' : ($cita['estado'] === 'CANCELADA' ? 'danger' : 'warning')) }}">
+                                        {{ ucfirst(str_replace('_', ' ', strtolower($cita['estado'] ?? 'PROGRAMADA'))) }}
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Creado por:</label>
+                                <p class="mb-1">{{ $cita['usuario_creador']['nombre_completo'] ?? 'Usuario del sistema' }}</p>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Sede:</label>
+                                <p class="mb-1">{{ $cita['sede']['nombre'] ?? 'Sede principal' }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if(!empty($cita['nota']))
+                    <hr>
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-sticky-note me-2"></i>Notas
+                            </h6>
+                            <div class="alert alert-light">
+                                {{ $cita['nota'] }}
+                            </div>
+                        </div>
+                    </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Acciones -->
+        <div class="col-lg-4">
+            <!-- Cambiar Estado -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-exchange-alt me-2"></i>Cambiar Estado
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        @if($cita['estado'] === 'PROGRAMADA')
+                            <button type="button" class="btn btn-info" onclick="cambiarEstado('EN_ATENCION')">
+                                <i class="fas fa-play"></i> Iniciar Atención
+                            </button>
+                            <button type="button" class="btn btn-success" onclick="cambiarEstado('ATENDIDA')">
+                                <i class="fas fa-check"></i> Marcar como Atendida
+                            </button>
+                            <button type="button" class="btn btn-warning" onclick="cambiarEstado('NO_ASISTIO')">
+                                <i class="fas fa-user-times"></i> No Asistió
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="cambiarEstado('CANCELADA')">
+                                <i class="fas fa-times"></i> Cancelar Cita
+                            </button>
+                        @elseif($cita['estado'] === 'EN_ATENCION')
+                            <button type="button" class="btn btn-success" onclick="cambiarEstado('ATENDIDA')">
+                                <i class="fas fa-check"></i> Finalizar Atención
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="cambiarEstado('PROGRAMADA')">
+                                <i class="fas fa-undo"></i> Volver a Programada
+                            </button>
+                        @elseif($cita['estado'] === 'ATENDIDA')
+                            <div class="alert alert-success mb-0">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Cita completada exitosamente
+                            </div>
+                        @elseif($cita['estado'] === 'CANCELADA')
+                            <button type="button" class="btn btn-primary" onclick="cambiarEstado('PROGRAMADA')">
+                                <i class="fas fa-undo"></i> Reactivar Cita
+                            </button>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <!-- Información del Sistema -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-cog me-2"></i>Información del Sistema
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">UUID:</label>
+                        <p class="mb-1 font-monospace small">{{ $cita['uuid'] }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Creado:</label>
+                        <p class="mb-1">{{ \Carbon\Carbon::parse($cita['created_at'])->format('d/m/Y H:i') }}</p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Actualizado:</label>
+                        <p class="mb-1">{{ \Carbon\Carbon::parse($cita['updated_at'])->format('d/m/Y H:i') }}</p>
+                    </div>
+                    @if($isOffline)
+                    <div class="alert alert-warning small mb-0">
+                        <i class="fas fa-wifi-slash me-1"></i>
+                        Trabajando en modo offline
+                    </div>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Acciones Adicionales -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-tools me-2"></i>Acciones
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ route('citas.edit', $cita['uuid']) }}" class="btn btn-warning">
+                            <i class="fas fa-edit"></i> Editar Cita
+                        </a>
+                        <button type="button" class="btn btn-danger" onclick="eliminarCita()">
+                            <i class="fas fa-trash"></i> Eliminar Cita
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="imprimirCita()">
+                            <i class="fas fa-print"></i> Imprimir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+// ✅ CAMBIAR ESTADO DE CITA
+async function cambiarEstado(nuevoEstado) {
+    try {
+        const result = await Swal.fire({
+            title: '¿Confirmar cambio de estado?',
+            text: `¿Está seguro de cambiar el estado a "${nuevoEstado.replace('_', ' ')}"?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, cambiar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (result.isConfirmed) {
+            const response = await fetch(`/citas/{{ $cita['uuid'] }}/estado`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    estado: nuevoEstado
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                Swal.fire({
+                    title: '¡Éxito!',
+                    text: data.message || 'Estado cambiado exitosamente',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                throw new Error(data.error || 'Error desconocido');
+            }
+        }
+    } catch (error) {
+        console.error('Error cambiando estado:', error);
+        Swal.fire({
+            title: 'Error',
+            text: 'Error cambiando estado: ' + error.message,
+            icon: 'error'
+        });
+    }
+}
+
+// ✅ ELIMINAR CITA
+async function eliminarCita() {
+    try {
+        const result = await Swal.fire({
+            title: '¿Eliminar cita?',
+            text: 'Esta acción no se puede deshacer',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (result.isConfirmed) {
+            const response = await fetch(`/citas/{{ $cita['uuid'] }}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                Swal.fire({
+                    title: '¡Eliminada!',
+                    text: data.message || 'Cita eliminada exitosamente',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.href = '{{ route("citas.index") }}';
+                });
+            } else {
+                throw new Error(data.error || 'Error desconocido');
+            }
+        }
+    } catch (error) {
+        console.error('Error eliminando cita:', error);
+        Swal.fire({
+            title: 'Error',
+            text: 'Error eliminando cita: ' + error.message,
+            icon: 'error'
+        });
+    }
+}
+
+// ✅ IMPRIMIR CITA
+function imprimirCita() {
+    window.print();
+}
+</script>
+
+<style>
+@media print {
+    .btn, .card-header, nav, .navbar {
+        display: none !important;
+    }
+    
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    
+    .container-fluid {
+        padding: 0 !important;
+    }
+}
+</style>
+@endpush
+@endsection

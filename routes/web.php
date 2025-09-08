@@ -108,6 +108,9 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::post('/', [CitaController::class, 'store'])->name('store');
         Route::get('/del-dia', [CitaController::class, 'citasDelDia'])->name('del-dia');
         Route::get('/buscar-paciente', [CitaController::class, 'buscarPaciente'])->name('buscar-paciente');
+        // ✅ NUEVAS RUTAS PARA HORARIOS
+        Route::get('/agenda/{agenda}/horarios', [CitaController::class, 'getHorariosDisponibles'])->name('citas.horarios-disponibles');
+        Route::get('/agenda/{agenda}/details', [CitaController::class, 'getAgendaDetails'])->name('citas.agenda-details');
         Route::get('/{uuid}', [CitaController::class, 'show'])->name('show');
         Route::get('/{uuid}/edit', [CitaController::class, 'edit'])->name('edit');
         Route::put('/{uuid}', [CitaController::class, 'update'])->name('update');

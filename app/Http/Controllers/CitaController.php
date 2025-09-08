@@ -169,7 +169,6 @@ class CitaController extends Controller
         }
     }
 
-
     public function edit(string $uuid)
     {
         try {
@@ -333,5 +332,157 @@ class CitaController extends Controller
             ], 500);
         }
     }
-}
 
+    // ✅ NUEVO: Obtener horarios disponibles de una agenda
+    public function getHorariosDisponibles(Request $request, string $agendaUuid)
+    {
+        try {
+            $fecha = $request->get('fecha');
+            
+            $result = $this->citaService->getHorariosDisponibles($agendaUuid, $fecha);
+            
+            return response()->json($result);
+            
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo horarios disponibles', [
+                'agenda_uuid' => $agendaUuid,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    // ✅ NUEVO: Obtener detalles de agenda
+    public function getAgendaDetails(string $agendaUuid)
+    {
+        try {
+            $result = $this->agendaService->show($agendaUuid);
+            
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Agenda no encontrada'
+                ]);
+            }
+
+            $agenda = $result['data'];
+            
+            // Calcular cupos y horarios
+            $horarios = $this->calcularHorariosDisponibles($agenda);
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'agenda' => $agenda,
+                    'horarios_disponibles' => $horarios
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo detalles de agenda', [
+                'agenda_uuid' => $agendaUuid,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    // ✅ NUEVO: Calcular horarios disponibles
+    private function calcularHorariosDisponibles(array $agenda): array
+    {
+        try {
+            $horarios = [];
+            
+            $fecha = $agenda['fecha'];
+            $horaInicio = $agenda['hora_inicio'];
+            $horaFin = $agenda['hora_fin'];
+            $intervalo = (int) ($agenda['intervalo'] ?? 15);
+            
+            // Obtener citas existentes para esta agenda
+            $citasExistentes = $this->obtenerCitasExistentes($agenda['uuid'], $fecha);
+            $horariosOcupados = array_map(function($cita) {
+                return date('H:i', strtotime($cita['fecha_inicio']));
+            }, $citasExistentes);
+            
+            // Generar todos los horarios posibles
+            $inicio = \Carbon\Carbon::createFromFormat('H:i', $horaInicio);
+            $fin = \Carbon\Carbon::createFromFormat('H:i', $horaFin);
+            
+            while ($inicio->lt($fin)) {
+                $horarioStr = $inicio->format('H:i');
+                $finHorario = $inicio->copy()->addMinutes($intervalo);
+                
+                // Verificar si el horario está disponible
+                $disponible = !in_array($horarioStr, $horariosOcupados);
+                
+                $horarios[] = [
+                    'hora_inicio' => $horarioStr,
+                    'hora_fin' => $finHorario->format('H:i'),
+                    'fecha_inicio' => $fecha . 'T' . $horarioStr,
+                    'fecha_final' => $fecha . 'T' . $finHorario->format('H:i'),
+                    'disponible' => $disponible,
+                    'ocupado_por' => $disponible ? null : $this->obtenerPacienteEnHorario($citasExistentes, $horarioStr)
+                ];
+                
+                $inicio->addMinutes($intervalo);
+            }
+            
+            return $horarios;
+            
+        } catch (\Exception $e) {
+            Log::error('Error calculando horarios disponibles', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return [];
+        }
+    }
+
+    // ✅ NUEVO: Obtener citas existentes
+    private function obtenerCitasExistentes(string $agendaUuid, string $fecha): array
+    {
+        try {
+            $user = $this->authService->usuario();
+            
+            $filters = [
+                'agenda_uuid' => $agendaUuid,
+                'fecha' => $fecha
+            ];
+            
+            $citas = $this->offlineService->getCitasOffline($user['sede_id'], $filters);
+            
+            // Filtrar solo citas no canceladas
+            return array_filter($citas, function($cita) {
+                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            });
+            
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo citas existentes', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return [];
+        }
+    }
+
+    // ✅ NUEVO: Obtener paciente en horario específico
+    private function obtenerPacienteEnHorario(array $citas, string $hora): ?string
+    {
+        foreach ($citas as $cita) {
+            $horaCita = date('H:i', strtotime($cita['fecha_inicio']));
+            if ($horaCita === $hora) {
+                return $cita['paciente']['nombre_completo'] ?? 'Paciente no identificado';
+            }
+        }
+        
+        return null;
+    }
+}

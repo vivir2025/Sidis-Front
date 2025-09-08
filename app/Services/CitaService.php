@@ -547,4 +547,127 @@ class CitaService
             ];
         }
     }
+
+  /**
+ * ✅ NUEVO: Obtener horarios disponibles de una agenda
+ */
+public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null): array
+{
+    try {
+        $fecha = $fecha ?: now()->format('Y-m-d');
+        
+        // Obtener agenda
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if (!$agenda) {
+            return [
+                'success' => false,
+                'error' => 'Agenda no encontrada'
+            ];
+        }
+        
+        // Si la fecha solicitada es diferente a la fecha de la agenda, retornar vacío
+        if ($agenda['fecha'] !== $fecha) {
+            return [
+                'success' => true,
+                'data' => [],
+                'message' => 'No hay horarios disponibles para esta fecha'
+            ];
+        }
+        
+        $horarios = $this->calcularHorariosDisponibles($agenda, $fecha);
+        
+        return [
+            'success' => true,
+            'data' => $horarios,
+            'agenda' => $agenda
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo horarios disponibles', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha,
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno'
+        ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Calcular horarios disponibles
+ */
+private function calcularHorariosDisponibles(array $agenda, string $fecha): array
+{
+    try {
+        $horarios = [];
+        
+        $horaInicio = $agenda['hora_inicio'];
+        $horaFin = $agenda['hora_fin'];
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        // Obtener citas existentes
+        $user = $this->authService->usuario();
+        $citasExistentes = $this->offlineService->getCitasOffline($user['sede_id'], [
+            'agenda_uuid' => $agenda['uuid'],
+            'fecha' => $fecha
+        ]);
+        
+        // Filtrar solo citas no canceladas
+        $citasActivas = array_filter($citasExistentes, function($cita) {
+            return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+        });
+        
+        // Crear array de horarios ocupados
+        $horariosOcupados = [];
+        foreach ($citasActivas as $cita) {
+            $horaCita = date('H:i', strtotime($cita['fecha_inicio']));
+            $horariosOcupados[$horaCita] = $cita;
+        }
+        
+        // Generar horarios disponibles
+        $inicio = \Carbon\Carbon::createFromFormat('H:i', $horaInicio);
+        $fin = \Carbon\Carbon::createFromFormat('H:i', $horaFin);
+        
+        while ($inicio->lt($fin)) {
+            $horarioStr = $inicio->format('H:i');
+            $finHorario = $inicio->copy()->addMinutes($intervalo);
+            
+            $disponible = !isset($horariosOcupados[$horarioStr]);
+            
+            $horario = [
+                'hora_inicio' => $horarioStr,
+                'hora_fin' => $finHorario->format('H:i'),
+                'fecha_inicio' => $fecha . 'T' . $horarioStr . ':00',
+                'fecha_final' => $fecha . 'T' . $finHorario->format('H:i') . ':00',
+                'disponible' => $disponible,
+                'intervalo' => $intervalo
+            ];
+            
+            if (!$disponible && isset($horariosOcupados[$horarioStr])) {
+                $cita = $horariosOcupados[$horarioStr];
+                $horario['ocupado_por'] = [
+                    'cita_uuid' => $cita['uuid'],
+                    'paciente' => $cita['paciente']['nombre_completo'] ?? 'Paciente no identificado',
+                    'estado' => $cita['estado']
+                ];
+            }
+            
+            $horarios[] = $horario;
+            $inicio->addMinutes($intervalo);
+        }
+        
+        return $horarios;
+        
+    } catch (\Exception $e) {
+        Log::error('Error calculando horarios disponibles', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
 }
