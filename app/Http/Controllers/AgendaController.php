@@ -22,48 +22,80 @@ class AgendaController extends Controller
         $this->offlineService = $offlineService;
     }
 
-    public function index(Request $request)
-    {
-        try {
-            $filters = $request->only([
-                'fecha_desde', 'fecha_hasta', 'estado', 'modalidad', 'consultorio'
+ public function index(Request $request)
+{
+    try {
+        $filters = $request->only([
+            'fecha_desde', 'fecha_hasta', 'estado', 'modalidad', 'consultorio'
+        ]);
+        
+        $page = (int) $request->get('page', 1);
+        $perPage = (int) $request->get('per_page', 15); // ✅ PERMITIR CAMBIAR TAMAÑO
+        
+        // ✅ VALIDAR LÍMITES
+        $perPage = max(5, min(100, $perPage)); // Entre 5 y 100
+        $page = max(1, $page); // Mínimo página 1
+        
+        Log::info('AgendaController@index', [
+            'filters' => $filters,
+            'page' => $page,
+            'per_page' => $perPage,
+            'is_ajax' => $request->ajax()
+        ]);
+
+        $result = $this->agendaService->index($filters, $page, $perPage);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => $result['success'],
+                'data' => $result['data'] ?? [],
+                'meta' => $result['meta'] ?? null,
+                'pagination' => $result['pagination'] ?? null,
+                'current_page' => $result['current_page'] ?? $page,
+                'total_pages' => $result['total_pages'] ?? 1,
+                'total_items' => $result['total_items'] ?? 0,
+                'per_page' => $result['per_page'] ?? $perPage,
+                'has_more_pages' => $result['has_more_pages'] ?? false,
+                'from' => $result['meta']['from'] ?? null,
+                'to' => $result['meta']['to'] ?? null,
+                'message' => $result['message'] ?? '',
+                'offline' => $result['offline'] ?? false
             ]);
-            
-            $page = $request->get('page', 1);
-            
-            Log::info('AgendaController@index', [
-                'filters' => $filters,
-                'page' => $page,
-                'is_ajax' => $request->ajax()
-            ]);
-
-            $result = $this->agendaService->index($filters, $page);
-
-            if ($request->ajax()) {
-                return response()->json($result);
-            }
-
-            $usuario = $this->authService->usuario();
-            $isOffline = $this->authService->isOffline();
-
-            return view('agendas.index', compact('usuario', 'isOffline'));
-            
-        } catch (\Exception $e) {
-            Log::error('Error en AgendaController@index', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Error interno del servidor'
-                ], 500);
-            }
-
-            return back()->with('error', 'Error cargando agendas');
         }
+
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
+
+        return view('agendas.index', compact(
+            'usuario', 
+            'isOffline'
+        ))->with([
+            'initialData' => $result['data'] ?? [],
+            'pagination' => $result['pagination'] ?? null,
+            'currentPage' => $result['current_page'] ?? 1,
+            'totalPages' => $result['total_pages'] ?? 1,
+            'totalItems' => $result['total_items'] ?? 0,
+            'perPage' => $result['per_page'] ?? $perPage
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error en AgendaController@index', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor',
+                'data' => [],
+                'pagination' => null
+            ], 500);
+        }
+
+        return back()->with('error', 'Error cargando agendas');
     }
+}
 
     public function create()
     {
@@ -1028,4 +1060,49 @@ private function getDefaultMasterData(): array
             ], 500);
         }
     }
+
+    /**
+ * ✅ NUEVO: Forzar sincronización completa de agendas
+ */
+public function forceSyncAll(Request $request)
+{
+    try {
+        Log::info('🔄 Forzando sincronización completa de agendas');
+
+        if (!$this->apiService->isOnline()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sin conexión al servidor'
+            ]);
+        }
+
+        $user = $this->authService->usuario();
+        $sedeId = $user['sede_id'];
+
+        // ✅ LIMPIAR ESTADO DE SINCRONIZACIÓN ANTERIOR
+        $this->offlineService->deleteData('full_sync_status.json');
+        
+        // ✅ FORZAR SINCRONIZACIÓN COMPLETA
+        $result = $this->agendaService->forceFullSync($sedeId);
+
+        return response()->json([
+            'success' => $result['success'],
+            'message' => $result['success'] 
+                ? "Sincronización completa exitosa: {$result['total_synced']} agendas" 
+                : 'Error en sincronización: ' . ($result['error'] ?? 'Error desconocido'),
+            'total_synced' => $result['total_synced'] ?? 0,
+            'pages_processed' => $result['pages_processed'] ?? 0
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error forzando sincronización completa', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

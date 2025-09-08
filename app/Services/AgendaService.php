@@ -26,101 +26,754 @@ class AgendaService
     /**
      * ✅ LISTAR AGENDAS
      */
-    public function index(array $filters = [], int $page = 1): array
-    {
-        try {
-            Log::info("📅 AgendaService::index - Iniciando", [
-                'filters' => $filters,
-                'page' => $page
-            ]);
+public function index(array $filters = [], int $page = 1, int $perPage = 15): array
+{
+    try {
+        Log::info("📅 AgendaService::index - Iniciando", [
+            'filters' => $filters,
+            'page' => $page,
+            'per_page' => $perPage,
+            'has_force_all' => isset($filters['force_all'])
+        ]);
 
-            $user = $this->authService->usuario();
-            $sedeId = $user['sede_id'];
+        $user = $this->authService->usuario();
+        $sedeId = $user['sede_id'];
 
-            // Preparar parámetros para API
-            $apiParams = array_merge($filters, [
-                'page' => $page,
-                'sede_id' => $sedeId
-            ]);
+        // ✅ SI VIENE force_all, LIMPIAR TODOS LOS FILTROS
+        if (isset($filters['force_all']) && $filters['force_all'] === 'true') {
+            Log::info('🔄 FORZANDO CARGA DE TODAS LAS AGENDAS');
+            $filters = [];
+        }
 
-            $apiParams = array_filter($apiParams, function($value) {
-                return !empty($value) && $value !== '';
-            });
+        // ✅ NUEVA LÓGICA: SINCRONIZACIÓN COMPLETA AUTOMÁTICA EN PRIMERA CARGA
+        if ($this->apiService->isOnline()) {
+            try {
+                // ✅ VERIFICAR SI ES PRIMERA VEZ O NECESITA SINCRONIZACIÓN COMPLETA
+                $needsFullSync = $this->needsFullSync($sedeId);
+                
+                if ($needsFullSync) {
+                    Log::info('🔄 INICIANDO SINCRONIZACIÓN COMPLETA AUTOMÁTICA DE AGENDAS');
+                    $fullSyncResult = $this->performFullSyncBackground($sedeId, $filters);
+                    
+                    if ($fullSyncResult['success']) {
+                        Log::info('✅ SINCRONIZACIÓN COMPLETA AUTOMÁTICA EXITOSA', [
+                            'total_synced' => $fullSyncResult['total_synced']
+                        ]);
+                        
+                        // ✅ MARCAR COMO SINCRONIZADO
+                        $this->markFullSyncComplete($sedeId);
+                    }
+                }
 
-            // Intentar obtener desde API
-            if ($this->apiService->isOnline()) {
-                try {
-                    $response = $this->apiService->get('/agendas', $apiParams);
+                // ✅ DESPUÉS DE LA SYNC COMPLETA, OBTENER PÁGINA ACTUAL DESDE API
+                $apiParams = array_merge($filters, [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'sede_id' => $sedeId,
+                    'sort_by' => 'fecha',
+                    'sort_order' => 'desc'
+                ]);
 
-                    if ($response['success'] && isset($response['data'])) {
-                        $agendas = $response['data']['data'] ?? $response['data'];
-                        $meta = $response['data']['meta'] ?? $response['meta'] ?? [];
+                // ✅ LIMPIAR PARÁMETROS VACÍOS
+                $apiParams = array_filter($apiParams, function($value, $key) {
+                    if ($key === 'force_all') return false;
+                    return !empty($value) && $value !== '' && $value !== null;
+                }, ARRAY_FILTER_USE_BOTH);
 
-                        // Sincronizar offline
-                        if (!empty($agendas)) {
-                            foreach ($agendas as $agenda) {
-                                $this->offlineService->storeAgendaOffline($agenda, false);
-                            }
-                        }
+                $response = $this->apiService->get('/agendas', $apiParams);
 
-                        return [
-                            'success' => true,
-                            'data' => $agendas,
-                            'meta' => $meta,
-                            'message' => '✅ Agendas actualizadas desde el servidor',
-                            'offline' => false
+                if ($response['success'] && isset($response['data'])) {
+                    $responseData = $response['data'];
+                    
+                    // ✅ MANEJAR ESTRUCTURA DE PAGINACIÓN DE LARAVEL
+                    if (isset($responseData['data'])) {
+                        $agendas = $responseData['data'];
+                        $meta = [
+                            'current_page' => $responseData['current_page'] ?? $page,
+                            'last_page' => $responseData['last_page'] ?? 1,
+                            'per_page' => $responseData['per_page'] ?? $perPage,
+                            'total' => $responseData['total'] ?? count($agendas),
+                            'from' => $responseData['from'] ?? null,
+                            'to' => $responseData['to'] ?? null
+                        ];
+                    } else {
+                        $agendas = $responseData;
+                        $meta = [
+                            'current_page' => $page,
+                            'last_page' => 1,
+                            'per_page' => $perPage,
+                            'total' => count($agendas)
                         ];
                     }
-                } catch (\Exception $e) {
-                    Log::warning('⚠️ Error conectando con API agendas', [
-                        'error' => $e->getMessage()
-                    ]);
+
+                    // ✅ SINCRONIZAR PÁGINA ACTUAL OFFLINE (actualizar datos recientes)
+                    if (!empty($agendas)) {
+                        foreach ($agendas as $agenda) {
+                            $this->offlineService->storeAgendaOffline($agenda, false);
+                        }
+                    }
+
+                    return [
+                        'success' => true,
+                        'data' => $agendas,
+                        'meta' => $meta,
+                        'pagination' => $meta,
+                        'current_page' => $meta['current_page'],
+                        'total_pages' => $meta['last_page'],
+                        'total_items' => $meta['total'],
+                        'per_page' => $meta['per_page'],
+                        'has_more_pages' => $meta['current_page'] < $meta['last_page'],
+                        'message' => '✅ Agendas actualizadas desde el servidor',
+                        'offline' => false
+                    ];
                 }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error conectando con API agendas', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ OBTENER DATOS OFFLINE CON PAGINACIÓN MEJORADA
+        $result = $this->getAgendasOfflinePaginated($sedeId, $filters, $page, $perPage);
+        
+        return array_merge($result, [
+            'message' => '📱 Trabajando en modo offline - Datos locales',
+            'offline' => true
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error en AgendaService::index', [
+            'error' => $e->getMessage(),
+            'filters' => $filters
+        ]);
+
+        return [
+            'success' => true,
+            'data' => [],
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0
+            ],
+            'pagination' => [
+                'current_page' => $page,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0
+            ],
+            'current_page' => $page,
+            'total_pages' => 1,
+            'total_items' => 0,
+            'per_page' => $perPage,
+            'has_more_pages' => false,
+            'message' => '❌ Error cargando agendas: ' . $e->getMessage(),
+            'offline' => true
+        ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Verificar si necesita sincronización completa
+ */
+private function needsFullSync(int $sedeId): bool
+{
+    try {
+        // ✅ VERIFICAR SI HAY AGENDAS EN OFFLINE
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $count = DB::connection('offline')
+                ->table('agendas')
+                ->where('sede_id', $sedeId)
+                ->whereNull('deleted_at')
+                ->count();
+            
+            // ✅ SI NO HAY AGENDAS, NECESITA SYNC COMPLETO
+            if ($count === 0) {
+                Log::info('📊 No hay agendas offline, necesita sync completo automático');
+                return true;
+            }
+            
+            // ✅ VERIFICAR ÚLTIMA SINCRONIZACIÓN COMPLETA
+            $lastFullSync = $this->offlineService->getData('full_sync_status.json', []);
+            $lastSyncTime = $lastFullSync['last_full_sync'] ?? null;
+            
+            if (!$lastSyncTime) {
+                Log::info('📊 No hay registro de sync completo anterior');
+                return true;
+            }
+            
+            // ✅ VERIFICAR SI HA PASADO MUCHO TIEMPO (24 horas)
+            $lastSync = \Carbon\Carbon::parse($lastSyncTime);
+            $hoursAgo = $lastSync->diffInHours(now());
+            
+            if ($hoursAgo > 24) {
+                Log::info('📊 Última sincronización hace más de 24 horas', [
+                    'hours_ago' => $hoursAgo
+                ]);
+                return true;
+            }
+            
+            Log::info('📊 Sincronización completa no necesaria', [
+                'agendas_count' => $count,
+                'last_sync_hours_ago' => $hoursAgo
+            ]);
+            return false;
+        }
+        
+        // ✅ SI NO HAY SQLite, SIEMPRE NECESITA SYNC
+        return true;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando necesidad de sync completo', [
+            'error' => $e->getMessage()
+        ]);
+        return true; // En caso de error, hacer sync completo
+    }
+}
+
+/**
+ * ✅ NUEVO: Realizar sincronización completa en segundo plano
+ */
+private function performFullSyncBackground(int $sedeId, array $baseFilters = []): array
+{
+    try {
+        Log::info('🔄 INICIANDO SINCRONIZACIÓN COMPLETA AUTOMÁTICA');
+        
+        $totalSynced = 0;
+        $currentPage = 1;
+        $perPage = 100; // ✅ PÁGINAS MÁS GRANDES PARA EFICIENCIA
+        $hasMorePages = true;
+        $maxPages = 50; // ✅ LÍMITE DE SEGURIDAD PARA PRIMERA CARGA
+        
+        // ✅ FILTROS BASE PARA OBTENER TODAS LAS AGENDAS
+        $baseParams = [
+            'sede_id' => $sedeId,
+            'sort_by' => 'fecha',
+            'sort_order' => 'desc',
+            'per_page' => $perPage
+        ];
+        
+        // ✅ AGREGAR FILTROS BÁSICOS PARA PRIMERA CARGA (últimos 6 meses)
+        $baseParams['fecha_desde'] = now()->subMonths(6)->format('Y-m-d');
+        
+        while ($hasMorePages && $currentPage <= $maxPages) {
+            try {
+                Log::info("📄 Sincronizando página {$currentPage} de agendas");
+                
+                $params = array_merge($baseParams, ['page' => $currentPage]);
+                $response = $this->apiService->get('/agendas', $params);
+                
+                if (!$response['success'] || !isset($response['data'])) {
+                    Log::warning("⚠️ Error en página {$currentPage}", [
+                        'error' => $response['error'] ?? 'Sin datos'
+                    ]);
+                    break;
+                }
+                
+                $responseData = $response['data'];
+                
+                // ✅ MANEJAR ESTRUCTURA DE PAGINACIÓN
+                if (isset($responseData['data'])) {
+                    $agendas = $responseData['data'];
+                    $currentPage = $responseData['current_page'] ?? $currentPage;
+                    $lastPage = $responseData['last_page'] ?? 1;
+                    $hasMorePages = $currentPage < $lastPage;
+                } else {
+                    $agendas = $responseData;
+                    $hasMorePages = false; // No hay paginación
+                }
+                
+                // ✅ GUARDAR AGENDAS OFFLINE
+                if (!empty($agendas)) {
+                    foreach ($agendas as $agenda) {
+                        $this->offlineService->storeAgendaOffline($agenda, false);
+                        $totalSynced++;
+                    }
+                    
+                    Log::info("✅ Página {$currentPage} sincronizada", [
+                        'agendas_in_page' => count($agendas),
+                        'total_synced' => $totalSynced
+                    ]);
+                } else {
+                    Log::info("📄 Página {$currentPage} vacía");
+                    $hasMorePages = false;
+                }
+                
+                $currentPage++;
+                
+                // ✅ PEQUEÑA PAUSA PARA NO SOBRECARGAR LA API
+                usleep(50000); // 0.05 segundos
+                
+            } catch (\Exception $e) {
+                Log::error("❌ Error en página {$currentPage}", [
+                    'error' => $e->getMessage()
+                ]);
+                break;
+            }
+        }
+        
+        Log::info('🏁 SINCRONIZACIÓN COMPLETA AUTOMÁTICA FINALIZADA', [
+            'total_synced' => $totalSynced,
+            'pages_processed' => $currentPage - 1,
+            'max_pages_reached' => $currentPage > $maxPages
+        ]);
+        
+        return [
+            'success' => true,
+            'total_synced' => $totalSynced,
+            'pages_processed' => $currentPage - 1
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('💥 Error en sincronización completa automática', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'total_synced' => $totalSynced ?? 0
+        ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Marcar sincronización completa como realizada
+ */
+private function markFullSyncComplete(int $sedeId): void
+{
+    try {
+        $syncStatus = [
+            'sede_id' => $sedeId,
+            'last_full_sync' => now()->toISOString(),
+            'sync_type' => 'full_auto',
+            'completed_at' => now()->toISOString()
+        ];
+        
+        $this->offlineService->storeData('full_sync_status.json', $syncStatus);
+        
+        Log::info('✅ Sincronización completa automática marcada como completada', [
+            'sede_id' => $sedeId,
+            'timestamp' => $syncStatus['last_full_sync']
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error marcando sync completo automático', [
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * ✅ MÉTODO PÚBLICO: Forzar sincronización completa manual
+ */
+public function forceFullSync(int $sedeId): array
+{
+    try {
+        Log::info('🔄 FORZANDO SINCRONIZACIÓN COMPLETA MANUAL');
+        
+        // ✅ LIMPIAR AGENDAS EXISTENTES PARA EMPEZAR LIMPIO
+        if ($this->offlineService->isSQLiteAvailable()) {
+            DB::connection('offline')
+                ->table('agendas')
+                ->where('sede_id', $sedeId)
+                ->delete();
+            
+            Log::info('🗑️ Agendas offline limpiadas para sync completo manual');
+        }
+        
+        // ✅ REALIZAR SINCRONIZACIÓN COMPLETA MANUAL (SIN LÍMITES)
+        $result = $this->performFullSyncManual($sedeId, []);
+        
+        if ($result['success']) {
+            // ✅ MARCAR COMO COMPLETADO
+            $this->markFullSyncComplete($sedeId);
+        }
+        
+        return $result;
+        
+    } catch (\Exception $e) {
+        Log::error('💥 Error en forzar sync completo manual', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'total_synced' => 0
+        ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Sincronización completa manual (sin límites)
+ */
+private function performFullSyncManual(int $sedeId, array $baseFilters = []): array
+{
+    try {
+        Log::info('🔄 INICIANDO SINCRONIZACIÓN COMPLETA MANUAL');
+        
+        $totalSynced = 0;
+        $currentPage = 1;
+        $perPage = 100;
+        $hasMorePages = true;
+        
+        // ✅ FILTROS BASE PARA OBTENER TODAS LAS AGENDAS (SIN LÍMITE DE FECHA)
+        $baseParams = [
+            'sede_id' => $sedeId,
+            'sort_by' => 'fecha',
+            'sort_order' => 'desc',
+            'per_page' => $perPage
+        ];
+        
+        while ($hasMorePages) {
+            try {
+                Log::info("📄 Sincronizando página {$currentPage} (manual)");
+                
+                $params = array_merge($baseParams, ['page' => $currentPage]);
+                $response = $this->apiService->get('/agendas', $params);
+                
+                if (!$response['success'] || !isset($response['data'])) {
+                    Log::warning("⚠️ Error en página {$currentPage}", [
+                        'error' => $response['error'] ?? 'Sin datos'
+                    ]);
+                    break;
+                }
+                
+                $responseData = $response['data'];
+                
+                if (isset($responseData['data'])) {
+                    $agendas = $responseData['data'];
+                    $currentPage = $responseData['current_page'] ?? $currentPage;
+                    $lastPage = $responseData['last_page'] ?? 1;
+                    $hasMorePages = $currentPage < $lastPage;
+                } else {
+                    $agendas = $responseData;
+                    $hasMorePages = false;
+                }
+                
+                if (!empty($agendas)) {
+                    foreach ($agendas as $agenda) {
+                        $this->offlineService->storeAgendaOffline($agenda, false);
+                        $totalSynced++;
+                    }
+                    
+                    Log::info("✅ Página {$currentPage} sincronizada (manual)", [
+                        'agendas_in_page' => count($agendas),
+                        'total_synced' => $totalSynced
+                    ]);
+                } else {
+                    Log::info("📄 Página {$currentPage} vacía");
+                    $hasMorePages = false;
+                }
+                
+                $currentPage++;
+                
+                // ✅ LÍMITE DE SEGURIDAD PARA MANUAL
+                if ($currentPage > 200) {
+                    Log::warning('⚠️ Límite de páginas alcanzado (200) en sync manual');
+                    break;
+                }
+                
+                usleep(100000); // 0.1 segundos
+                
+            } catch (\Exception $e) {
+                Log::error("❌ Error en página {$currentPage} (manual)", [
+                    'error' => $e->getMessage()
+                ]);
+                break;
+            }
+        }
+        
+        Log::info('🏁 SINCRONIZACIÓN COMPLETA MANUAL FINALIZADA', [
+            'total_synced' => $totalSynced,
+            'pages_processed' => $currentPage - 1
+        ]);
+        
+        return [
+            'success' => true,
+            'total_synced' => $totalSynced,
+            'pages_processed' => $currentPage - 1
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('💥 Error en sincronización completa manual', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'total_synced' => $totalSynced ?? 0
+        ];
+    }
+}
+
+    private function getAgendasOfflinePaginated(int $sedeId, array $filters, int $page, int $perPage): array
+    {
+        try {
+            $allAgendas = [];
+
+            // ✅ CORREGIDO: Usar $this->offlineService->isSQLiteAvailable()
+            if ($this->offlineService->isSQLiteAvailable()) {
+                Log::info('📱 Usando SQLite para paginación offline');
+                
+                $query = DB::connection('offline')->table('agendas')
+                    ->where('sede_id', $sedeId)
+                    ->whereNull('deleted_at');
+
+                // Aplicar filtros
+                if (!empty($filters['fecha_desde'])) {
+                    $query->where('fecha', '>=', $filters['fecha_desde']);
+                }
+                if (!empty($filters['fecha_hasta'])) {
+                    $query->where('fecha', '<=', $filters['fecha_hasta']);
+                }
+                if (!empty($filters['estado'])) {
+                    $query->where('estado', $filters['estado']);
+                }
+                if (!empty($filters['modalidad'])) {
+                    $query->where('modalidad', $filters['modalidad']);
+                }
+                if (!empty($filters['consultorio'])) {
+                    $query->where('consultorio', 'like', '%' . $filters['consultorio'] . '%');
+                }
+
+                // ✅ ORDENAMIENTO MÚLTIPLE: FECHA DESC, HORA DESC (MÁS NUEVAS PRIMERO)
+                $query->orderBy('fecha', 'desc')
+                      ->orderBy('hora_inicio', 'desc')
+                      ->orderBy('created_at', 'desc'); // Como criterio adicional
+
+                // ✅ OBTENER TOTAL ANTES DE PAGINAR
+                $total = $query->count();
+
+                // ✅ APLICAR PAGINACIÓN
+                $offset = ($page - 1) * $perPage;
+                $results = $query->skip($offset)->take($perPage)->get();
+
+                $allAgendas = $results->map(function($agenda) {
+                    $agendaArray = (array) $agenda;
+                    
+                    // ✅ CALCULAR CUPOS DISPONIBLES
+                    $agendaArray = $this->enrichAgendaWithCupos($agendaArray);
+                    
+                    return $agendaArray;
+                })->toArray();
+
+                Log::info('✅ SQLite: Obtenidas agendas paginadas', [
+                    'total' => $total,
+                    'returned' => count($allAgendas),
+                    'page' => $page,
+                    'per_page' => $perPage
+                ]);
+
+            } else {
+                Log::info('📁 Usando archivos JSON para paginación offline');
+                
+                // ✅ FALLBACK A JSON CON ORDENAMIENTO MEJORADO
+                $agendasPath = $this->offlineService->getStoragePath() . '/agendas';
+                if (is_dir($agendasPath)) {
+                    $files = glob($agendasPath . '/*.json');
+                    foreach ($files as $file) {
+                        $data = json_decode(file_get_contents($file), true);
+                        if ($data && 
+                            $data['sede_id'] == $sedeId && 
+                            empty($data['deleted_at']) &&
+                            $this->matchesFilters($data, $filters)) {
+                            
+                            // ✅ ENRIQUECER CON CUPOS
+                            $data = $this->enrichAgendaWithCupos($data);
+                            $allAgendas[] = $data;
+                        }
+                    }
+                }
+
+                // ✅ ORDENAR POR FECHA Y HORA (MÁS NUEVAS PRIMERO)
+                usort($allAgendas, function($a, $b) {
+                    // Comparar por fecha primero
+                    $fechaComparison = strtotime($b['fecha']) - strtotime($a['fecha']);
+                    if ($fechaComparison !== 0) {
+                        return $fechaComparison;
+                    }
+                    
+                    // Si las fechas son iguales, comparar por hora
+                    $horaA = strtotime($a['hora_inicio'] ?? '00:00');
+                    $horaB = strtotime($b['hora_inicio'] ?? '00:00');
+                    return $horaB - $horaA;
+                });
+
+                $total = count($allAgendas);
+                
+                // ✅ APLICAR PAGINACIÓN MANUAL
+                $offset = ($page - 1) * $perPage;
+                $allAgendas = array_slice($allAgendas, $offset, $perPage);
+                
+                Log::info('✅ JSON: Obtenidas agendas paginadas', [
+                    'total' => $total,
+                    'returned' => count($allAgendas),
+                    'page' => $page,
+                    'per_page' => $perPage
+                ]);
             }
 
-            // Obtener datos offline
-            $agendas = $this->offlineService->getAgendasOffline($sedeId, $filters);
-            
-            // Paginación manual
-            $perPage = 15;
-            $total = count($agendas);
-            $offset = ($page - 1) * $perPage;
-            $paginatedData = array_slice($agendas, $offset, $perPage);
+            // ✅ CALCULAR METADATOS DE PAGINACIÓN
+            $totalPages = ceil($total / $perPage);
+            $from = $total > 0 ? (($page - 1) * $perPage) + 1 : null;
+            $to = $total > 0 ? min($page * $perPage, $total) : null;
+
+            $meta = [
+                'current_page' => $page,
+                'last_page' => $totalPages,
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $from,
+                'to' => $to
+            ];
+
+            Log::info('✅ Paginación offline completada', [
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => $totalPages,
+                'returned_items' => count($allAgendas)
+            ]);
 
             return [
                 'success' => true,
-                'data' => $paginatedData,
-                'meta' => [
-                    'current_page' => $page,
-                    'last_page' => ceil($total / $perPage),
-                    'per_page' => $perPage,
-                    'total' => $total
-                ],
-                'message' => '📱 Trabajando en modo offline - Datos locales',
-                'offline' => true
+                'data' => $allAgendas,
+                'meta' => $meta,
+                'pagination' => $meta,
+                'current_page' => $page,
+                'total_pages' => $totalPages,
+                'total_items' => $total,
+                'per_page' => $perPage,
+                'has_more_pages' => $page < $totalPages
             ];
 
         } catch (\Exception $e) {
-            Log::error('💥 Error en AgendaService::index', [
+            Log::error('❌ Error en paginación offline', [
                 'error' => $e->getMessage(),
-                'filters' => $filters
+                'sede_id' => $sedeId,
+                'page' => $page,
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [
-                'success' => true,
+                'success' => false,
                 'data' => [],
                 'meta' => [
                     'current_page' => $page,
                     'last_page' => 1,
-                    'per_page' => 15,
+                    'per_page' => $perPage,
                     'total' => 0
                 ],
-                'message' => '❌ Error cargando agendas: ' . $e->getMessage(),
-                'offline' => true
+                'pagination' => [
+                    'current_page' => $page,
+                    'last_page' => 1,
+                    'per_page' => $perPage,
+                    'total' => 0
+                ],
+                'current_page' => $page,
+                'total_pages' => 1,
+                'total_items' => 0,
+                'per_page' => $perPage,
+                'has_more_pages' => false
             ];
         }
     }
 
+ /**
+     * ✅ CORREGIDO: Enriquecer agenda con cálculo de cupos
+     */
+    private function enrichAgendaWithCupos(array $agenda): array
+    {
+        try {
+            if (empty($agenda['hora_inicio']) || empty($agenda['hora_fin'])) {
+                $agenda['total_cupos'] = 0;
+                $agenda['citas_count'] = 0;
+                $agenda['cupos_disponibles'] = 0;
+                return $agenda;
+            }
+
+            // Calcular cupos totales
+            $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+            $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+            $intervalo = (int) ($agenda['intervalo'] ?? 15);
+            
+            if ($intervalo <= 0) $intervalo = 15;
+            
+            $duracionMinutos = $fin->diffInMinutes($inicio);
+            $totalCupos = floor($duracionMinutos / $intervalo);
+            
+            // Contar citas (si está disponible SQLite)
+            $citasCount = 0;
+            if ($this->offlineService->isSQLiteAvailable() && !empty($agenda['uuid'])) {
+                try {
+                    $citasCount = DB::connection('offline')
+                        ->table('citas')
+                        ->where('agenda_uuid', $agenda['uuid'])
+                        ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
+                        ->whereNull('deleted_at')
+                        ->count();
+                } catch (\Exception $e) {
+                    // Silenciar error y usar 0
+                    Log::debug('No se pudieron contar citas para agenda', [
+                        'agenda_uuid' => $agenda['uuid'],
+                        'error' => $e->getMessage()
+                    ]);
+                    $citasCount = 0;
+                }
+            }
+            
+            $cuposDisponibles = max(0, $totalCupos - $citasCount);
+            
+            $agenda['total_cupos'] = $totalCupos;
+            $agenda['citas_count'] = $citasCount;
+            $agenda['cupos_disponibles'] = $cuposDisponibles;
+            
+            return $agenda;
+            
+        } catch (\Exception $e) {
+            Log::error('Error enriqueciendo agenda con cupos', [
+                'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            // Valores por defecto en caso de error
+            $agenda['total_cupos'] = 0;
+            $agenda['citas_count'] = 0;
+            $agenda['cupos_disponibles'] = 0;
+            
+            return $agenda;
+        }
+    }
+
+    /**
+     * ✅ VERIFICAR SI LOS DATOS COINCIDEN CON LOS FILTROS
+     */
+    private function matchesFilters(array $data, array $filters): bool
+    {
+        if (!empty($filters['fecha_desde']) && $data['fecha'] < $filters['fecha_desde']) {
+            return false;
+        }
+        if (!empty($filters['fecha_hasta']) && $data['fecha'] > $filters['fecha_hasta']) {
+            return false;
+        }
+        if (!empty($filters['estado']) && $data['estado'] !== $filters['estado']) {
+            return false;
+        }
+        if (!empty($filters['modalidad']) && $data['modalidad'] !== $filters['modalidad']) {
+            return false;
+        }
+        if (!empty($filters['consultorio']) && 
+            stripos($data['consultorio'] ?? '', $filters['consultorio']) === false) {
+            return false;
+        }
+        
+        return true;
+    }
    /**
  * ✅ CREAR AGENDA
  */

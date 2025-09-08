@@ -30,7 +30,7 @@
                         </span>
                     @endif
                     
-                    <!-- ✅ BOTONES DE SINCRONIZACIÓN -->
+                    <!-- Botones de Sincronización -->
                     @if($isOffline)
                         <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncAgendas()">
                             <i class="fas fa-sync-alt"></i> Sincronizar
@@ -41,7 +41,7 @@
                         <i class="fas fa-sync-alt"></i> Forzar Sync
                     </button>
                     
-                    <!-- ✅ BOTÓN DE SINCRONIZACIÓN AUTOMÁTICA -->
+                    <!-- Botón de Sincronización Automática -->
                     <button type="button" id="btnSincronizar" class="btn btn-outline-warning position-relative me-2" onclick="sincronizarPendientes()" style="display: none;">
                         <i class="fas fa-sync-alt"></i> Sincronizar
                         <span id="badgePendientes" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
@@ -61,7 +61,7 @@
         </div>
     </div>
 
-    <!-- ✅ ALERTA OFFLINE -->
+    <!-- Alerta Offline -->
     @if($isOffline)
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <div class="d-flex align-items-start">
@@ -125,6 +125,19 @@
                     <button type="button" class="btn btn-outline-secondary" onclick="limpiarFiltros()">
                         <i class="fas fa-times"></i> Limpiar
                     </button>
+                    
+                    <!-- Filtros Rápidos -->
+                    <div class="btn-group ms-2" role="group">
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="verAgendasHoy()" title="Ver agendas de hoy">
+                            <i class="fas fa-calendar-day"></i> Hoy
+                        </button>
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="verAgendasSemana()" title="Ver agendas de esta semana">
+                            <i class="fas fa-calendar-week"></i> Esta Semana
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="verTodasLasAgendas()" title="Ver todas las agendas">
+                            <i class="fas fa-list"></i> Todas
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -137,7 +150,19 @@
                 <i class="fas fa-list me-2"></i>Lista de Agendas
             </h5>
             <div class="d-flex align-items-center gap-2">
-                <!-- ✅ INDICADOR DE CARGA -->
+                <!-- Selector de registros por página -->
+                <div class="d-flex align-items-center me-3">
+                    <label for="perPageSelect" class="form-label me-2 mb-0 small">Mostrar:</label>
+                    <select id="perPageSelect" class="form-select form-select-sm" style="width: auto;" onchange="changePerPage()">
+                        <option value="15" selected>15</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <span class="small text-muted ms-2">por página</span>
+                </div>
+                
+                <!-- Indicador de carga -->
                 <div id="loadingIndicator" class="d-none">
                     <i class="fas fa-spinner fa-spin me-2"></i>Cargando...
                 </div>
@@ -158,9 +183,19 @@
                 <table class="table table-hover" id="tablaAgendas">
                     <thead class="table-light">
                         <tr>
-                            <th>Fecha</th>
+                            <th>
+                                <a href="#" onclick="sortBy('fecha')" class="text-decoration-none text-dark">
+                                    Fecha 
+                                    <i id="sort-fecha" class="fas fa-sort-down text-primary"></i>
+                                </a>
+                            </th>
                             <th>Horario</th>
-                            <th>Consultorio</th>
+                            <th>
+                                <a href="#" onclick="sortBy('consultorio')" class="text-decoration-none text-dark">
+                                    Consultorio 
+                                    <i id="sort-consultorio" class="fas fa-sort text-muted"></i>
+                                </a>
+                            </th>
                             <th>Modalidad</th>
                             <th>Etiqueta</th>
                             <th>Estado</th>
@@ -174,14 +209,43 @@
                 </table>
             </div>
 
-            <!-- Paginación -->
+            <!-- ✅ PAGINACIÓN MEJORADA -->
             <div id="paginacionContainer" class="d-flex justify-content-between align-items-center mt-3">
                 <div id="infoRegistros" class="text-muted">
                     <!-- Se llena dinámicamente -->
                 </div>
-                <nav id="paginacionNav">
-                    <!-- Se llena dinámicamente -->
-                </nav>
+                
+                <div class="d-flex align-items-center gap-3">
+                    <!-- Navegación rápida -->
+                    <div class="d-flex align-items-center gap-2">
+                        <button id="btnFirstPage" class="btn btn-outline-secondary btn-sm" onclick="goToPage(1)" title="Primera página">
+                            <i class="fas fa-angle-double-left"></i>
+                        </button>
+                        <button id="btnPrevPage" class="btn btn-outline-secondary btn-sm" onclick="goToPrevPage()" title="Página anterior">
+                            <i class="fas fa-angle-left"></i>
+                        </button>
+                        
+                        <!-- Input de página actual -->
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="small">Página</span>
+                            <input type="number" id="currentPageInput" class="form-control form-control-sm text-center" 
+                                   style="width: 60px;" min="1" onchange="goToInputPage()" onkeypress="handlePageInputKeypress(event)">
+                            <span class="small">de <span id="totalPagesSpan">1</span></span>
+                        </div>
+                        
+                        <button id="btnNextPage" class="btn btn-outline-secondary btn-sm" onclick="goToNextPage()" title="Página siguiente">
+                            <i class="fas fa-angle-right"></i>
+                        </button>
+                        <button id="btnLastPage" class="btn btn-outline-secondary btn-sm" onclick="goToLastPage()" title="Última página">
+                            <i class="fas fa-angle-double-right"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Paginación tradicional -->
+                    <nav id="paginacionNav">
+                        <!-- Se llena dinámicamente -->
+                    </nav>
+                </div>
             </div>
 
             <!-- Estado vacío -->
@@ -200,40 +264,55 @@
 @push('scripts')
 <script>
 let currentPage = 1;
+let totalPages = 1;
+let totalItems = 0;
+let currentPerPage = 15;
 let isLoading = false;
 let currentFilters = {};
+let currentSort = { field: 'fecha', order: 'desc' }; // ✅ ORDENAMIENTO POR DEFECTO
 
-// ✅ CORRECCIÓN COMPLETA: Cargar agendas al iniciar
+// ✅ CONTINUACIÓN DEL SCRIPT
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Iniciando carga de agendas');
     
-    // ✅ CORRECCIÓN: Establecer fecha de hoy por defecto para mostrar agendas del día
-    const fechaDesde = document.getElementById('fecha_desde');
-    const hoy = new Date();
-    const fechaHoy = hoy.getFullYear() + '-' + 
-                   String(hoy.getMonth() + 1).padStart(2, '0') + '-' + 
-                   String(hoy.getDate()).padStart(2, '0');
+    // Verificar si hay filtros en la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasFechaParam = urlParams.has('fecha_desde') || urlParams.has('fecha_hasta');
     
-    fechaDesde.value = fechaHoy;
-    console.log('📅 Fecha por defecto establecida:', fechaHoy);
-    
-    // Cargar agendas del día actual
-    loadAgendas(1);
+    if (!hasFechaParam) {
+        console.log('📅 Cargando todas las agendas sin restricción de fecha');
+        loadAgendas(1, {});
+    } else {
+        const filters = {};
+        if (urlParams.get('fecha_desde')) {
+            filters.fecha_desde = urlParams.get('fecha_desde');
+            document.getElementById('fecha_desde').value = urlParams.get('fecha_desde');
+        }
+        if (urlParams.get('fecha_hasta')) {
+            filters.fecha_hasta = urlParams.get('fecha_hasta');
+            document.getElementById('fecha_hasta').value = urlParams.get('fecha_hasta');
+        }
+        loadAgendas(1, filters);
+    }
     
     // Verificar pendientes
     checkPendingSync();
     setInterval(checkPendingSync, 30000);
 });
 
-// ✅ CORRECCIÓN: Función principal para cargar agendas
-function loadAgendas(page = 1, filters = {}) {
+// ✅ FUNCIÓN PRINCIPAL PARA CARGAR AGENDAS CON PAGINACIÓN
+function loadAgendas(page = 1, filters = {}, perPage = null) {
     if (isLoading) return;
     
     isLoading = true;
     currentPage = page;
     currentFilters = filters;
     
-    console.log('📥 Cargando agendas', { page, filters });
+    if (perPage) {
+        currentPerPage = perPage;
+    }
+    
+    console.log('📥 Cargando agendas', { page, filters, perPage: currentPerPage });
     showLoading(true);
     
     const formData = new FormData(document.getElementById('filtrosForm'));
@@ -253,7 +332,11 @@ function loadAgendas(page = 1, filters = {}) {
         }
     });
     
+    // ✅ AGREGAR PARÁMETROS DE PAGINACIÓN Y ORDENAMIENTO
     params.append('page', page);
+    params.append('per_page', currentPerPage);
+    params.append('sort_by', currentSort.field);
+    params.append('sort_order', currentSort.order);
     
     console.log('🔍 Parámetros de búsqueda:', params.toString());
     
@@ -273,7 +356,14 @@ function loadAgendas(page = 1, filters = {}) {
         console.log('✅ Datos procesados:', data);
         
         if (data.success) {
-            displayAgendas(data.data || [], data.meta || {});
+            // ✅ ACTUALIZAR VARIABLES GLOBALES DE PAGINACIÓN
+            currentPage = data.current_page || page;
+            totalPages = data.total_pages || 1;
+            totalItems = data.total_items || 0;
+            currentPerPage = data.per_page || currentPerPage;
+            
+            displayAgendas(data.data || [], data.meta || data.pagination || {});
+            updatePaginationControls(data.meta || data.pagination || {});
             
             if (data.offline) {
                 showAlert('info', data.message || 'Datos cargados desde almacenamiento local', 'Modo Offline');
@@ -297,7 +387,7 @@ function loadAgendas(page = 1, filters = {}) {
     });
 }
 
-// ✅ CORRECCIÓN: Mostrar agendas en tabla con fechas corregidas
+// ✅ MOSTRAR AGENDAS EN TABLA
 function displayAgendas(agendas, meta) {
     console.log('🎨 Renderizando agendas:', agendas.length);
     
@@ -320,26 +410,23 @@ function displayAgendas(agendas, meta) {
     tabla.style.display = 'table';
     estadoVacio.style.display = 'none';
     
-    updatePagination(meta);
     updateRegistrosInfo(meta);
     
     console.log(`✅ ${agendas.length} agendas renderizadas en la tabla`);
 }
 
-// ✅ CORRECCIÓN: Crear fila de agenda con formateo de fecha correcto
+// ✅ CREAR FILA DE AGENDA
 function createAgendaRow(agenda) {
     const row = document.createElement('tr');
     row.setAttribute('data-uuid', agenda.uuid);
     
-    // Estado badge
     const estadoBadge = getEstadoBadge(agenda.estado);
     
-    // ✅ CORRECCIÓN: Formatear fecha correctamente sin problemas de zona horaria
+    // Formatear fecha
     let fecha = 'Fecha inválida';
     let diaSemana = '';
     
     try {
-        // Crear fecha directamente desde el string sin conversión UTC
         const partesFecha = agenda.fecha.split('-');
         const fechaObj = new Date(parseInt(partesFecha[0]), parseInt(partesFecha[1]) - 1, parseInt(partesFecha[2]));
         
@@ -354,17 +441,10 @@ function createAgendaRow(agenda) {
         console.error('Error formateando fecha:', agenda.fecha, error);
     }
     
-    // Formatear horario
     const horario = `${agenda.hora_inicio || '--:--'} - ${agenda.hora_fin || '--:--'}`;
-    
-    // Cupos disponibles
     const cupos = agenda.cupos_disponibles || 0;
     const cuposClass = cupos > 0 ? 'text-success' : 'text-warning';
-    
-    // Consultorio
     const consultorio = agenda.consultorio || 'Sin asignar';
-    
-    // Etiqueta
     const etiqueta = agenda.etiqueta || 'Sin etiqueta';
     
     row.innerHTML = `
@@ -407,36 +487,313 @@ function createAgendaRow(agenda) {
     return row;
 }
 
-// ✅ CORRECCIÓN: Función getDayName mejorada
-function getDayName(dayIndex) {
-    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    return days[dayIndex] || '';
+// ✅ CONTROLES DE PAGINACIÓN MEJORADOS
+function updatePaginationControls(meta) {
+    // Actualizar información de registros
+    updateRegistrosInfo(meta);
+    
+    // Actualizar controles de navegación
+    updateNavigationButtons();
+    
+    // Actualizar input de página actual
+    document.getElementById('currentPageInput').value = currentPage;
+    document.getElementById('totalPagesSpan').textContent = totalPages;
+    
+    // Actualizar selector de registros por página
+    document.getElementById('perPageSelect').value = currentPerPage;
+    
+    // Actualizar paginación tradicional
+    updateTraditionalPagination(meta);
 }
 
-// ✅ CORRECCIÓN PRINCIPAL: Función limpiarFiltros completamente corregida
-function limpiarFiltros() {
-    console.log('🧹 Limpiando todos los filtros');
+// ✅ ACTUALIZAR BOTONES DE NAVEGACIÓN
+function updateNavigationButtons() {
+    const btnFirst = document.getElementById('btnFirstPage');
+    const btnPrev = document.getElementById('btnPrevPage');
+    const btnNext = document.getElementById('btnNextPage');
+    const btnLast = document.getElementById('btnLastPage');
+    const pageInput = document.getElementById('currentPageInput');
     
-    // Limpiar completamente el formulario
+    // Habilitar/deshabilitar botones
+    btnFirst.disabled = currentPage <= 1;
+    btnPrev.disabled = currentPage <= 1;
+    btnNext.disabled = currentPage >= totalPages;
+    btnLast.disabled = currentPage >= totalPages;
+    
+    // Configurar input
+    pageInput.max = totalPages;
+    pageInput.min = 1;
+}
+
+// ✅ ACTUALIZAR PAGINACIÓN TRADICIONAL
+function updateTraditionalPagination(meta) {
+    const nav = document.getElementById('paginacionNav');
+    
+    if (!meta || totalPages <= 1) {
+        nav.innerHTML = '';
+        return;
+    }
+
+    let paginationHTML = '<ul class="pagination pagination-sm mb-0">';
+    
+    // Calcular rango de páginas a mostrar
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    // Páginas numeradas
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === currentPage) {
+            paginationHTML += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+        } else {
+            paginationHTML += `
+                <li class="page-item">
+                    <a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>
+                </li>
+            `;
+        }
+    }
+    
+    paginationHTML += '</ul>';
+    nav.innerHTML = paginationHTML;
+}
+
+// ✅ FUNCIONES DE NAVEGACIÓN
+function goToPage(page) {
+    if (page >= 1 && page <= totalPages && page !== currentPage) {
+        loadAgendas(page, currentFilters, currentPerPage);
+    }
+}
+
+function goToPrevPage() {
+    if (currentPage > 1) {
+        goToPage(currentPage - 1);
+    }
+}
+
+function goToNextPage() {
+    if (currentPage < totalPages) {
+        goToPage(currentPage + 1);
+    }
+}
+
+function goToLastPage() {
+    goToPage(totalPages);
+}
+
+function goToInputPage() {
+    const input = document.getElementById('currentPageInput');
+    const page = parseInt(input.value);
+    
+    if (page >= 1 && page <= totalPages) {
+        goToPage(page);
+    } else {
+        input.value = currentPage; // Restaurar valor válido
+    }
+}
+
+function handlePageInputKeypress(event) {
+    if (event.key === 'Enter') {
+        goToInputPage();
+    }
+}
+
+// ✅ CAMBIAR REGISTROS POR PÁGINA
+function changePerPage() {
+    const select = document.getElementById('perPageSelect');
+    const newPerPage = parseInt(select.value);
+    
+    if (newPerPage !== currentPerPage) {
+        currentPerPage = newPerPage;
+        loadAgendas(1, currentFilters, currentPerPage); // Volver a página 1
+    }
+}
+
+// ✅ ORDENAMIENTO
+function sortBy(field) {
+    if (currentSort.field === field) {
+        // Cambiar dirección si es el mismo campo
+        currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+    } else {
+        // Nuevo campo, empezar con ASC
+        currentSort.field = field;
+        currentSort.order = 'asc';
+    }
+    
+    updateSortIcons();
+    loadAgendas(1, currentFilters, currentPerPage); // Volver a página 1
+}
+
+// ✅ ACTUALIZAR ICONOS DE ORDENAMIENTO
+function updateSortIcons() {
+    // Limpiar todos los iconos
+    document.querySelectorAll('[id^="sort-"]').forEach(icon => {
+        icon.className = 'fas fa-sort text-muted';
+    });
+    
+    // Actualizar icono del campo activo
+    const activeIcon = document.getElementById(`sort-${currentSort.field}`);
+    if (activeIcon) {
+        if (currentSort.order === 'asc') {
+            activeIcon.className = 'fas fa-sort-up text-primary';
+        } else {
+            activeIcon.className = 'fas fa-sort-down text-primary';
+        }
+    }
+}
+
+function updateRegistrosInfo(meta) {
+    const info = document.getElementById('infoRegistros');
+    const total = document.getElementById('totalRegistros');
+    
+    if (meta && meta.total > 0) {
+        const desde = meta.from || (((currentPage - 1) * currentPerPage) + 1);
+        const hasta = meta.to || Math.min(currentPage * currentPerPage, meta.total);
+        
+        info.textContent = `Mostrando ${desde} a ${hasta} de ${meta.total} registros`;
+        total.textContent = `${meta.total} registros`;
+    } else {
+        info.textContent = '';
+        total.textContent = '0 registros';
+    }
+}
+
+// ✅ FILTROS RÁPIDOS
+function verAgendasHoy() {
+    const hoy = new Date();
+    const fechaHoy = hoy.getFullYear() + '-' + 
+                   String(hoy.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(hoy.getDate()).padStart(2, '0');
+    
+    document.getElementById('fecha_desde').value = fechaHoy;
+    document.getElementById('fecha_hasta').value = fechaHoy;
+    
+    console.log('📅 Cargando agendas de hoy:', fechaHoy);
+    loadAgendas(1, { fecha_desde: fechaHoy, fecha_hasta: fechaHoy });
+}
+
+function verAgendasSemana() {
+    const hoy = new Date();
+    const inicioSemana = new Date(hoy.setDate(hoy.getDate() - hoy.getDay()));
+    const finSemana = new Date(hoy.setDate(hoy.getDate() - hoy.getDay() + 6));
+    
+    const fechaInicio = inicioSemana.getFullYear() + '-' + 
+                       String(inicioSemana.getMonth() + 1).padStart(2, '0') + '-' + 
+                       String(inicioSemana.getDate()).padStart(2, '0');
+    
+    const fechaFin = finSemana.getFullYear() + '-' + 
+                    String(finSemana.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(finSemana.getDate()).padStart(2, '0');
+    
+    document.getElementById('fecha_desde').value = fechaInicio;
+    document.getElementById('fecha_hasta').value = fechaFin;
+    
+    console.log('📅 Cargando agendas de esta semana:', fechaInicio, 'a', fechaFin);
+    loadAgendas(1, { fecha_desde: fechaInicio, fecha_hasta: fechaFin });
+}
+
+function verTodasLasAgendas() {
+    console.log('📅 Cargando TODAS las agendas');
+    
     const form = document.getElementById('filtrosForm');
     form.reset();
     
-    // ✅ LIMPIAR TODOS LOS CAMPOS INDIVIDUALMENTE
     document.getElementById('fecha_desde').value = '';
     document.getElementById('fecha_hasta').value = '';
     document.getElementById('estado').value = '';
     document.getElementById('modalidad').value = '';
     document.getElementById('consultorio').value = '';
     
-    // ✅ LIMPIAR FILTROS ACTUALES
     currentFilters = {};
     
-    // ✅ CARGAR TODAS LAS AGENDAS SIN FILTROS
-    console.log('✅ Cargando todas las agendas sin filtros');
+    const url = new URL(window.location);
+    url.search = '';
+    window.history.replaceState({}, '', url);
+    
+    loadAgendas(1, { 'force_all': 'true' });
+}
+
+function limpiarFiltros() {
+    console.log('🧹 Limpiando todos los filtros');
+    
+    const form = document.getElementById('filtrosForm');
+    form.reset();
+    
+    document.getElementById('fecha_desde').value = '';
+    document.getElementById('fecha_hasta').value = '';
+    document.getElementById('estado').value = '';
+    document.getElementById('modalidad').value = '';
+    document.getElementById('consultorio').value = '';
+    
+    currentFilters = {};
     loadAgendas(1, {});
 }
 
-// ✅ Verificar registros pendientes
+function refreshAgendas() {
+    loadAgendas(currentPage, currentFilters, currentPerPage);
+    checkPendingSync();
+}
+
+// ✅ MANEJAR FORMULARIO DE BÚSQUEDA
+document.getElementById('filtrosForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const filters = {};
+    
+    for (let [key, value] of formData.entries()) {
+        if (value && value.toString().trim() !== '') {
+            filters[key] = value.toString().trim();
+        }
+    }
+    
+    console.log('🔍 Aplicando filtros:', filters);
+    loadAgendas(1, filters); // Volver a página 1 al filtrar
+});
+
+// ✅ FUNCIONES AUXILIARES
+function getDayName(dayIndex) {
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    return days[dayIndex] || '';
+}
+
+function getEstadoBadge(estado) {
+    const badges = {
+        'ACTIVO': '<span class="badge bg-success">Activo</span>',
+        'ANULADA': '<span class="badge bg-danger">Anulada</span>',
+        'LLENA': '<span class="badge bg-warning">Llena</span>'
+    };
+    return badges[estado] || '<span class="badge bg-secondary">Desconocido</span>';
+}
+
+function showLoading(show) {
+    const loadingAgendas = document.getElementById('loadingAgendas');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    
+    if (show) {
+        if (loadingAgendas) loadingAgendas.style.display = 'block';
+        if (loadingIndicator) loadingIndicator.classList.remove('d-none');
+        document.getElementById('tablaAgendas').style.display = 'none';
+        document.getElementById('estadoVacio').style.display = 'none';
+    } else {
+        if (loadingAgendas) loadingAgendas.style.display = 'none';
+        if (loadingIndicator) loadingIndicator.classList.add('d-none');
+    }
+}
+
+function showEmptyState() {
+    document.getElementById('tablaAgendas').style.display = 'none';
+    document.getElementById('estadoVacio').style.display = 'block';
+    document.getElementById('totalRegistros').textContent = '0 registros';
+    document.getElementById('infoRegistros').textContent = '';
+    
+    // Limpiar paginación
+    document.getElementById('paginacionNav').innerHTML = '';
+    document.getElementById('currentPageInput').value = 1;
+    document.getElementById('totalPagesSpan').textContent = '1';
+    updateNavigationButtons();
+}
+
+// ✅ RESTO DE FUNCIONES (sincronización, eliminación, etc.)
 async function checkPendingSync() {
     try {
         const response = await fetch('/agendas/test-sync', {
@@ -463,7 +820,6 @@ async function checkPendingSync() {
     }
 }
 
-// ✅ Sincronizar registros pendientes
 async function sincronizarPendientes() {
     const btnSincronizar = document.getElementById('btnSincronizar');
     const originalHTML = btnSincronizar.innerHTML;
@@ -501,7 +857,7 @@ async function sincronizarPendientes() {
 
             if (data.synced_count > 0) {
                 checkPendingSync();
-                loadAgendas(currentPage, currentFilters);
+                refreshAgendas();
             }
 
         } else {
@@ -517,7 +873,6 @@ async function sincronizarPendientes() {
     }
 }
 
-// ✅ Funciones de sincronización
 function syncAgendas() {
     console.log('🔄 Iniciando sincronización de agendas');
     showLoading(true);
@@ -547,7 +902,7 @@ function syncAgendas() {
                 icon: 'success',
                 confirmButtonText: 'Entendido'
             });
-            loadAgendas(currentPage, currentFilters);
+            refreshAgendas();
             checkPendingSync();
         } else {
             Swal.fire('Error', data.error || 'Error en sincronización', 'error');
@@ -579,139 +934,6 @@ function syncAllPendingAgendasData() {
     });
 }
 
-// ✅ Mostrar/ocultar loading
-function showLoading(show) {
-    const loadingAgendas = document.getElementById('loadingAgendas');
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    
-    if (show) {
-        if (loadingAgendas) loadingAgendas.style.display = 'block';
-        if (loadingIndicator) loadingIndicator.classList.remove('d-none');
-        document.getElementById('tablaAgendas').style.display = 'none';
-        document.getElementById('estadoVacio').style.display = 'none';
-    } else {
-        if (loadingAgendas) loadingAgendas.style.display = 'none';
-        if (loadingIndicator) loadingIndicator.classList.add('d-none');
-    }
-}
-
-// ✅ Utilidades
-function getEstadoBadge(estado) {
-    const badges = {
-        'ACTIVO': '<span class="badge bg-success">Activo</span>',
-        'ANULADA': '<span class="badge bg-danger">Anulada</span>',
-        'LLENA': '<span class="badge bg-warning">Llena</span>'
-    };
-    return badges[estado] || '<span class="badge bg-secondary">Desconocido</span>';
-}
-
-function showEmptyState() {
-    document.getElementById('tablaAgendas').style.display = 'none';
-    document.getElementById('estadoVacio').style.display = 'block';
-    document.getElementById('totalRegistros').textContent = '0 registros';
-    document.getElementById('infoRegistros').textContent = '';
-}
-
-// ✅ Paginación
-function updatePagination(meta) {
-    const nav = document.getElementById('paginacionNav');
-    
-    if (!meta || meta.last_page <= 1) {
-        nav.innerHTML = '';
-        return;
-    }
-
-    let paginationHTML = '<ul class="pagination pagination-sm mb-0">';
-    
-    // Botón anterior
-    if (meta.current_page > 1) {
-        paginationHTML += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page - 1}, currentFilters); return false;">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-            </li>
-        `;
-    }
-    
-    // Páginas numeradas
-    const startPage = Math.max(1, meta.current_page - 2);
-    const endPage = Math.min(meta.last_page, meta.current_page + 2);
-    
-    if (startPage > 1) {
-        paginationHTML += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(1, currentFilters); return false;">1</a>
-            </li>
-        `;
-        if (startPage > 2) {
-            paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-        }
-    }
-    
-    for (let i = startPage; i <= endPage; i++) {
-        if (i === meta.current_page) {
-            paginationHTML += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
-        } else {
-            paginationHTML += `
-                <li class="page-item">
-                    <a class="page-link" href="#" onclick="loadAgendas(${i}, currentFilters); return false;">${i}</a>
-                </li>
-            `;
-        }
-    }
-    
-    if (endPage < meta.last_page) {
-        if (endPage < meta.last_page - 1) {
-            paginationHTML += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-        }
-        paginationHTML += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(${meta.last_page}, currentFilters); return false;">${meta.last_page}</a>
-            </li>
-        `;
-    }
-    
-    // Botón siguiente
-    if (meta.current_page < meta.last_page) {
-        paginationHTML += `
-            <li class="page-item">
-                <a class="page-link" href="#" onclick="loadAgendas(${meta.current_page + 1}, currentFilters); return false;">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-            </li>
-        `;
-    }
-    
-    paginationHTML += '</ul>';
-    nav.innerHTML = paginationHTML;
-}
-
-function updateRegistrosInfo(meta) {
-    const info = document.getElementById('infoRegistros');
-    const total = document.getElementById('totalRegistros');
-    
-    if (meta && meta.total > 0) {
-        const desde = ((meta.current_page - 1) * meta.per_page) + 1;
-        const hasta = Math.min(meta.current_page * meta.per_page, meta.total);
-        
-        info.textContent = `Mostrando ${desde} a ${hasta} de ${meta.total} registros`;
-        total.textContent = `${meta.total} registros`;
-    } else {
-        info.textContent = '';
-        total.textContent = '0 registros';
-    }
-}
-
-// ✅ Acciones
-function verAgenda(uuid) {
-    window.location.href = `/agendas/${uuid}`;
-}
-
-function editarAgenda(uuid) {
-    window.location.href = `/agendas/${uuid}/edit`;
-}
-
 async function eliminarAgenda(uuid, descripcion) {
     const result = await Swal.fire({
         title: '¿Eliminar Agenda?',
@@ -719,7 +941,7 @@ async function eliminarAgenda(uuid, descripcion) {
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc3545',
-                cancelButtonColor: '#6c757d',
+        cancelButtonColor: '#6c757d',
         confirmButtonText: 'Sí, eliminar',
         cancelButtonText: 'Cancelar'
     });
@@ -739,7 +961,7 @@ async function eliminarAgenda(uuid, descripcion) {
 
             if (data.success) {
                 Swal.fire('¡Eliminado!', data.message, 'success');
-                loadAgendas(currentPage, currentFilters);
+                refreshAgendas();
                 checkPendingSync();
             } else {
                 throw new Error(data.error);
@@ -752,29 +974,6 @@ async function eliminarAgenda(uuid, descripcion) {
     }
 }
 
-function refreshAgendas() {
-    loadAgendas(currentPage, currentFilters);
-    checkPendingSync();
-}
-
-// ✅ CORRECCIÓN: Manejar formulario de búsqueda
-document.getElementById('filtrosForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const filters = {};
-    
-    for (let [key, value] of formData.entries()) {
-        if (value && value.toString().trim() !== '') {
-            filters[key] = value.toString().trim();
-        }
-    }
-    
-    console.log('🔍 Aplicando filtros:', filters);
-    loadAgendas(1, filters);
-});
-
-// ✅ Mostrar alertas
 function showAlert(type, message, title = '') {
     const iconMap = {
         'success': 'success',
@@ -792,45 +991,10 @@ function showAlert(type, message, title = '') {
     });
 }
 
-// ✅ Toast helper
-function showToast(type, message) {
-    const toastContainer = document.getElementById('toast-container') || createToastContainer();
-    
-    const toastId = 'toast-' + Date.now();
-    const iconClass = type === 'success' ? 'fa-check-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle';
-    const bgClass = type === 'success' ? 'bg-success' : type === 'warning' ? 'bg-warning' : 'bg-info';
-    
-    const toastHTML = `
-        <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert">
-            <div class="d-flex">
-                <div class="toast-body">
-                    <i class="fas ${iconClass} me-2"></i>${message}
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        </div>
-    `;
-    
-    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
-    
-    const toastElement = document.getElementById(toastId);
-    const toast = new bootstrap.Toast(toastElement, { delay: 4000 });
-    toast.show();
-    
-    toastElement.addEventListener('hidden.bs.toast', () => {
-        toastElement.remove();
-    });
-}
-
-function createToastContainer() {
-    const container = document.createElement('div');
-    container.id = 'toast-container';
-    container.className = 'toast-container position-fixed top-0 end-0 p-3';
-    container.style.zIndex = '1055';
-    document.body.appendChild(container);
-    return container;
-}
+// ✅ INICIALIZAR ORDENAMIENTO AL CARGAR
+document.addEventListener('DOMContentLoaded', function() {
+    updateSortIcons(); // Mostrar ordenamiento inicial
+});
 </script>
 @endpush
 @endsection
-
