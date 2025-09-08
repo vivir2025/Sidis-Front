@@ -137,7 +137,7 @@ public function store(array $data): array
         // ✅ VALIDACIÓN MANUAL DE DATOS
         $validated = $this->validateAgendaData($data);
 
-        // ✅ PREPARAR DATOS PARA ALMACENAR (SIN BUSCAR EN BD)
+        // ✅ PREPARAR DATOS PARA ALMACENAR
         $agendaData = [
             'uuid' => \Illuminate\Support\Str::uuid()->toString(),
             'modalidad' => $validated['modalidad'],
@@ -145,26 +145,19 @@ public function store(array $data): array
             'consultorio' => $validated['consultorio'],
             'hora_inicio' => $validated['hora_inicio'],
             'hora_fin' => $validated['hora_fin'],
-            'intervalo' => $validated['intervalo'], // Mantener como string
+            'intervalo' => $validated['intervalo'],
             'etiqueta' => $validated['etiqueta'],
             'estado' => 'ACTIVO',
             'sede_id' => $validated['sede_id'],
             'usuario_id' => $validated['usuario_id'],
             'proceso_id' => $validated['proceso_id'] ?? null,
             'brigada_id' => $validated['brigada_id'] ?? null,
-            'usuario_medico_id' => $validated['usuario_medico_uuid'] ?? null, // ✅ USAR UUID DIRECTAMENTE
+            'usuario_medico_id' => $validated['usuario_medico_uuid'] ?? null,
             'cupos_disponibles' => 0,
             'created_at' => now()->toISOString(),
             'updated_at' => now()->toISOString(),
             'sync_status' => 'pending'
         ];
-
-        Log::info('📝 Datos preparados para almacenar', [
-            'uuid' => $agendaData['uuid'],
-            'proceso_id' => $agendaData['proceso_id'],
-            'brigada_id' => $agendaData['brigada_id'],
-            'usuario_medico_id' => $agendaData['usuario_medico_id']
-        ]);
 
         // ✅ VERIFICAR CONFLICTOS OFFLINE
         if ($this->hasScheduleConflict($agendaData)) {
@@ -175,34 +168,80 @@ public function store(array $data): array
             ];
         }
 
-        // ✅ INTENTAR CREAR EN API SI HAY CONEXIÓN
+        // ✅ SI ESTAMOS ONLINE, INTENTAR CREAR DIRECTAMENTE
         if ($this->apiService->isOnline()) {
             try {
                 $apiData = $this->prepareAgendaDataForApi($agendaData);
                 $response = $this->apiService->post('/agendas', $apiData);
                 
+                Log::info('📥 Respuesta de API al crear agenda', [
+                    'success' => $response['success'] ?? false,
+                    'error' => $response['error'] ?? null,
+                    'response_keys' => array_keys($response)
+                ]);
+                
                 if ($response['success']) {
-                    // Actualizar con datos de la API
+                    // ✅ ÉXITO - Actualizar con datos de la API
                     if (isset($response['data']['id'])) {
                         $agendaData['id'] = $response['data']['id'];
                     }
+                    if (isset($response['data']['uuid'])) {
+                        $agendaData['uuid'] = $response['data']['uuid']; // Usar UUID del servidor
+                    }
                     $agendaData['sync_status'] = 'synced';
                     
-                    Log::info('✅ Agenda creada en API exitosamente');
+                    // Guardar offline como respaldo
+                    $this->offlineService->storeAgendaOffline($agendaData, false);
+                    
+                    // Enriquecer datos para respuesta
+                    $enrichedData = $this->enrichAgendaDataForResponse($agendaData);
+                    
+                    Log::info('✅ Agenda creada exitosamente en API');
+                    
+                    return [
+                        'success' => true,
+                        'data' => $enrichedData,
+                        'message' => 'Agenda creada exitosamente'
+                    ];
                 } else {
-                    Log::warning('⚠️ Error creando en API, guardando offline', [
-                        'error' => $response['error'] ?? 'Error desconocido'
+                    // ✅ ERROR DE LA API - Verificar si es error de validación
+                    $errorMessage = $response['error'] ?? 'Error desconocido de la API';
+                    
+                    Log::error('❌ Error de la API al crear agenda', [
+                        'error' => $errorMessage,
+                        'response' => $response
                     ]);
+                    
+                    // ✅ SI ES ERROR DE VALIDACIÓN, NO GUARDAR OFFLINE
+                    if (isset($response['status']) && $response['status'] == 422) {
+                        return [
+                            'success' => false,
+                            'message' => 'Error de validación en el servidor',
+                            'error' => $errorMessage
+                        ];
+                    }
+                    
+                    // ✅ SI ES OTRO ERROR, GUARDAR OFFLINE PARA SINCRONIZAR DESPUÉS
+                    Log::warning('⚠️ Error de servidor, guardando offline para sincronizar después');
+                    // Continuar para guardar offline
                 }
+                
             } catch (\Exception $e) {
-                Log::warning('⚠️ Excepción creando en API, guardando offline', [
-                    'error' => $e->getMessage()
+                Log::error('❌ Excepción al conectar con API', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
+                
+                // ✅ ERROR DE CONEXIÓN - Guardar offline
+                Log::warning('⚠️ Error de conexión, guardando offline');
+                // Continuar para guardar offline
             }
+        } else {
+            Log::info('📱 Sin conexión, guardando offline directamente');
         }
 
-        // ✅ GUARDAR OFFLINE
-        $this->offlineService->storeAgendaOffline($agendaData, $agendaData['sync_status'] === 'pending');
+        // ✅ GUARDAR OFFLINE (solo si llegamos aquí)
+        $this->offlineService->storeAgendaOffline($agendaData, true); // true = needs sync
 
         // ✅ ENRIQUECER DATOS PARA RESPUESTA
         $enrichedData = $this->enrichAgendaDataForResponse($agendaData);
@@ -210,9 +249,9 @@ public function store(array $data): array
         return [
             'success' => true,
             'data' => $enrichedData,
-            'message' => $agendaData['sync_status'] === 'synced' 
-                ? 'Agenda creada exitosamente' 
-                : 'Agenda creada (se sincronizará cuando haya conexión)'
+            'message' => $this->apiService->isOnline() 
+                ? 'Agenda guardada (se sincronizará automáticamente)' 
+                : 'Agenda creada offline (se sincronizará cuando haya conexión)'
         ];
 
     } catch (\Exception $e) {
@@ -229,6 +268,7 @@ public function store(array $data): array
         ];
     }
 }
+
 
 /**
  * ✅ VALIDACIÓN MANUAL DE DATOS (SIN CAMBIOS)
@@ -941,22 +981,42 @@ private function enrichAgendaData(array $agenda): array
         'consultorio' => (string) ($agenda['consultorio'] ?? ''), // ✅ Asegurar string
         'hora_inicio' => $agenda['hora_inicio'],
         'hora_fin' => $agenda['hora_fin'],
-        'intervalo' => (int) ($agenda['intervalo'] ?? 15), // ✅ Convertir a entero
+        'intervalo' => (string) ($agenda['intervalo'] ?? 15), // ✅ Convertir a entero
         'etiqueta' => $agenda['etiqueta'] ?? '',
         'estado' => $agenda['estado'] ?? 'ACTIVO',
         'sede_id' => (int) ($agenda['sede_id'] ?? 1), // ✅ Convertir a entero
         'usuario_id' => (int) ($agenda['usuario_id'] ?? 1), // ✅ Convertir a entero
     ];
 
-    // ✅ MANEJAR CAMPOS OPCIONALES CORRECTAMENTE
+      // ✅ MANEJAR PROCESO_ID CORRECTAMENTE
     if (!empty($agenda['proceso_id']) && $agenda['proceso_id'] !== 'null') {
-        $apiData['proceso_id'] = (int) $agenda['proceso_id'];
+        if (is_numeric($agenda['proceso_id'])) {
+            $apiData['proceso_id'] = (int) $agenda['proceso_id']; // ID numérico
+        } elseif (is_string($agenda['proceso_id']) && $this->isValidUuid($agenda['proceso_id'])) {
+            $apiData['proceso_id'] = $agenda['proceso_id']; // ✅ UUID como string
+        }
+        
+        Log::info('✅ proceso_id procesado para API', [
+            'original' => $agenda['proceso_id'],
+            'final' => $apiData['proceso_id'] ?? 'NOT_INCLUDED',
+            'type' => gettype($apiData['proceso_id'] ?? null)
+        ]);
     }
     
+    // ✅ MANEJAR BRIGADA_ID CORRECTAMENTE
     if (!empty($agenda['brigada_id']) && $agenda['brigada_id'] !== 'null') {
-        $apiData['brigada_id'] = (int) $agenda['brigada_id'];
+        if (is_numeric($agenda['brigada_id'])) {
+            $apiData['brigada_id'] = (int) $agenda['brigada_id']; // ID numérico
+        } elseif (is_string($agenda['brigada_id']) && $this->isValidUuid($agenda['brigada_id'])) {
+            $apiData['brigada_id'] = $agenda['brigada_id']; // ✅ UUID como string
+        }
+        
+        Log::info('✅ brigada_id procesado para API', [
+            'original' => $agenda['brigada_id'],
+            'final' => $apiData['brigada_id'] ?? 'NOT_INCLUDED',
+            'type' => gettype($apiData['brigada_id'] ?? null)
+        ]);
     }
-
     // ✅ NUEVO: MANEJAR USUARIO MÉDICO CORRECTAMENTE
     $usuarioMedicoValue = null;
     

@@ -259,9 +259,8 @@ private function resolveUsuarioMedicoId($usuarioValue, array $masterData): mixed
     return null;
 }
 
-
-    // ✅ NUEVO: Resolver proceso_id desde datos maestros
-   private function resolveProcesoId($procesoValue, array $masterData): mixed
+// ✅ REEMPLAZAR en AgendaController
+private function resolveProcesoId($procesoValue, array $masterData): mixed
 {
     if (empty($procesoValue) || $procesoValue === 'null' || $procesoValue === '') {
         return null;
@@ -269,10 +268,14 @@ private function resolveUsuarioMedicoId($usuarioValue, array $masterData): mixed
 
     Log::info('🔍 Resolviendo proceso_id', [
         'input_value' => $procesoValue,
-        'input_type' => gettype($procesoValue),
-        'has_procesos' => isset($masterData['procesos']),
-        'procesos_count' => isset($masterData['procesos']) ? count($masterData['procesos']) : 0
+        'input_type' => gettype($procesoValue)
     ]);
+
+    // ✅ SI YA ES UN UUID VÁLIDO, DEVOLVERLO DIRECTAMENTE
+    if (is_string($procesoValue) && $this->isValidUuid($procesoValue)) {
+        Log::info('✅ proceso_id ya es UUID válido', ['uuid' => $procesoValue]);
+        return $procesoValue;
+    }
 
     // Si ya es numérico, devolverlo como entero
     if (is_numeric($procesoValue)) {
@@ -287,50 +290,28 @@ private function resolveUsuarioMedicoId($usuarioValue, array $masterData): mixed
 
     // Buscar en datos maestros
     foreach ($masterData['procesos'] as $proceso) {
-        Log::debug('🔍 Comparando proceso', [
-            'proceso' => $proceso,
-            'buscando' => $procesoValue
-        ]);
-        
-        // Coincidencia por UUID
+        // Coincidencia por UUID - DEVOLVER UUID
         if (isset($proceso['uuid']) && $proceso['uuid'] === $procesoValue) {
-            // ✅ CAMBIO AQUÍ: Si no hay ID, usar el UUID como string
-            if (isset($proceso['id']) && !empty($proceso['id'])) {
-                $resultado = (int) $proceso['id'];
-                Log::info('✅ Proceso encontrado por UUID con ID', [
-                    'uuid' => $procesoValue,
-                    'id_resuelto' => $resultado
-                ]);
-                return $resultado;
-            } else {
-                // ✅ NUEVO: Si no hay ID, devolver el UUID como string
-                Log::info('✅ Proceso encontrado por UUID sin ID, usando UUID', [
-                    'uuid' => $procesoValue
-                ]);
-                return $procesoValue; // Devolver el UUID original
-            }
+            Log::info('✅ Proceso encontrado por UUID', ['uuid' => $procesoValue]);
+            return $procesoValue; // ✅ DEVOLVER UUID, NO ID
         }
         
-        // Coincidencia exacta por ID
+        // Coincidencia por ID - DEVOLVER UUID SI ESTÁ DISPONIBLE
         if (isset($proceso['id']) && (string)$proceso['id'] === (string)$procesoValue) {
-            Log::info('✅ Proceso encontrado por ID', [
-                'id' => $procesoValue
-            ]);
-            return (int) $proceso['id'];
+            if (isset($proceso['uuid']) && !empty($proceso['uuid'])) {
+                Log::info('✅ Proceso encontrado por ID, devolviendo UUID', [
+                    'id' => $procesoValue,
+                    'uuid' => $proceso['uuid']
+                ]);
+                return $proceso['uuid']; // ✅ DEVOLVER UUID
+            } else {
+                Log::info('✅ Proceso encontrado por ID (sin UUID)', ['id' => $procesoValue]);
+                return (int) $proceso['id'];
+            }
         }
     }
 
-    Log::warning('⚠️ proceso_id no encontrado en datos maestros', [
-        'proceso_value' => $procesoValue,
-        'available_processes' => array_map(function($p) {
-            return [
-                'id' => $p['id'] ?? null, 
-                'uuid' => $p['uuid'] ?? null, 
-                'nombre' => $p['nombre'] ?? null
-            ];
-        }, $masterData['procesos'])
-    ]);
-
+    Log::warning('⚠️ proceso_id no encontrado', ['value' => $procesoValue]);
     return null;
 }
 
@@ -342,10 +323,14 @@ private function resolveBrigadaId($brigadaValue, array $masterData): mixed
 
     Log::info('🔍 Resolviendo brigada_id', [
         'input_value' => $brigadaValue,
-        'input_type' => gettype($brigadaValue),
-        'has_brigadas' => isset($masterData['brigadas']),
-        'brigadas_count' => isset($masterData['brigadas']) ? count($masterData['brigadas']) : 0
+        'input_type' => gettype($brigadaValue)
     ]);
+
+    // ✅ SI YA ES UN UUID VÁLIDO, DEVOLVERLO DIRECTAMENTE
+    if (is_string($brigadaValue) && $this->isValidUuid($brigadaValue)) {
+        Log::info('✅ brigada_id ya es UUID válido', ['uuid' => $brigadaValue]);
+        return $brigadaValue;
+    }
 
     // Si ya es numérico, devolverlo como entero
     if (is_numeric($brigadaValue)) {
@@ -360,51 +345,35 @@ private function resolveBrigadaId($brigadaValue, array $masterData): mixed
 
     // Buscar en datos maestros
     foreach ($masterData['brigadas'] as $brigada) {
-        Log::debug('🔍 Comparando brigada', [
-            'brigada' => $brigada,
-            'buscando' => $brigadaValue
-        ]);
+        // Coincidencia por UUID - DEVOLVER UUID
+        if (isset($brigada['uuid']) && $brigada['uuid'] === $brigadaValue) {
+            Log::info('✅ Brigada encontrada por UUID', ['uuid' => $brigadaValue]);
+            return $brigadaValue; // ✅ DEVOLVER UUID, NO ID
+        }
         
-        // Coincidencia por UUID
-       if (isset($brigada['uuid']) && $brigada['uuid'] === $brigadaValue) {
-    // ✅ CAMBIO: Si no hay ID, usar el UUID como string
-    if (isset($brigada['id']) && !empty($brigada['id'])) {
-        $resultado = (int) $brigada['id'];
-        Log::info('✅ Brigada encontrada por UUID con ID', [
-            'uuid' => $brigadaValue,
-            'id_resuelto' => $resultado
-        ]);
-        return $resultado;
-    } else {
-        // ✅ NUEVO: Si no hay ID, devolver el UUID como string
-        Log::info('✅ Brigada encontrada por UUID sin ID, usando UUID', [
-            'uuid' => $brigadaValue
-        ]);
-        return $brigadaValue; // Devolver el UUID original
-    }
-}
-        
-        // Coincidencia exacta por ID
+        // Coincidencia por ID - DEVOLVER UUID SI ESTÁ DISPONIBLE
         if (isset($brigada['id']) && (string)$brigada['id'] === (string)$brigadaValue) {
-            Log::info('✅ Brigada encontrada por ID', [
-                'id' => $brigadaValue
-            ]);
-            return (int) $brigada['id'];
+            if (isset($brigada['uuid']) && !empty($brigada['uuid'])) {
+                Log::info('✅ Brigada encontrada por ID, devolviendo UUID', [
+                    'id' => $brigadaValue,
+                    'uuid' => $brigada['uuid']
+                ]);
+                return $brigada['uuid']; // ✅ DEVOLVER UUID
+            } else {
+                Log::info('✅ Brigada encontrada por ID (sin UUID)', ['id' => $brigadaValue]);
+                return (int) $brigada['id'];
+            }
         }
     }
 
-    Log::warning('⚠️ brigada_id no encontrado en datos maestros', [
-        'brigada_value' => $brigadaValue,
-        'available_brigades' => array_map(function($b) {
-            return [
-                'id' => $b['id'] ?? null, 
-                'uuid' => $b['uuid'] ?? null, 
-                'nombre' => $b['nombre'] ?? null
-            ];
-        }, $masterData['brigadas'])
-    ]);
-
+    Log::warning('⚠️ brigada_id no encontrado', ['value' => $brigadaValue]);
     return null;
+}
+
+// ✅ AGREGAR ESTA FUNCIÓN AL CONTROLLER
+private function isValidUuid(string $uuid): bool
+{
+    return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $uuid);
 }
 
     // ... resto de métodos sin cambios
