@@ -206,6 +206,26 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Usuario Médico -->
+<div class="col-md-6">
+    <div class="info-item">
+        <label class="info-label">
+            <i class="fas fa-user-md text-primary me-2"></i>Usuario Médico
+        </label>
+        <div class="info-value">
+            @if(!empty($agenda['usuario_medico']['nombre_completo']))
+                <span class="fw-bold">{{ $agenda['usuario_medico']['nombre_completo'] }}</span>
+                @if(!empty($agenda['usuario_medico']['especialidad']['nombre']))
+                    <div class="text-muted small">{{ $agenda['usuario_medico']['especialidad']['nombre'] }}</div>
+                @endif
+            @else
+                <span class="text-muted">No asignado</span>
+            @endif
+        </div>
+    </div>
+</div>
+
                         
                         <!-- Usuario Creador -->
                         <div class="col-md-6">
