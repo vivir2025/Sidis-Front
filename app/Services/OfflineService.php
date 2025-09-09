@@ -113,6 +113,15 @@ class OfflineService
                 $this->createUsuariosTable();
                 Log::info('✅ Tabla usuarios creada');
             }
+              // ✅ NUEVA: VERIFICAR Y CREAR TABLA CUPS
+            if (!in_array('cups', $existingTables)) {
+                $this->createCupsTable();
+                Log::info('✅ Tabla cups creada');
+            }
+            if (!in_array('pacientes', $existingTables)) {
+                $this->createPacientesTable();
+                Log::info('✅ Tabla pacientes creada');
+            }
             
             return;
         }
@@ -141,7 +150,8 @@ class OfflineService
         // ✅ CREAR NUEVAS TABLAS
         $this->createAgendasTable();
         $this->createCitasTable();
-        
+        $this->createCupsTable();
+        $this->createPacientesTable();
         $this->createSyncStatusTable();
         
         Log::info('✅ Todas las tablas SQLite creadas exitosamente');
@@ -464,8 +474,71 @@ private function createCitasTable(): void
         )
     ');
 }
-
-
+private function createCupsTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS cups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            origen TEXT,
+            nombre TEXT NOT NULL,
+            codigo TEXT UNIQUE NOT NULL,
+            estado TEXT DEFAULT "ACTIVO",
+            categoria TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices para búsqueda rápida
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_codigo ON cups(codigo)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_nombre ON cups(nombre)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_estado ON cups(estado)
+    ');
+}
+private function createPacientesTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS pacientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            sede_id INTEGER NOT NULL,
+            primer_nombre TEXT NOT NULL,
+            segundo_nombre TEXT,
+            primer_apellido TEXT NOT NULL,
+            segundo_apellido TEXT,
+            nombre_completo TEXT,
+            documento TEXT NOT NULL,
+            fecha_nacimiento DATE,
+            sexo TEXT DEFAULT "M",
+            telefono TEXT,
+            direccion TEXT,
+            correo TEXT,
+            estado TEXT DEFAULT "ACTIVO",
+            sync_status TEXT DEFAULT "synced",
+            stored_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME NULL
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_pacientes_documento ON pacientes(documento)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_pacientes_sede ON pacientes(sede_id)
+    ');
+}
 
     /**
      * ✅ CORREGIDO: Sincronizar todos los datos maestros desde la API
@@ -2388,6 +2461,345 @@ private function getProcesoIdFromUuid(string $uuid): ?int
         return null;
     }
 }
+public function storeCupsOffline(array $cupsData): void
+{
+    try {
+        if (empty($cupsData['uuid']) || empty($cupsData['codigo'])) {
+            Log::warning('⚠️ Intentando guardar CUPS sin UUID o código');
+            return;
+        }
+
+        $offlineData = [
+            'uuid' => $cupsData['uuid'],
+            'origen' => $cupsData['origen'] ?? null,
+            'nombre' => $cupsData['nombre'],
+            'codigo' => $cupsData['codigo'],
+            'estado' => $cupsData['estado'] ?? 'ACTIVO',
+            'categoria' => $cupsData['categoria'] ?? null,
+            'created_at' => $cupsData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString()
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('cups')->updateOrInsert(
+                ['uuid' => $cupsData['uuid']],
+                $offlineData
+            );
+        }
+
+        // También guardar en JSON como backup
+        $this->storeData('cups/' . $cupsData['uuid'] . '.json', $offlineData);
+
+        Log::debug('✅ CUPS almacenado offline', [
+            'uuid' => $cupsData['uuid'],
+            'codigo' => $cupsData['codigo'],
+            'nombre' => substr($cupsData['nombre'], 0, 50) . '...'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando CUPS offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $cupsData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
+
+/**
+ * ✅ BUSCAR CUPS OFFLINE
+ */
+public function buscarCupsOffline(string $termino, int $limit = 20): array
+{
+    try {
+        Log::info('🔍 Búsqueda CUPS offline iniciada', [
+            'termino' => $termino,
+            'limit' => $limit
+        ]);
+
+        $cups = [];
+        
+        if ($this->isSQLiteAvailable()) {
+            Log::info('💾 Usando SQLite para búsqueda CUPS');
+            
+            // Asegurar que la tabla existe
+            $this->createCupsTable();
+            
+            // Verificar si hay datos
+            $totalCups = DB::connection('offline')->table('cups')->count();
+            Log::info('📊 Total CUPS en SQLite', ['count' => $totalCups]);
+            
+            if ($totalCups === 0) {
+                Log::warning('⚠️ No hay CUPS en SQLite');
+                return [];
+            }
+
+            $query = DB::connection('offline')->table('cups')
+                ->where('estado', 'ACTIVO');
+            
+            // ✅ MEJORAR LA LÓGICA DE BÚSQUEDA
+            if (is_numeric($termino)) {
+                // Búsqueda por código numérico
+                $query->where(function($q) use ($termino) {
+                    $q->where('codigo', 'LIKE', $termino . '%')
+                      ->orWhere('codigo', '=', $termino)
+                      ->orWhere('codigo', 'LIKE', '%' . $termino . '%');
+                });
+                
+                Log::info('🔢 Búsqueda por código numérico', ['termino' => $termino]);
+            } else {
+                // Búsqueda por nombre (texto)
+                $termino = trim($termino);
+                $query->where(function($q) use ($termino) {
+                    $q->where('nombre', 'LIKE', '%' . $termino . '%')
+                      ->orWhere('codigo', 'LIKE', '%' . $termino . '%');
+                });
+                
+                Log::info('📝 Búsqueda por nombre/texto', ['termino' => $termino]);
+            }
+
+            $results = $query->limit($limit)
+                ->orderBy('codigo')
+                ->get();
+
+            Log::info('📋 Resultados SQLite', [
+                'encontrados' => $results->count(),
+                'query_termino' => $termino
+            ]);
+
+            $cups = $results->map(function($cup) {
+                return [
+                    'uuid' => $cup->uuid,
+                    'codigo' => $cup->codigo,
+                    'nombre' => $cup->nombre,
+                    'origen' => $cup->origen,
+                    'estado' => $cup->estado,
+                    'categoria' => $cup->categoria,
+                    'created_at' => $cup->created_at,
+                    'updated_at' => $cup->updated_at
+                ];
+            })->toArray();
+
+        } else {
+            Log::info('📁 Usando archivos JSON para búsqueda CUPS');
+            
+            // Fallback a JSON
+            $cupsPath = $this->getStoragePath() . '/cups';
+            if (is_dir($cupsPath)) {
+                $files = glob($cupsPath . '/*.json');
+                Log::info('📂 Archivos JSON encontrados', ['count' => count($files)]);
+                
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && 
+                        isset($data['estado']) && $data['estado'] === 'ACTIVO' &&
+                        (stripos($data['codigo'] ?? '', $termino) !== false || 
+                         stripos($data['nombre'] ?? '', $termino) !== false)) {
+                        $cups[] = $data;
+                        if (count($cups) >= $limit) break;
+                    }
+                }
+            } else {
+                Log::warning('⚠️ Directorio CUPS no existe', ['path' => $cupsPath]);
+            }
+        }
+
+        Log::info('✅ Búsqueda CUPS offline completada', [
+            'termino' => $termino,
+            'resultados' => count($cups)
+        ]);
+
+        return $cups;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando CUPS offline', [
+            'error' => $e->getMessage(),
+            'termino' => $termino,
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ OBTENER CUPS POR CÓDIGO EXACTO OFFLINE
+ */
+public function obtenerCupsPorCodigoOffline(string $codigo): ?array
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $cups = DB::connection('offline')->table('cups')
+                ->where('codigo', $codigo)
+                ->where('estado', 'ACTIVO')
+                ->first();
+            
+            return $cups ? (array) $cups : null;
+        } else {
+            // Fallback a JSON
+            $cupsPath = $this->getStoragePath() . '/cups';
+            if (is_dir($cupsPath)) {
+                $files = glob($cupsPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && 
+                        $data['codigo'] === $codigo && 
+                        $data['estado'] === 'ACTIVO') {
+                        return $data;
+                    }
+                }
+            }
+        }
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS por código offline', [
+            'error' => $e->getMessage(),
+            'codigo' => $codigo
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER CUPS ACTIVOS OFFLINE
+ */
+public function obtenerCupsActivosOffline(): array
+{
+    try {
+        $cups = [];
+
+        if ($this->isSQLiteAvailable()) {
+            $cups = DB::connection('offline')->table('cups')
+                ->where('estado', 'ACTIVO')
+                ->orderBy('codigo')
+                ->get()
+                ->map(function ($item) {
+                    return (array) $item;
+                })
+                ->toArray();
+        } else {
+            // Fallback a JSON
+            $cupsPath = $this->getStoragePath() . '/cups';
+            if (is_dir($cupsPath)) {
+                $files = glob($cupsPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && $data['estado'] === 'ACTIVO') {
+                        $cups[] = $data;
+                    }
+                }
+                
+                // Ordenar por código
+                usort($cups, function ($a, $b) {
+                    return strcmp($a['codigo'], $b['codigo']);
+                });
+            }
+        }
+
+        return $cups;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS activos offline', [
+            'error' => $e->getMessage()
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ SINCRONIZAR CUPS DESDE API
+ */
+public function syncCupsFromApi(array $cupsList): bool
+{
+    try {
+        Log::info('🔄 Sincronizando CUPS offline', [
+            'count' => count($cupsList)
+        ]);
+
+        // Asegurar que la tabla existe
+        if ($this->isSQLiteAvailable()) {
+            $this->createCupsTable();
+            
+            // Limpiar datos existentes
+            DB::connection('offline')->table('cups')->delete();
+        }
+
+        $syncCount = 0;
+        foreach ($cupsList as $cups) {
+            $this->storeCupsOffline($cups);
+            $syncCount++;
+        }
+
+        Log::info('✅ CUPS sincronizados offline', [
+            'synced' => $syncCount,
+            'total' => count($cupsList)
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando CUPS offline', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ OBTENER ESTADÍSTICAS DE CUPS
+ */
+public function getCupsStatsOffline(): array
+{
+    try {
+        $stats = [
+            'total' => 0,
+            'activos' => 0,
+            'inactivos' => 0,
+            'last_sync' => null
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            $stats['total'] = DB::connection('offline')->table('cups')->count();
+            $stats['activos'] = DB::connection('offline')->table('cups')
+                ->where('estado', 'ACTIVO')->count();
+            $stats['inactivos'] = DB::connection('offline')->table('cups')
+                ->where('estado', 'INACTIVO')->count();
+        } else {
+            // Fallback a JSON
+            $cupsPath = $this->getStoragePath() . '/cups';
+            if (is_dir($cupsPath)) {
+                $files = glob($cupsPath . '/*.json');
+                $stats['total'] = count($files);
+                
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data) {
+                        if ($data['estado'] === 'ACTIVO') {
+                            $stats['activos']++;
+                        } else {
+                            $stats['inactivos']++;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $stats;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo estadísticas CUPS', [
+            'error' => $e->getMessage()
+        ]);
+        return [
+            'total' => 0,
+            'activos' => 0,
+            'inactivos' => 0,
+            'error' => $e->getMessage()
+        ];
+    }
+}
+
 
 private function getBrigadaIdFromUuid(string $uuid): ?int
 {
@@ -2833,4 +3245,188 @@ public function recreateAgendasTable(): bool
         return false;
     }
 }
+
+// En OfflineService.php - AGREGAR ESTOS MÉTODOS AL FINAL
+
+/**
+ * ✅ OBTENER PACIENTE OFFLINE POR UUID
+ */
+public function getPacienteOffline(string $uuid): ?array
+{
+    try {
+        Log::info('🔍 OfflineService: Buscando paciente', [
+            'uuid' => $uuid
+        ]);
+        
+        // ✅ BUSCAR EN ARCHIVO JSON DIRECTO
+        $paciente = $this->getData('pacientes/' . $uuid . '.json');
+        
+        if ($paciente) {
+            Log::info('✅ OfflineService: Paciente encontrado en JSON', [
+                'paciente_id' => $paciente['id'] ?? 'NO_ID',
+                'paciente_nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
+            ]);
+            return $paciente;
+        }
+        
+        // ✅ SI NO ESTÁ EN JSON, BUSCAR EN SQLITE
+        if ($this->isSQLiteAvailable()) {
+            $pacientes = $this->getFromSQLite('pacientes');
+            
+            Log::info('🔍 OfflineService: Pacientes en SQLite', [
+                'total' => count($pacientes),
+                'sample_uuids' => array_slice(array_column($pacientes, 'uuid'), 0, 5)
+            ]);
+            
+            foreach ($pacientes as $paciente) {
+                if (isset($paciente['uuid']) && $paciente['uuid'] === $uuid) {
+                    Log::info('✅ OfflineService: Paciente encontrado en SQLite', [
+                        'paciente_id' => $paciente['id'] ?? 'NO_ID',
+                        'paciente_nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
+                    ]);
+                    return $paciente;
+                }
+            }
+        }
+        
+        Log::warning('❌ OfflineService: Paciente no encontrado', [
+            'uuid_buscado' => $uuid
+        ]);
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('Error en getPacienteOffline', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER CUPS OFFLINE POR UUID
+ */
+public function getCupsOffline(string $uuid): ?array
+{
+    try {
+        // Buscar en archivo JSON directo
+        $cups = $this->getData('cups/' . $uuid . '.json');
+        
+        if ($cups) {
+            return $cups;
+        }
+        
+        // Si no está en JSON, buscar en SQLite
+        if ($this->isSQLiteAvailable()) {
+            $cups = DB::connection('offline')->table('cups')
+                ->where('uuid', $uuid)
+                ->where('estado', 'ACTIVO')
+                ->first();
+            
+            return $cups ? (array) $cups : null;
+        }
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ MÉTODO GENÉRICO PARA OBTENER DATOS DE SQLITE
+ */
+public function getFromSQLite(string $table): array
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            return [];
+        }
+        
+        $results = DB::connection('offline')->table($table)->get();
+        
+        return $results->map(function ($item) {
+            return (array) $item;
+        })->toArray();
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo datos de SQLite', [
+            'table' => $table,
+            'error' => $e->getMessage()
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ ALMACENAR PACIENTE OFFLINE
+ */
+public function storePacienteOffline(array $pacienteData, bool $needsSync = false): void
+{
+    try {
+        if (empty($pacienteData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar paciente sin UUID');
+            return;
+        }
+
+        // Asegurar sede_id
+        if (empty($pacienteData['sede_id'])) {
+            $user = auth()->user() ?? session('usuario');
+            $pacienteData['sede_id'] = $user['sede_id'] ?? 1;
+        }
+
+        $offlineData = [
+            'id' => $pacienteData['id'] ?? null,
+            'uuid' => $pacienteData['uuid'],
+            'sede_id' => $pacienteData['sede_id'],
+            'primer_nombre' => $pacienteData['primer_nombre'] ?? '',
+            'segundo_nombre' => $pacienteData['segundo_nombre'] ?? null,
+            'primer_apellido' => $pacienteData['primer_apellido'] ?? '',
+            'segundo_apellido' => $pacienteData['segundo_apellido'] ?? null,
+            'nombre_completo' => $pacienteData['nombre_completo'] ?? 
+                                (($pacienteData['primer_nombre'] ?? '') . ' ' . 
+                                 ($pacienteData['primer_apellido'] ?? '')),
+            'documento' => $pacienteData['documento'] ?? '',
+            'fecha_nacimiento' => $pacienteData['fecha_nacimiento'] ?? null,
+            'sexo' => $pacienteData['sexo'] ?? 'M',
+            'telefono' => $pacienteData['telefono'] ?? null,
+            'direccion' => $pacienteData['direccion'] ?? null,
+            'correo' => $pacienteData['correo'] ?? null,
+            'estado' => $pacienteData['estado'] ?? 'ACTIVO',
+            'sync_status' => $needsSync ? 'pending' : 'synced',
+            'stored_at' => now()->toISOString(),
+            'deleted_at' => $pacienteData['deleted_at'] ?? null
+        ];
+
+        // Guardar en JSON
+        $this->storeData('pacientes/' . $pacienteData['uuid'] . '.json', $offlineData);
+        
+        // También indexar por documento
+        if (!empty($pacienteData['documento'])) {
+            $this->storeData('pacientes_by_document/' . $pacienteData['documento'] . '.json', [
+                'uuid' => $pacienteData['uuid'],
+                'sede_id' => $pacienteData['sede_id']
+            ]);
+        }
+
+        Log::debug('✅ Paciente almacenado offline', [
+            'uuid' => $pacienteData['uuid'],
+            'documento' => $pacienteData['documento'] ?? 'sin-documento',
+            'sync_status' => $offlineData['sync_status']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando paciente offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $pacienteData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
 }

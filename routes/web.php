@@ -8,7 +8,8 @@ use App\Http\Controllers\{
     PacienteController,
     OfflineController,
     CitaController,
-    AgendaController
+    AgendaController,
+    CupsController
 };
 
 // Rutas públicas (para usuarios no autenticados)
@@ -116,6 +117,14 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::put('/{uuid}', [CitaController::class, 'update'])->name('update');
         Route::delete('/{uuid}', [CitaController::class, 'destroy'])->name('destroy');
         Route::patch('/{uuid}/estado', [CitaController::class, 'cambiarEstado'])->name('cambiar-estado');
+    });
+
+    //CUPS
+      Route::prefix('cups')->name('cups.')->group(function () {
+        Route::get('/buscar', [CupsController::class, 'buscar'])->name('buscar');
+        Route::get('/codigo', [CupsController::class, 'obtenerPorCodigo'])->name('codigo');
+        Route::post('/sincronizar', [CupsController::class, 'sincronizar'])->name('sincronizar');
+        Route::get('/activos', [CupsController::class, 'activos'])->name('activos');
     });
     
     // ✅ SINCRONIZACIÓN

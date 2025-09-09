@@ -1,0 +1,109 @@
+/* public/css/cups-autocomplete.css */
+
+.cups-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.cups-result-item {
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.cups-result-item:hover {
+    background-color: #f8f9fa;
+}
+
+.cups-result-item:last-child {
+    border-bottom: none;
+}
+
+.cups-codigo {
+    font-weight: 600;
+    color: #007bff;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.cups-nombre {
+    color: #333;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 4px;
+}
+
+.cups-categoria {
+    color: #666;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.cups-loading {
+    padding: 12px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
+.cups-error {
+    padding: 12px;
+    text-align: center;
+    color: #dc3545;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+/* Contenedor con posición relativa para el autocompletado */
+.cups-autocomplete-container {
+    position: relative;
+}
+
+/* Estilos para los inputs */
+.cups-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.cups-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .cups-results {
+        max-height: 200px;
+    }
+    
+    .cups-result-item {
+        padding: 10px;
+    }
+    
+    .cups-codigo {
+        font-size: 13px;
+    }
+    
+    .cups-nombre {
+        font-size: 12px;
+    }
+    
+    .cups-categoria {
+        font-size: 10px;
+    }
+}

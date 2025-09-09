@@ -14,8 +14,8 @@ return [
         'sync' => '/sync',
         'health' => '/health',
 
-      'pacientes' => [
-   'index' => '/pacientes',
+        'pacientes' => [
+            'index' => '/pacientes',
             'store' => '/pacientes',
             'show' => '/pacientes/{uuid}',
             'update' => '/pacientes/{uuid}',
@@ -23,9 +23,9 @@ return [
             'search' => '/pacientes/search',
             'search_by_document' => '/pacientes/search/document',
             'bulk_sync' => '/pacientes/sync',
-],
+        ],
 
-   'agendas' => [
+        'agendas' => [
             'index' => '/agendas',
             'store' => '/agendas',
             'show' => '/agendas/{uuid}',
@@ -47,6 +47,17 @@ return [
             'por_agenda' => '/citas/agenda/{agenda_uuid}',
             'horarios_disponibles' => '/citas/agenda/{agenda_uuid}/horarios'
         ],
+
+        'cups' => [
+            'index' => '/cups',
+            'buscar' => '/cups/buscar',
+            'activos' => '/cups/activos',
+            'por_origen' => '/cups/origen/{origen}',
+            'show' => '/cups/{uuid}',
+            'store' => '/cups',
+            'update' => '/cups/{uuid}',
+            'destroy' => '/cups/{uuid}'
+        ]
     ],
     
     'offline' => [

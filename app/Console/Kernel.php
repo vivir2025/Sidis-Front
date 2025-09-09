@@ -29,6 +29,7 @@ class Kernel extends ConsoleKernel
     protected $commands = [
     Commands\CleanDuplicateAgendas::class,
     Commands\ClearOfflineTables::class, 
+    Commands\SincronizarCups::class,
 ];
 
 }

@@ -627,4 +627,47 @@ private function syncMasterDataAfterLogin(): void
         return false;
     }
 }
+
+public function hasValidToken(): bool
+{
+    try {
+        // ✅ VERIFICAR SI HAY TOKEN EN SESIÓN
+        $token = session('api_token');
+        
+        if (empty($token)) {
+            Log::info('🔐 No hay token en sesión');
+            return false;
+        }
+        
+        // ✅ VERIFICAR SI EL TOKEN NO HA EXPIRADO
+        $expiresAt = session('token_expires_at');
+        if ($expiresAt && now()->isAfter($expiresAt)) {
+            Log::info('🔐 Token expirado', [
+                'expires_at' => $expiresAt,
+                'current_time' => now()
+            ]);
+            return false;
+        }
+        
+        // ✅ VERIFICAR SI HAY USUARIO AUTENTICADO
+        $usuario = session('usuario');
+        if (empty($usuario)) {
+            Log::info('🔐 No hay usuario en sesión');
+            return false;
+        }
+        
+        Log::info('🔐 Token válido encontrado', [
+            'token_length' => strlen($token),
+            'usuario_id' => $usuario['id'] ?? 'unknown'
+        ]);
+        
+        return true;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando token válido', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
 }
