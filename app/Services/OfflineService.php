@@ -2048,30 +2048,55 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
         return [];
     }
 }
-
+/**
+ * ✅ CORREGIDO: Obtener agenda offline por UUID
+ */
 public function getAgendaOffline(string $uuid): ?array
 {
     try {
+        // ✅ USAR $this->storagePath en lugar de $this->offlinePath
+        $path = $this->storagePath . "/agendas/{$uuid}.json";
+        
+        if (file_exists($path)) {
+            $content = file_get_contents($path);
+            $agenda = json_decode($content, true);
+            
+            Log::info('✅ OfflineService: Agenda encontrada en JSON', [
+                'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
+                'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA'
+            ]);
+            
+            return $agenda;
+        }
+
+        // ✅ TAMBIÉN BUSCAR EN SQLite
         if ($this->isSQLiteAvailable()) {
             $agenda = DB::connection('offline')->table('agendas')
                 ->where('uuid', $uuid)
                 ->whereNull('deleted_at')
                 ->first();
             
-            return $agenda ? (array) $agenda : null;
+            if ($agenda) {
+                $agendaArray = (array) $agenda;
+                Log::info('✅ OfflineService: Agenda encontrada en SQLite', [
+                    'agenda_uuid' => $agendaArray['uuid'],
+                    'agenda_fecha' => $agendaArray['fecha']
+                ]);
+                return $agendaArray;
+            }
         }
 
-        return $this->getData('agendas/' . $uuid . '.json');
+        Log::info('⚠️ OfflineService: Agenda no encontrada', ['uuid' => $uuid]);
+        return null;
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo agenda offline', [
-            'error' => $e->getMessage(),
-            'uuid' => $uuid
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
         ]);
         return null;
     }
 }
-
 public function getCitaOffline(string $uuid): ?array
 {
     try {
@@ -3254,53 +3279,129 @@ public function recreateAgendasTable(): bool
 public function getPacienteOffline(string $uuid): ?array
 {
     try {
-        Log::info('🔍 OfflineService: Buscando paciente', [
-            'uuid' => $uuid
-        ]);
+        // ✅ USAR $this->storagePath en lugar de $this->offlinePath
+        $path = $this->storagePath . "/pacientes/{$uuid}.json";
         
-        // ✅ BUSCAR EN ARCHIVO JSON DIRECTO
-        $paciente = $this->getData('pacientes/' . $uuid . '.json');
-        
-        if ($paciente) {
+        if (file_exists($path)) {
+            $content = file_get_contents($path);
+            $paciente = json_decode($content, true);
+            
             Log::info('✅ OfflineService: Paciente encontrado en JSON', [
-                'paciente_id' => $paciente['id'] ?? 'NO_ID',
+                'paciente_uuid' => $paciente['uuid'] ?? 'NO_UUID',
                 'paciente_nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
             ]);
+            
             return $paciente;
         }
-        
-        // ✅ SI NO ESTÁ EN JSON, BUSCAR EN SQLITE
+
+        // ✅ TAMBIÉN BUSCAR EN SQLite
         if ($this->isSQLiteAvailable()) {
-            $pacientes = $this->getFromSQLite('pacientes');
+            $paciente = DB::connection('offline')->table('pacientes')
+                ->where('uuid', $uuid)
+                ->whereNull('deleted_at')
+                ->first();
             
-            Log::info('🔍 OfflineService: Pacientes en SQLite', [
-                'total' => count($pacientes),
-                'sample_uuids' => array_slice(array_column($pacientes, 'uuid'), 0, 5)
-            ]);
-            
-            foreach ($pacientes as $paciente) {
-                if (isset($paciente['uuid']) && $paciente['uuid'] === $uuid) {
-                    Log::info('✅ OfflineService: Paciente encontrado en SQLite', [
-                        'paciente_id' => $paciente['id'] ?? 'NO_ID',
-                        'paciente_nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
-                    ]);
-                    return $paciente;
+            if ($paciente) {
+                $pacienteArray = (array) $paciente;
+                Log::info('✅ OfflineService: Paciente encontrado en SQLite', [
+                    'paciente_uuid' => $pacienteArray['uuid'],
+                    'paciente_nombre' => $pacienteArray['nombre_completo']
+                ]);
+                return $pacienteArray;
+            }
+        }
+
+        // Buscar en índice por documento
+        $indexPath = $this->storagePath . "/pacientes_by_document";
+        if (is_dir($indexPath)) {
+            $files = glob($indexPath . "/*.json");
+            foreach ($files as $file) {
+                $content = json_decode(file_get_contents($file), true);
+                if (isset($content['uuid']) && $content['uuid'] === $uuid) {
+                    return $this->getPacienteOffline($content['uuid']);
                 }
             }
         }
-        
-        Log::warning('❌ OfflineService: Paciente no encontrado', [
-            'uuid_buscado' => $uuid
-        ]);
-        
+
+        Log::info('⚠️ OfflineService: Paciente no encontrado', ['uuid' => $uuid]);
         return null;
-        
+
     } catch (\Exception $e) {
-        Log::error('Error en getPacienteOffline', [
+        Log::error('❌ Error obteniendo paciente offline', [
             'uuid' => $uuid,
             'error' => $e->getMessage()
         ]);
-        
+        return null;
+    }
+}
+
+
+/**
+ * ✅ NUEVO: Buscar paciente por documento offline
+ */
+public function buscarPacientePorDocumentoOffline(string $documento): ?array
+{
+    try {
+        Log::info('🔍 Buscando paciente por documento offline', [
+            'documento' => $documento
+        ]);
+
+        // ✅ BUSCAR EN SQLite PRIMERO
+        if ($this->isSQLiteAvailable()) {
+            $paciente = DB::connection('offline')->table('pacientes')
+                ->where('documento', $documento)
+                ->where('estado', 'ACTIVO')
+                ->whereNull('deleted_at')
+                ->first();
+            
+            if ($paciente) {
+                $pacienteArray = (array) $paciente;
+                Log::info('✅ Paciente encontrado en SQLite', [
+                    'uuid' => $pacienteArray['uuid'],
+                    'nombre' => $pacienteArray['nombre_completo']
+                ]);
+                return $pacienteArray;
+            }
+        }
+
+        // ✅ BUSCAR EN ÍNDICE JSON
+        $indexPath = $this->storagePath . "/pacientes_by_document/{$documento}.json";
+        if (file_exists($indexPath)) {
+            $indexData = json_decode(file_get_contents($indexPath), true);
+            if ($indexData && isset($indexData['uuid'])) {
+                return $this->getPacienteOffline($indexData['uuid']);
+            }
+        }
+
+        // ✅ BÚSQUEDA EXHAUSTIVA EN JSONs
+        $pacientesPath = $this->storagePath . '/pacientes';
+        if (is_dir($pacientesPath)) {
+            $files = glob($pacientesPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && 
+                    isset($data['documento']) && 
+                    $data['documento'] === $documento &&
+                    $data['estado'] === 'ACTIVO' &&
+                    empty($data['deleted_at'])) {
+                    
+                    Log::info('✅ Paciente encontrado en JSON', [
+                        'uuid' => $data['uuid'],
+                        'nombre' => $data['nombre_completo']
+                    ]);
+                    return $data;
+                }
+            }
+        }
+
+        Log::info('⚠️ Paciente no encontrado offline', ['documento' => $documento]);
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando paciente por documento offline', [
+            'error' => $e->getMessage(),
+            'documento' => $documento
+        ]);
         return null;
     }
 }

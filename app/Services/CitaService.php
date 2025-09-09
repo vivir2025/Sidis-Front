@@ -20,32 +20,19 @@ class CitaService
         $this->offlineService = $offlineService;
     }
 
-    /**
-     * ✅ CONSTRUIR URL DE API DESDE CONFIGURACIÓN
-     */
-     private function buildApiUrl(string $endpoint, array $params = []): string
+    private function buildApiUrl(string $action): string
     {
-        // Obtener endpoint desde configuración
-        $endpointPath = config("api.endpoints.citas.{$endpoint}");
+        $endpoints = config('api.endpoints.citas', []);
         
-        if (!$endpointPath) {
-            throw new \Exception("Endpoint de cita no configurado: {$endpoint}");
-        }
+        Log::info('🔧 Construyendo URL de API', [
+            'action' => $action,
+            'available_endpoints' => array_keys($endpoints),
+            'selected_endpoint' => $endpoints[$action] ?? '/citas'
+        ]);
         
-        // ✅ USAR DIRECTAMENTE LA URL COMPLETA DE LA CONFIGURACIÓN
-        $url = $endpointPath;
-        
-        // Reemplazar parámetros en la URL
-        foreach ($params as $key => $value) {
-            $url = str_replace("{{$key}}", $value, $url);
-        }
-        
-        return $url;
+        return $endpoints[$action] ?? '/citas';
     }
 
-    /**
-     * ✅ LISTAR CITAS
-     */
     public function index(array $filters = [], int $page = 1): array
     {
         try {
@@ -57,7 +44,6 @@ class CitaService
             $user = $this->authService->usuario();
             $sedeId = $user['sede_id'];
 
-            // Preparar parámetros para API
             $apiParams = array_merge($filters, [
                 'page' => $page,
                 'sede_id' => $sedeId
@@ -67,7 +53,6 @@ class CitaService
                 return !empty($value) && $value !== '';
             });
 
-            // Intentar obtener desde API
             if ($this->apiService->isOnline()) {
                 try {
                     $url = $this->buildApiUrl('index');
@@ -77,7 +62,6 @@ class CitaService
                         $citas = $response['data']['data'] ?? $response['data'];
                         $meta = $response['data']['meta'] ?? $response['meta'] ?? [];
                         
-                        // Sincronizar offline
                         if (!empty($citas)) {
                             foreach ($citas as $cita) {
                                 $this->offlineService->storeCitaOffline($cita, false);
@@ -99,10 +83,8 @@ class CitaService
                 }
             }
 
-            // Obtener datos offline
             $citas = $this->offlineService->getCitasOffline($sedeId, $filters);
             
-            // Paginación manual
             $perPage = 15;
             $total = count($citas);
             $offset = ($page - 1) * $perPage;
@@ -142,345 +124,130 @@ class CitaService
         }
     }
 
-   /**
- * ✅ CREAR CITA - VERSIÓN CORREGIDA
- */
-public function store(array $data): array
-{
-    try {
-        Log::info('🩺 CitaService::store - Datos recibidos', [
-            'data' => $data
-        ]);
-
-        $user = $this->authService->usuario();
-        $data['sede_id'] = $user['sede_id'];
-        $data['usuario_creo_cita_id'] = $user['id'];
-
-        // ✅ CONVERTIR UUIDs A IDs ANTES DE ENVIAR A LA API
-        $processedData = $this->convertUuidsToIds($data);
-
-        Log::info('🔄 Datos procesados para API', [
-            'original' => $data,
-            'processed' => $processedData
-        ]);
-
-        // ✅ INTENTAR CREAR ONLINE PRIMERO
-        if ($this->apiService->isOnline()) {
-            Log::info('🌐 Conexión disponible, intentando crear cita en API...');
-            
-            try {
-                $url = $this->buildApiUrl('store');
-                Log::info('📤 Enviando cita a API', [
-                    'url' => $url,
-                    'data_keys' => array_keys($processedData)
-                ]);
-                
-                $response = $this->apiService->post($url, $processedData);
-                
-                Log::info('📥 Respuesta de API recibida', [
-                    'success' => $response['success'] ?? false,
-                    'has_data' => isset($response['data']),
-                    'has_error' => isset($response['error'])
-                ]);
-                
-                if ($response['success']) {
-                    $citaData = $response['data'];
-                    $this->offlineService->storeCitaOffline($citaData, false);
-                    
-                    Log::info('🎉 Cita creada exitosamente en API', [
-                        'cita_uuid' => $citaData['uuid'] ?? 'N/A'
-                    ]);
-                    
-                    return [
-                        'success' => true,
-                        'data' => $citaData,
-                        'message' => '✅ Cita creada exitosamente en el servidor',
-                        'offline' => false
-                    ];
-                }
-                
-                // ✅ SI LA API FALLA, LOGGEAR PERO CONTINUAR AL FALLBACK OFFLINE
-                Log::warning('⚠️ API respondió con error, creando offline como fallback', [
-                    'api_error' => $response['error'] ?? 'Error desconocido',
-                    'api_response' => $response
-                ]);
-                
-            } catch (\Exception $e) {
-                Log::warning('⚠️ Excepción conectando con API, creando offline como fallback', [
-                    'error' => $e->getMessage()
-                ]);
-            }
-        } else {
-            Log::info('📱 Sin conexión, creando cita offline directamente...');
-        }
-
-        // ✅ CREAR OFFLINE (como fallback o por falta de conexión)
-        Log::info('💾 Creando cita en modo offline...');
-        
-        $data['uuid'] = Str::uuid();
-        $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
-        $this->offlineService->storeCitaOffline($data, true);
-
-        Log::info('✅ Cita creada offline exitosamente', [
-            'uuid' => $data['uuid'],
-            'needs_sync' => true
-        ]);
-
-        return [
-            'success' => true,
-            'data' => $data,
-            'message' => '📱 Cita creada offline (se sincronizará cuando vuelva la conexión)',
-            'offline' => true
-        ];
-
-    } catch (\Exception $e) {
-        Log::error('💥 Error crítico creando cita', [
-            'error' => $e->getMessage(),
-            'data' => $data,
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return [
-            'success' => false,
-            'error' => 'Error interno: ' . $e->getMessage()
-        ];
-    }
-}
-
     /**
-     * ✅ NUEVO: Convertir UUIDs a IDs numéricos
+     * ✅ CREAR CITA - VERSIÓN SIMPLIFICADA SIN CONVERSIÓN DE UUIDs
      */
-    private function convertUuidsToIds(array $data): array
+    public function store(array $data): array
     {
         try {
-            $processedData = $data;
+            Log::info('🩺 CitaService::store - Datos recibidos', [
+                'data' => $data
+            ]);
 
-            // ✅ CONVERTIR PACIENTE_UUID A PACIENTE_ID
-            if (!empty($data['paciente_uuid'])) {
-                $pacienteId = $this->convertUuidToId($data['paciente_uuid'], 'pacientes');
+            $user = $this->authService->usuario();
+            $data['sede_id'] = $user['sede_id'];
+            $data['usuario_creo_cita_id'] = $user['id'];
+            $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
+
+            // ✅ NO CONVERTIR UUIDs - ENVIAR TAL COMO VIENEN
+            Log::info('📤 Enviando datos directamente con UUIDs', [
+                'paciente_uuid' => $data['paciente_uuid'] ?? 'NO_PACIENTE',
+                'agenda_uuid' => $data['agenda_uuid'] ?? 'NO_AGENDA',
+                'cups_contratado_id' => $data['cups_contratado_id'] ?? 'NO_CUPS'
+            ]);
+
+            $isOnline = $this->apiService->isOnline();
+            Log::info('🔍 Estado de conexión verificado', [
+                'isOnline' => $isOnline
+            ]);
+
+            if ($isOnline) {
+                Log::info('🌐 Conexión disponible, intentando crear cita en API...');
                 
-                if ($pacienteId) {
-                    $processedData['paciente_id'] = $pacienteId;
-                    unset($processedData['paciente_uuid']); // Remover UUID
-                    
-                    Log::info('✅ paciente_uuid convertido', [
-                        'uuid' => $data['paciente_uuid'],
-                        'id' => $pacienteId
+                try {
+                    // ✅ CAMBIAR cups_contratado_id por cups_contratado_uuid si viene
+                    if (isset($data['cups_contratado_id']) && !empty($data['cups_contratado_id'])) {
+                        $data['cups_contratado_uuid'] = $data['cups_contratado_id'];
+                        unset($data['cups_contratado_id']);
+                    }
+
+                    $endpoint = $this->buildApiUrl('store');
+                    Log::info('📤 Enviando cita a API', [
+                        'endpoint' => $endpoint,
+                        'data_keys' => array_keys($data)
                     ]);
-                } else {
-                    throw new \Exception("No se encontró el paciente con UUID: {$data['paciente_uuid']}");
+                    
+                    $response = $this->apiService->post($endpoint, $data);
+                    
+                    Log::info('📥 Respuesta de API recibida', [
+                        'success' => $response['success'] ?? false,
+                        'has_data' => isset($response['data']),
+                        'has_error' => isset($response['error']),
+                        'response_keys' => array_keys($response)
+                    ]);
+                    
+                    if ($response['success'] ?? false) {
+                        $citaData = $response['data'];
+                        $this->offlineService->storeCitaOffline($citaData, false);
+                        
+                        Log::info('🎉 Cita creada exitosamente en API', [
+                            'cita_uuid' => $citaData['uuid'] ?? 'N/A'
+                        ]);
+                        
+                        return [
+                            'success' => true,
+                            'data' => $citaData,
+                            'message' => '✅ Cita creada exitosamente en el servidor',
+                            'offline' => false
+                        ];
+                    }
+                    
+                    Log::warning('⚠️ API respondió con error, creando offline como fallback', [
+                        'api_error' => $response['error'] ?? 'Error desconocido',
+                        'full_response' => $response
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Excepción conectando con API, creando offline como fallback', [
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine()
+                    ]);
                 }
+            } else {
+                Log::info('📱 Sin conexión detectada, creando cita offline directamente...');
             }
 
-            // ✅ CONVERTIR AGENDA_UUID A AGENDA_ID
-            if (!empty($data['agenda_uuid'])) {
-                $agendaId = $this->convertUuidToId($data['agenda_uuid'], 'agendas');
-                
-                if ($agendaId) {
-                    $processedData['agenda_id'] = $agendaId;
-                    unset($processedData['agenda_uuid']); // Remover UUID
-                    
-                    Log::info('✅ agenda_uuid convertido', [
-                        'uuid' => $data['agenda_uuid'],
-                        'id' => $agendaId
-                    ]);
-                } else {
-                    throw new \Exception("No se encontró la agenda con UUID: {$data['agenda_uuid']}");
-                }
-            }
+            // ✅ CREAR OFFLINE
+            Log::info('💾 Creando cita en modo offline...');
+            
+            $data['uuid'] = Str::uuid();
+            $this->offlineService->storeCitaOffline($data, true);
 
-            // ✅ CONVERTIR CUPS_CONTRATADO_ID SI EXISTE
-            if (!empty($data['cups_contratado_id']) && !is_numeric($data['cups_contratado_id'])) {
-                $cupsId = $this->convertUuidToId($data['cups_contratado_id'], 'cups_contratados');
-                
-                if ($cupsId) {
-                    $processedData['cups_contratado_id'] = $cupsId;
-                    
-                    Log::info('✅ cups_contratado_id convertido', [
-                        'uuid' => $data['cups_contratado_id'],
-                        'id' => $cupsId
-                    ]);
-                }
-            }
+            Log::info('✅ Cita creada offline exitosamente', [
+                'uuid' => $data['uuid'],
+                'needs_sync' => true
+            ]);
 
-            return $processedData;
+            return [
+                'success' => true,
+                'data' => $data,
+                'message' => '📱 Cita creada offline (se sincronizará cuando vuelva la conexión)',
+                'offline' => true
+            ];
 
         } catch (\Exception $e) {
-            Log::error('❌ Error convirtiendo UUIDs a IDs', [
+            Log::error('💥 Error crítico creando cita', [
                 'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
                 'data' => $data
             ]);
             
-            throw $e;
+            return [
+                'success' => false,
+                'error' => 'Error interno: ' . $e->getMessage()
+            ];
         }
     }
 
-    /**
-     * ✅ NUEVO: Convertir UUID individual a ID
-     */
-  private function convertUuidToId(?string $uuid, string $table): ?int
-{
-    if (!$uuid) return null;
-
-    try {
-        // ✅ VERIFICAR SI YA ES UN ID NUMÉRICO
-        if (is_numeric($uuid)) {
-            return (int) $uuid;
-        }
-
-        Log::info("🔍 Buscando UUID en tabla {$table}", ['uuid' => $uuid]);
-
-        // ✅ BUSCAR PRIMERO EN ARCHIVOS JSON OFFLINE
-        if ($table === 'pacientes') {
-            $paciente = $this->offlineService->getPacienteOffline($uuid);
-            if ($paciente) {
-                // ✅ SI EL PACIENTE OFFLINE TIENE ID, USARLO
-                if (isset($paciente['id']) && is_numeric($paciente['id'])) {
-                    Log::info("✅ Paciente encontrado en JSON offline con ID", [
-                        'uuid' => $uuid,
-                        'id' => $paciente['id']
-                    ]);
-                    return (int) $paciente['id'];
-                }
-                
-                // ✅ SI NO TIENE ID, INTENTAR BUSCAR ONLINE PARA OBTENERLO
-                Log::info("⚠️ Paciente offline sin ID, buscando online", ['uuid' => $uuid]);
-            }
-        }
-
-        if ($table === 'agendas') {
-            $agenda = $this->offlineService->getAgendaOffline($uuid);
-            if ($agenda) {
-                if (isset($agenda['id']) && is_numeric($agenda['id'])) {
-                    Log::info("✅ Agenda encontrada en JSON offline con ID", [
-                        'uuid' => $uuid,
-                        'id' => $agenda['id']
-                    ]);
-                    return (int) $agenda['id'];
-                }
-                
-                Log::info("⚠️ Agenda offline sin ID, buscando online", ['uuid' => $uuid]);
-            }
-        }
-
-        // ✅ BUSCAR EN SQLite OFFLINE
-        if ($this->offlineService->isSQLiteAvailable()) {
-            try {
-                $id = DB::connection('offline')->table($table)->where('uuid', $uuid)->value('id');
-                
-                if ($id) {
-                    Log::info("✅ UUID encontrado en SQLite offline", [
-                        'uuid' => $uuid,
-                        'table' => $table,
-                        'id' => $id
-                    ]);
-                    return (int) $id;
-                }
-            } catch (\Exception $e) {
-                Log::warning("⚠️ Error buscando en SQLite offline", [
-                    'uuid' => $uuid,
-                    'table' => $table,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
-
-        // ✅ BUSCAR ONLINE PARA OBTENER EL ID
-        if ($this->apiService->isOnline()) {
-            Log::info("🌐 Buscando {$table} online para obtener ID", ['uuid' => $uuid]);
-            
-            if ($table === 'pacientes') {
-                $response = $this->apiService->get("/pacientes/{$uuid}");
-                if ($response['success'] && isset($response['data']['id'])) {
-                    $pacienteCompleto = $response['data'];
-                    
-                    // ✅ ACTUALIZAR PACIENTE OFFLINE CON EL ID
-                    $this->offlineService->storePacienteOffline($pacienteCompleto, false);
-                    
-                    Log::info("✅ Paciente obtenido online y actualizado offline", [
-                        'uuid' => $uuid,
-                        'id' => $pacienteCompleto['id']
-                    ]);
-                    return (int) $pacienteCompleto['id'];
-                }
-            }
-            
-            if ($table === 'agendas') {
-                $response = $this->apiService->get("/agendas/{$uuid}");
-                if ($response['success'] && isset($response['data']['id'])) {
-                    $agendaCompleta = $response['data'];
-                    
-                    // ✅ ACTUALIZAR AGENDA OFFLINE CON EL ID
-                    $this->offlineService->storeAgendaOffline($agendaCompleta, false);
-                    
-                    Log::info("✅ Agenda obtenida online y actualizada offline", [
-                        'uuid' => $uuid,
-                        'id' => $agendaCompleta['id']
-                    ]);
-                    return (int) $agendaCompleta['id'];
-                }
-            }
-        }
-
-        // ✅ ÚLTIMO RECURSO: GENERAR UN ID TEMPORAL PARA MODO OFFLINE PURO
-        if (!$this->apiService->isOnline()) {
-            $idTemporal = $this->generarIdTemporal($uuid, $table);
-            
-            Log::warning("🔧 Generando ID temporal para modo offline", [
-                'uuid' => $uuid,
-                'table' => $table,
-                'id_temporal' => $idTemporal
-            ]);
-            
-            return $idTemporal;
-        }
-
-        Log::warning("⚠️ UUID no encontrado en ningún lugar", [
-            'uuid' => $uuid,
-            'table' => $table
-        ]);
-        return null;
-
-    } catch (\Exception $e) {
-        Log::error("❌ Error convirtiendo UUID a ID", [
-            'uuid' => $uuid,
-            'table' => $table,
-            'error' => $e->getMessage()
-        ]);
-        return null;
-    }
-}
-
-/**
- * ✅ NUEVO: Generar ID temporal para modo offline
- */
-private function generarIdTemporal(string $uuid, string $table): int
-{
-    // Generar un ID basado en el UUID para consistencia
-    $hash = crc32($uuid . $table);
-    
-    // Asegurar que sea positivo y dentro de rango de INT
-    $id = abs($hash) % 999999 + 100000; // Entre 100000 y 1099999
-    
-    Log::info("🔧 ID temporal generado", [
-        'uuid' => $uuid,
-        'table' => $table,
-        'id_temporal' => $id,
-        'hash_original' => $hash
-    ]);
-    
-    return $id;
-}
-    /**
-     * ✅ MOSTRAR CITA
-     */
     public function show(string $uuid): array
     {
         try {
-            // Intentar obtener online
             if ($this->apiService->isOnline()) {
                 try {
-                    $url = $this->buildApiUrl('show', ['uuid' => $uuid]);
+                    $endpoint = $this->buildApiUrl('show');
+                    $url = str_replace('{uuid}', $uuid, $endpoint);
                     $response = $this->apiService->get($url);
                     
                     if ($response['success']) {
@@ -500,7 +267,6 @@ private function generarIdTemporal(string $uuid, string $table): int
                 }
             }
 
-            // Buscar offline
             $cita = $this->offlineService->getCitaOffline($uuid);
             
             if (!$cita) {
@@ -528,6 +294,8 @@ private function generarIdTemporal(string $uuid, string $table): int
             ];
         }
     }
+
+
 
     /**
      * ✅ ACTUALIZAR CITA
