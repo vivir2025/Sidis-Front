@@ -122,6 +122,14 @@ class OfflineService
                 $this->createPacientesTable();
                 Log::info('✅ Tabla pacientes creada');
             }
+            if (!in_array('cups_contratados', $existingTables)) {
+                $this->createCupsContratadosTable();
+                Log::info('✅ Tabla cups_contratados creada');
+            }
+            if (!in_array('contratos', $existingTables)) {
+                $this->createContratosTable();
+                Log::info('✅ Tabla contratos creada');
+            }
             
             return;
         }
@@ -152,6 +160,8 @@ class OfflineService
         $this->createCitasTable();
         $this->createCupsTable();
         $this->createPacientesTable();
+         $this->createCupsContratadosTable(); 
+        $this->createContratosTable();      
         $this->createSyncStatusTable();
         
         Log::info('✅ Todas las tablas SQLite creadas exitosamente');
@@ -537,6 +547,57 @@ private function createPacientesTable(): void
     
     DB::connection('offline')->statement('
         CREATE INDEX IF NOT EXISTS idx_pacientes_sede ON pacientes(sede_id)
+    ');
+}
+
+private function createCupsContratadosTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS cups_contratados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            contrato_id INTEGER,
+            contrato_uuid TEXT,
+            categoria_cups_id INTEGER,
+            cups_id INTEGER,
+            cups_uuid TEXT,
+            tarifa TEXT,
+            estado TEXT DEFAULT "ACTIVO",
+            contrato_fecha_inicio DATE,
+            contrato_fecha_fin DATE,
+            contrato_estado TEXT,
+            empresa_nombre TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_contratados_cups_uuid ON cups_contratados(cups_uuid)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_contratados_estado ON cups_contratados(estado)
+    ');
+}
+
+private function createContratosTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS contratos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            empresa_id INTEGER,
+            empresa_uuid TEXT,
+            empresa_nombre TEXT,
+            numero_contrato TEXT,
+            fecha_inicio DATE,
+            fecha_fin DATE,
+            estado TEXT DEFAULT "ACTIVO",
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
     ');
 }
 
@@ -3552,6 +3613,118 @@ public function getCupsContratadoPorCupsUuid(string $cupsUuid): ?array
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo CUPS contratado por CUPS UUID offline', [
+            'error' => $e->getMessage(),
+            'cups_uuid' => $cupsUuid
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ ALMACENAR CUPS CONTRATADO OFFLINE
+ */
+public function storeCupsContratadoOffline(array $cupsContratadoData): void
+{
+    try {
+        if (empty($cupsContratadoData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar CUPS contratado sin UUID');
+            return;
+        }
+
+        $offlineData = [
+            'uuid' => $cupsContratadoData['uuid'],
+            'contrato_id' => $cupsContratadoData['contrato_id'] ?? null,
+            'contrato_uuid' => $cupsContratadoData['contrato']['uuid'] ?? null,
+            'categoria_cups_id' => $cupsContratadoData['categoria_cups_id'] ?? null,
+            'cups_id' => $cupsContratadoData['cups_id'] ?? null,
+            'cups_uuid' => $cupsContratadoData['cups']['uuid'] ?? null,
+            'tarifa' => $cupsContratadoData['tarifa'] ?? '0',
+            'estado' => $cupsContratadoData['estado'] ?? 'ACTIVO',
+            'contrato_fecha_inicio' => $cupsContratadoData['contrato']['fecha_inicio'] ?? null,
+            'contrato_fecha_fin' => $cupsContratadoData['contrato']['fecha_fin'] ?? null,
+            'contrato_estado' => $cupsContratadoData['contrato']['estado'] ?? null,
+            'empresa_nombre' => $cupsContratadoData['contrato']['empresa']['nombre'] ?? null,
+            'created_at' => $cupsContratadoData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString()
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('cups_contratados')->updateOrInsert(
+                ['uuid' => $cupsContratadoData['uuid']],
+                $offlineData
+            );
+        }
+
+        // También guardar en JSON
+        $this->storeData('cups_contratados/' . $cupsContratadoData['uuid'] . '.json', $offlineData);
+
+        Log::debug('✅ CUPS contratado almacenado offline', [
+            'uuid' => $cupsContratadoData['uuid'],
+            'cups_uuid' => $offlineData['cups_uuid']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando CUPS contratado offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $cupsContratadoData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
+/**
+ * ✅ BUSCAR CUPS CONTRATADO POR CUPS UUID OFFLINE
+ */
+public function getCupsContratadoPorCupsUuidOffline(string $cupsUuid): ?array
+{
+    try {
+        Log::info('🔍 Buscando CUPS contratado offline', [
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        if ($this->isSQLiteAvailable()) {
+            $cupsContratado = DB::connection('offline')->table('cups_contratados')
+                ->where('cups_uuid', $cupsUuid)
+                ->where('estado', 'ACTIVO')
+                ->where('contrato_estado', 'ACTIVO')
+                ->where('contrato_fecha_inicio', '<=', now()->format('Y-m-d'))
+                ->where('contrato_fecha_fin', '>=', now()->format('Y-m-d'))
+                ->first();
+            
+            if ($cupsContratado) {
+                $result = (array) $cupsContratado;
+                Log::info('✅ CUPS contratado encontrado en SQLite', [
+                    'cups_contratado_uuid' => $result['uuid']
+                ]);
+                return $result;
+            }
+        }
+
+        // Fallback a JSON
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        if (is_dir($cupsContratadosPath)) {
+            $files = glob($cupsContratadosPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && 
+                    $data['cups_uuid'] === $cupsUuid &&
+                    $data['estado'] === 'ACTIVO' &&
+                    $data['contrato_estado'] === 'ACTIVO' &&
+                    $data['contrato_fecha_inicio'] <= now()->format('Y-m-d') &&
+                    $data['contrato_fecha_fin'] >= now()->format('Y-m-d')) {
+                    
+                    Log::info('✅ CUPS contratado encontrado en JSON', [
+                        'cups_contratado_uuid' => $data['uuid']
+                    ]);
+                    return $data;
+                }
+            }
+        }
+
+        Log::info('⚠️ CUPS contratado no encontrado offline', ['cups_uuid' => $cupsUuid]);
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando CUPS contratado offline', [
             'error' => $e->getMessage(),
             'cups_uuid' => $cupsUuid
         ]);

@@ -125,6 +125,14 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::get('/codigo', [CupsController::class, 'obtenerPorCodigo'])->name('codigo');
         Route::post('/sincronizar', [CupsController::class, 'sincronizar'])->name('sincronizar');
         Route::get('/activos', [CupsController::class, 'activos'])->name('activos');
+        
+    });
+
+     // ✅ CUPS CONTRATADOS - RUTAS SEPARADAS (FUERA DEL GRUPO CUPS)
+    Route::prefix('cups-contratados')->name('cups-contratados.')->group(function () {
+        Route::get('/por-cups/{cupsUuid}', [CupsController::class, 'getCupsContratadoPorCups'])
+            ->name('por-cups')
+            ->where('cupsUuid', '[0-9a-f-]{36}'); // ✅ VALIDAR UUID
     });
     
     // ✅ SINCRONIZACIÓN

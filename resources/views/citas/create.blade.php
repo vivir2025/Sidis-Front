@@ -283,7 +283,7 @@
                     </div>
                     
                     <!-- Campo oculto para enviar UUID -->
-                    <input type="hidden" id="cups_contratado_id" name="cups_contratado_id">
+                    <input type="hidden" id="cups_contratado_uuid" name="cups_contratado_uuid">
                     
                     <!-- Información del CUPS seleccionado -->
                     <div id="cups_info" class="mt-3" style="display: none;">
@@ -647,34 +647,33 @@ function validarPaso(paso) {
 }
 
 // ✅ FUNCIÓN CORREGIDA PARA RESOLVER CUPS_CONTRATADO
+// En resources/views/citas/create.blade.php - FUNCIÓN initCupsAutocomplete
+
 function initCupsAutocomplete() {
     try {
         cupsAutocomplete = new CupsAutocomplete({
             codigoInput: document.getElementById('cups_codigo'),
             nombreInput: document.getElementById('cups_nombre'),
-            hiddenInput: document.getElementById('cups_contratado_id'),
+            hiddenInput: document.getElementById('cups_contratado_uuid'), // ✅ CAMBIAR AQUÍ
             resultsContainer: document.getElementById('cups_results'),
             minLength: 2,
             delay: 300
         });
         
-        // ✅ ESCUCHAR EVENTO DE SELECCIÓN Y RESOLVER CUPS_CONTRATADO
+        // ✅ ACTUALIZAR EL EVENTO
         document.getElementById('cups_codigo').addEventListener('cupsSelected', async function(e) {
             const cups = e.detail;
             
             console.log('🔍 CUPS seleccionado, resolviendo contrato...', cups);
             
             try {
-                // ✅ RESOLVER CUPS_CONTRATADO
                 const cupsContratadoUuid = await resolverCupsContratado(cups.uuid);
                 
                 if (cupsContratadoUuid) {
-                    // ✅ ACTUALIZAR EL CAMPO OCULTO CON EL UUID DEL CONTRATO
-                    document.getElementById('cups_contratado_id').value = cupsContratadoUuid;
+                    // ✅ ACTUALIZAR EL CAMPO CORRECTO
+                    document.getElementById('cups_contratado_uuid').value = cupsContratadoUuid;
                     
-                    // ✅ ACTUALIZAR EL OBJETO CUPS CON INFO DEL CONTRATO
                     cups.cups_contratado_uuid = cupsContratadoUuid;
-                    
                     mostrarInfoCups(cups);
                     
                     console.log('✅ CUPS contratado resuelto:', {
@@ -684,7 +683,6 @@ function initCupsAutocomplete() {
                         cups_contratado_uuid: cupsContratadoUuid
                     });
                 } else {
-                    // ✅ LIMPIAR SI NO HAY CONTRATO
                     cupsAutocomplete.clear();
                     ocultarInfoCups();
                 }
@@ -696,61 +694,37 @@ function initCupsAutocomplete() {
             }
         });
         
-        // ✅ HACER NOMBRE INPUT EDITABLE PARA BÚSQUEDA
-        document.getElementById('cups_nombre').removeAttribute('readonly');
-        
         console.log('✅ CUPS Autocomplete inicializado');
         
     } catch (error) {
         console.error('❌ Error inicializando CUPS autocomplete:', error);
-        
-        // ✅ FALLBACK: Hacer campos editables normalmente
-        document.getElementById('cups_nombre').removeAttribute('readonly');
-        
-        Swal.fire({
-            title: 'Advertencia',
-            text: 'El autocompletado de CUPS no está disponible. Puede ingresar los datos manualmente.',
-            icon: 'warning',
-            timer: 3000
-        });
     }
 }
+
 async function resolverCupsContratado(cupsUuid) {
     console.log('🚀 === INICIANDO resolverCupsContratado ===');
     console.log('📝 CUPS UUID:', cupsUuid);
     
     try {
-        // ✅ USAR CSRF TOKEN
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-        console.log('🔑 CSRF Token encontrado:', !!csrfToken);
         
         if (!csrfToken) {
             throw new Error('❌ No se encontró CSRF token');
         }
         
-        // ✅ CONSTRUIR URL
-        const baseUrl = 'http://sidis.nacerparavivir.org/api/v1';
-        const endpoint = `/cups-contratados/por-cups/${cupsUuid}`;
-        const fullUrl = `${baseUrl}${endpoint}`;
+        // ✅ USAR ENDPOINT LOCAL PRIMERO
+        const localUrl = `/cups-contratados/por-cups/${cupsUuid}`;
         
-        console.log('🔗 URL completa:', fullUrl);
+        console.log('🔗 URL local:', localUrl);
         
-        // ✅ PREPARAR HEADERS SIMPLIFICADOS
-        const headers = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        };
-        
-        console.log('📋 Headers preparados:', Object.keys(headers));
-        
-        // ✅ HACER LA PETICIÓN SIN CREDENTIALS
-        const response = await fetch(fullUrl, {
+        const response = await fetch(localUrl, {
             method: 'GET',
-            headers: headers,
-            mode: 'cors',
-            credentials: 'omit' // ✅ CAMBIAR A omit para evitar CORS
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         });
         
         console.log('📡 Response status:', response.status);
@@ -782,7 +756,6 @@ async function resolverCupsContratado(cupsUuid) {
 
 
 
-
 function setupCupsButtons() {
     // ✅ BOTÓN LIMPIAR CUPS
     document.getElementById('btnLimpiarCups').addEventListener('click', function() {
@@ -793,6 +766,7 @@ function setupCupsButtons() {
             document.getElementById('cups_codigo').value = '';
             document.getElementById('cups_nombre').value = '';
             document.getElementById('cups_contratado_id').value = '';
+            document.getElementById('cups_contratado_uuid').value = '';
         }
         
         ocultarInfoCups();
@@ -1625,7 +1599,7 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         // ✅ AGREGAR CUPS SI ESTÁ SELECCIONADO - MODIFICAR ESTA PARTE
 const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
 if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
-    finalFormData.set('cups_contratado_id', cupsSeleccionado.cups_contratado_uuid);
+    finalFormData.set('cups_contratado_uuid', cupsSeleccionado.cups_contratado_uuid); // ✅ CAMBIAR AQUÍ
     console.log('✅ CUPS contratado agregado al formulario:', cupsSeleccionado.cups_contratado_uuid);
 }
         // ✅ LOG FINAL DE DATOS DEL FORMULARIO

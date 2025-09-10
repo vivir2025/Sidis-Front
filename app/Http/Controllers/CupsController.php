@@ -3,19 +3,23 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\{CupsService, AuthService};
+use App\Services\{CupsService, AuthService, ApiService, OfflineService};
 use Illuminate\Support\Facades\Log;
 
 class CupsController extends Controller
 {
     protected $cupsService;
     protected $authService;
+    protected $apiService;
+    protected $offlineService;
 
-    public function __construct(CupsService $cupsService, AuthService $authService)
+    public function __construct(CupsService $cupsService, AuthService $authService, ApiService $apiService, OfflineService $offlineService)
     {
         $this->middleware('custom.auth');
         $this->cupsService = $cupsService;
         $this->authService = $authService;
+        $this->apiService = $apiService;
+        $this->offlineService = $offlineService;
     }
 
     /**
@@ -117,4 +121,61 @@ class CupsController extends Controller
             ], 500);
         }
     }
+
+    /**
+ * ✅ OBTENER CUPS CONTRATADO POR CUPS UUID
+ */
+public function getCupsContratadoPorCups(string $cupsUuid)
+{
+    try {
+        Log::info('🔍 Buscando CUPS contratado local', [
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        // ✅ INTENTAR ONLINE PRIMERO
+        if ($this->authService->hasValidToken() && $this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+                
+                if ($response['success']) {
+                    // Almacenar offline para futuro uso
+                    $this->offlineService->storeCupsContratadoOffline($response['data']);
+                    
+                    return response()->json($response);
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error API CUPS contratado, usando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ USAR OFFLINE
+        $cupsContratado = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsUuid);
+        
+        if ($cupsContratado) {
+            return response()->json([
+                'success' => true,
+                'data' => $cupsContratado,
+                'source' => 'offline'
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'No se encontró un contrato vigente para este CUPS'
+        ], 404);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS contratado', [
+            'error' => $e->getMessage(),
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
 }

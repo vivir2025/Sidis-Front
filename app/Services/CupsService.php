@@ -29,87 +29,70 @@ class CupsService
     ]);
 
     try {
-        // ✅ VERIFICAR TOKEN VÁLIDO PRIMERO
         $hasValidToken = $this->authService->hasValidToken();
         $isOnline = $this->apiService->isOnline();
         
-        Log::info('🔐 Estado de autenticación y conexión', [
-            'has_valid_token' => $hasValidToken,
-            'is_online' => $isOnline
-        ]);
-
         // ✅ INTENTAR API SOLO SI HAY TOKEN Y CONEXIÓN
         if ($hasValidToken && $isOnline) {
-            Log::info('🌐 Intentando búsqueda CUPS via API');
-            
             try {
-                // ✅ CAMBIAR A POST - ESTE ES EL FIX PRINCIPAL
                 $response = $this->apiService->post('/cups/buscar', [
                     'q' => $termino
-                    // Nota: limit se maneja en el backend (línea 20 del controlador)
                 ]);
                 
-                Log::info('📡 Respuesta API CUPS completa', [
-                    'response_keys' => array_keys($response),
-                    'success' => $response['success'] ?? false,
-                    'has_data' => isset($response['data']),
-                    'data_count' => is_array($response['data'] ?? null) ? count($response['data']) : 0
+                if ($response['success'] && !empty($response['data'])) {
+                    $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
+                    
+                    // ✅ ENRIQUECER CON INFORMACIÓN DE CONTRATOS Y ALMACENAR OFFLINE
+                    foreach ($cups as &$cupsItem) {
+                        if (isset($cupsItem['uuid'])) {
+                            // Buscar contrato vigente
+                            $contratoResponse = $this->apiService->get("/cups-contratados/por-cups/{$cupsItem['uuid']}");
+                            if ($contratoResponse['success']) {
+                                $cupsItem['contrato_vigente'] = $contratoResponse['data'];
+                                $cupsItem['tiene_contrato'] = true;
+                                
+                                // ✅ ALMACENAR CUPS CONTRATADO OFFLINE
+                                $this->offlineService->storeCupsContratadoOffline($contratoResponse['data']);
+                            } else {
+                                $cupsItem['tiene_contrato'] = false;
+                            }
+                            
+                            // Almacenar CUPS offline
+                            $this->offlineService->storeCupsOffline($cupsItem);
+                        }
+                    }
+                    
+                    return [
+                        'success' => true,
+                        'data' => $cups,
+                        'source' => 'api',
+                        'message' => 'Datos obtenidos del servidor',
+                        'total' => count($cups)
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error en API CUPS, usando offline', [
+                    'error' => $e->getMessage()
                 ]);
-                
-                // ✅ AGREGAR información de contratos a cada CUPS
-    if ($response['success'] && !empty($response['data'])) {
-        $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
+            }
+        }
         
-        // Enriquecer con información de contratos
+        // ✅ FALLBACK A OFFLINE CON CONTRATOS
+        Log::info('💾 Usando búsqueda CUPS offline con contratos');
+        $cups = $this->offlineService->buscarCupsOffline($termino, $limit);
+        
+        // ✅ ENRIQUECER CON CONTRATOS OFFLINE
         foreach ($cups as &$cupsItem) {
             if (isset($cupsItem['uuid'])) {
-                // Buscar si tiene contrato vigente
-                $contratoResponse = $this->apiService->get("/cups-contratados/por-cups/{$cupsItem['uuid']}");
-                if ($contratoResponse['success']) {
-                    $cupsItem['contrato_vigente'] = $contratoResponse['data'];
+                $contrato = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsItem['uuid']);
+                if ($contrato) {
+                    $cupsItem['contrato_vigente'] = $contrato;
                     $cupsItem['tiene_contrato'] = true;
                 } else {
                     $cupsItem['tiene_contrato'] = false;
                 }
             }
         }
-        
-        return [
-            'success' => true,
-            'data' => $cups,
-            'source' => 'api',
-            'message' => 'Datos obtenidos del servidor',
-            'total' => count($cups)
-        ];
-    
-                } else {
-                    Log::warning('⚠️ API no retornó datos válidos', [
-                        'response_success' => $response['success'] ?? false,
-                        'response_data' => $response['data'] ?? null
-                    ]);
-                }
-            } catch (\Exception $e) {
-                Log::warning('⚠️ Error en API CUPS, usando offline', [
-                    'error' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine()
-                ]);
-            }
-        } else {
-            Log::info('🔐 Sin token válido o conexión, usando offline directamente', [
-                'has_token' => $hasValidToken,
-                'is_online' => $isOnline
-            ]);
-        }
-        
-        // ✅ FALLBACK A OFFLINE
-        Log::info('💾 Usando búsqueda CUPS offline');
-        $cups = $this->offlineService->buscarCupsOffline($termino, $limit);
-        
-        Log::info('📦 Resultados offline CUPS', [
-            'count' => count($cups),
-            'termino' => $termino
-        ]);
         
         return [
             'success' => true,
@@ -122,8 +105,6 @@ class CupsService
     } catch (\Exception $e) {
         Log::error('❌ Error en CupsService@buscarCups', [
             'error' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
             'termino' => $termino
         ]);
         
