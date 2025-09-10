@@ -3530,4 +3530,33 @@ public function storePacienteOffline(array $pacienteData, bool $needsSync = fals
     }
 }
 
+public function getCupsContratadoPorCupsUuid(string $cupsUuid): ?array
+{
+    try {
+        // Buscar en archivos JSON primero
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        if (is_dir($cupsContratadosPath)) {
+            $files = glob($cupsContratadosPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && 
+                    isset($data['cups_uuid']) && 
+                    $data['cups_uuid'] === $cupsUuid &&
+                    $data['estado'] === 'ACTIVO') {
+                    return $data;
+                }
+            }
+        }
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS contratado por CUPS UUID offline', [
+            'error' => $e->getMessage(),
+            'cups_uuid' => $cupsUuid
+        ]);
+        return null;
+    }
+}
+
 }

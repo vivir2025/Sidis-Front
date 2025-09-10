@@ -128,30 +128,31 @@ class CitaService
      * ✅ CREAR CITA - VERSIÓN SIMPLIFICADA SIN CONVERSIÓN DE UUIDs
      */
     public function store(array $data): array
-    {
-        try {
-            Log::info('🩺 CitaService::store - Datos recibidos', [
-                'data' => $data
+{
+    try {
+        Log::info('🩺 CitaService::store - Datos recibidos', [
+            'data' => $data
+        ]);
+
+        $user = $this->authService->usuario();
+        $data['sede_id'] = $user['sede_id'];
+        $data['usuario_creo_cita_id'] = $user['id'];
+        $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
+
+        // ✅ VALIDAR QUE VENGA EL CUPS_CONTRATADO_UUID CORRECTO
+        if (isset($data['cups_contratado_id']) && !empty($data['cups_contratado_id'])) {
+            // Ya viene el UUID del CUPS_CONTRATADO, solo cambiar el nombre del campo
+            $data['cups_contratado_uuid'] = $data['cups_contratado_id'];
+            unset($data['cups_contratado_id']);
+            
+            Log::info('✅ CUPS contratado UUID configurado', [
+                'cups_contratado_uuid' => $data['cups_contratado_uuid']
             ]);
+        }
 
-            $user = $this->authService->usuario();
-            $data['sede_id'] = $user['sede_id'];
-            $data['usuario_creo_cita_id'] = $user['id'];
-            $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
-
-            // ✅ NO CONVERTIR UUIDs - ENVIAR TAL COMO VIENEN
-            Log::info('📤 Enviando datos directamente con UUIDs', [
-                'paciente_uuid' => $data['paciente_uuid'] ?? 'NO_PACIENTE',
-                'agenda_uuid' => $data['agenda_uuid'] ?? 'NO_AGENDA',
-                'cups_contratado_id' => $data['cups_contratado_id'] ?? 'NO_CUPS'
-            ]);
-
-            $isOnline = $this->apiService->isOnline();
-            Log::info('🔍 Estado de conexión verificado', [
-                'isOnline' => $isOnline
-            ]);
-
-            if ($isOnline) {
+        $isOnline = $this->apiService->isOnline();
+        
+        if ($isOnline) {
                 Log::info('🌐 Conexión disponible, intentando crear cita en API...');
                 
                 try {

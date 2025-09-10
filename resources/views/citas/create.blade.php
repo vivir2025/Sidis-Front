@@ -1,5 +1,8 @@
 {{-- resources/views/citas/create.blade.php --}}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
 @extends('layouts.app')
+
 
 @section('title', 'Nueva Cita - SIDIS')
 
@@ -500,6 +503,7 @@
 @endpush
 
 @push('scripts')
+<script src="{{ asset('js/cups-autocomplete.js') }}"></script>
 <script>
 let pasoActual = 1;
 let agendaSeleccionada = null;
@@ -642,6 +646,7 @@ function validarPaso(paso) {
     return true;
 }
 
+// ✅ FUNCIÓN CORREGIDA PARA RESOLVER CUPS_CONTRATADO
 function initCupsAutocomplete() {
     try {
         cupsAutocomplete = new CupsAutocomplete({
@@ -653,16 +658,42 @@ function initCupsAutocomplete() {
             delay: 300
         });
         
-        // ✅ ESCUCHAR EVENTO DE SELECCIÓN
-        document.getElementById('cups_codigo').addEventListener('cupsSelected', function(e) {
+        // ✅ ESCUCHAR EVENTO DE SELECCIÓN Y RESOLVER CUPS_CONTRATADO
+        document.getElementById('cups_codigo').addEventListener('cupsSelected', async function(e) {
             const cups = e.detail;
-            mostrarInfoCups(cups);
             
-            console.log('✅ CUPS seleccionado', {
-                codigo: cups.codigo,
-                nombre: cups.nombre,
-                uuid: cups.uuid
-            });
+            console.log('🔍 CUPS seleccionado, resolviendo contrato...', cups);
+            
+            try {
+                // ✅ RESOLVER CUPS_CONTRATADO
+                const cupsContratadoUuid = await resolverCupsContratado(cups.uuid);
+                
+                if (cupsContratadoUuid) {
+                    // ✅ ACTUALIZAR EL CAMPO OCULTO CON EL UUID DEL CONTRATO
+                    document.getElementById('cups_contratado_id').value = cupsContratadoUuid;
+                    
+                    // ✅ ACTUALIZAR EL OBJETO CUPS CON INFO DEL CONTRATO
+                    cups.cups_contratado_uuid = cupsContratadoUuid;
+                    
+                    mostrarInfoCups(cups);
+                    
+                    console.log('✅ CUPS contratado resuelto:', {
+                        codigo: cups.codigo,
+                        nombre: cups.nombre,
+                        cups_uuid: cups.uuid,
+                        cups_contratado_uuid: cupsContratadoUuid
+                    });
+                } else {
+                    // ✅ LIMPIAR SI NO HAY CONTRATO
+                    cupsAutocomplete.clear();
+                    ocultarInfoCups();
+                }
+                
+            } catch (error) {
+                console.error('❌ Error resolviendo CUPS contratado:', error);
+                cupsAutocomplete.clear();
+                ocultarInfoCups();
+            }
         });
         
         // ✅ HACER NOMBRE INPUT EDITABLE PARA BÚSQUEDA
@@ -684,6 +715,73 @@ function initCupsAutocomplete() {
         });
     }
 }
+async function resolverCupsContratado(cupsUuid) {
+    console.log('🚀 === INICIANDO resolverCupsContratado ===');
+    console.log('📝 CUPS UUID:', cupsUuid);
+    
+    try {
+        // ✅ USAR CSRF TOKEN
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        console.log('🔑 CSRF Token encontrado:', !!csrfToken);
+        
+        if (!csrfToken) {
+            throw new Error('❌ No se encontró CSRF token');
+        }
+        
+        // ✅ CONSTRUIR URL
+        const baseUrl = 'http://sidis.nacerparavivir.org/api/v1';
+        const endpoint = `/cups-contratados/por-cups/${cupsUuid}`;
+        const fullUrl = `${baseUrl}${endpoint}`;
+        
+        console.log('🔗 URL completa:', fullUrl);
+        
+        // ✅ PREPARAR HEADERS SIMPLIFICADOS
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        };
+        
+        console.log('📋 Headers preparados:', Object.keys(headers));
+        
+        // ✅ HACER LA PETICIÓN SIN CREDENTIALS
+        const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers: headers,
+            mode: 'cors',
+            credentials: 'omit' // ✅ CAMBIAR A omit para evitar CORS
+        });
+        
+        console.log('📡 Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Error response:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log('📥 JSON parseado:', result);
+        
+        if (result.success) {
+            console.log('✅ Éxito:', result.data);
+            return result.data.uuid;
+        } else {
+            console.warn('⚠️ Success=false:', result.message);
+            return null;
+        }
+        
+    } catch (error) {
+        console.error('❌ === ERROR EN resolverCupsContratado ===');
+        console.error('❌ Mensaje:', error.message);
+        throw error;
+    }
+}
+
+
+
+
 
 function setupCupsButtons() {
     // ✅ BOTÓN LIMPIAR CUPS
@@ -708,6 +806,7 @@ function setupCupsButtons() {
     });
 }
 
+// ✅ FUNCIÓN MEJORADA PARA MOSTRAR INFO DE CUPS
 function mostrarInfoCups(cups) {
     const infoDiv = document.getElementById('cups_info');
     const infoText = document.getElementById('cups_info_text');
@@ -716,10 +815,12 @@ function mostrarInfoCups(cups) {
         infoText.innerHTML = `
             <strong>${cups.codigo}</strong> - ${cups.nombre}
             ${cups.categoria ? `<br><small class="text-muted">Categoría: ${cups.categoria}</small>` : ''}
+            <br><small class="text-success">✅ Contrato vigente encontrado</small>
         `;
         infoDiv.style.display = 'block';
     }
 }
+
 
 function ocultarInfoCups() {
     const infoDiv = document.getElementById('cups_info');
@@ -777,6 +878,7 @@ async function sincronizarCupsDesdeServidor() {
 }
 
 // ✅ ACTUALIZAR FUNCIÓN DE RESUMEN PARA INCLUIR CUPS
+// ✅ FUNCIÓN MEJORADA PARA INCLUIR CUPS EN RESUMEN
 function actualizarResumenFinal() {
     if (!pacienteSeleccionado || !agendaSeleccionada || !horarioSeleccionado) {
         return;
@@ -809,7 +911,7 @@ function actualizarResumenFinal() {
     `;
     
     // ✅ AGREGAR INFORMACIÓN DE CUPS SI ESTÁ SELECCIONADO
-    if (cupsSeleccionado) {
+    if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
         resumen += `
             <div class="row mt-3">
                 <div class="col-12">
@@ -817,6 +919,7 @@ function actualizarResumenFinal() {
                     <p class="mb-2">
                         <strong>${cupsSeleccionado.codigo}</strong> - ${cupsSeleccionado.nombre}
                         ${cupsSeleccionado.categoria ? `<br><small class="text-muted">Categoría: ${cupsSeleccionado.categoria}</small>` : ''}
+                        <br><small class="text-success">✅ Contrato vigente</small>
                     </p>
                 </div>
             </div>
@@ -1519,12 +1622,12 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         finalFormData.set('fecha_inicio', fechaInicioFinal);
         finalFormData.set('fecha_final', fechaFinalFinal);
         
-        // ✅ AGREGAR CUPS SI ESTÁ SELECCIONADO
-        const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
-        if (cupsSeleccionado) {
-            finalFormData.set('cups_contratado_id', cupsSeleccionado.uuid);
-        }
-        
+        // ✅ AGREGAR CUPS SI ESTÁ SELECCIONADO - MODIFICAR ESTA PARTE
+const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
+if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
+    finalFormData.set('cups_contratado_id', cupsSeleccionado.cups_contratado_uuid);
+    console.log('✅ CUPS contratado agregado al formulario:', cupsSeleccionado.cups_contratado_uuid);
+}
         // ✅ LOG FINAL DE DATOS DEL FORMULARIO
         console.log('📤 Datos finales del formulario (FORZADOS):');
         for (let [key, value] of finalFormData.entries()) {

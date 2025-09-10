@@ -56,32 +56,32 @@ class CupsService
                     'data_count' => is_array($response['data'] ?? null) ? count($response['data']) : 0
                 ]);
                 
-                if ($response['success'] && !empty($response['data'])) {
-                    $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
-                    
-                    // Aplicar límite del frontend si es necesario
-                    if (count($cups) > $limit) {
-                        $cups = array_slice($cups, 0, $limit);
-                    }
-                    
-                    // Sincronizar automáticamente
-                    foreach ($cups as $cupsItem) {
-                        if (is_array($cupsItem) && isset($cupsItem['uuid'], $cupsItem['codigo'])) {
-                            $this->offlineService->storeCupsOffline($cupsItem);
-                        }
-                    }
-                    
-                    Log::info('✅ CUPS obtenidos de API y sincronizados', [
-                        'count' => count($cups)
-                    ]);
-                    
-                    return [
-                        'success' => true,
-                        'data' => $cups,
-                        'source' => 'api',
-                        'message' => 'Datos obtenidos del servidor',
-                        'total' => count($cups)
-                    ];
+                // ✅ AGREGAR información de contratos a cada CUPS
+    if ($response['success'] && !empty($response['data'])) {
+        $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
+        
+        // Enriquecer con información de contratos
+        foreach ($cups as &$cupsItem) {
+            if (isset($cupsItem['uuid'])) {
+                // Buscar si tiene contrato vigente
+                $contratoResponse = $this->apiService->get("/cups-contratados/por-cups/{$cupsItem['uuid']}");
+                if ($contratoResponse['success']) {
+                    $cupsItem['contrato_vigente'] = $contratoResponse['data'];
+                    $cupsItem['tiene_contrato'] = true;
+                } else {
+                    $cupsItem['tiene_contrato'] = false;
+                }
+            }
+        }
+        
+        return [
+            'success' => true,
+            'data' => $cups,
+            'source' => 'api',
+            'message' => 'Datos obtenidos del servidor',
+            'total' => count($cups)
+        ];
+    
                 } else {
                     Log::warning('⚠️ API no retornó datos válidos', [
                         'response_success' => $response['success'] ?? false,

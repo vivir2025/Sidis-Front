@@ -30,6 +30,7 @@ class Kernel extends ConsoleKernel
     Commands\CleanDuplicateAgendas::class,
     Commands\ClearOfflineTables::class, 
     Commands\SincronizarCups::class,
+    Commands\DiagnosticarCups::class,
 ];
 
 }
