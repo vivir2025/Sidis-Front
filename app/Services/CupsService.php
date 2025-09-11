@@ -21,7 +21,7 @@ class CupsService
     /**
      * ✅ BUSCAR CUPS POR CÓDIGO O NOMBRE - CORREGIDO
      */
-   public function buscarCups(string $termino, int $limit = 10): array
+  public function buscarCups(string $termino, int $limit = 10): array
 {
     Log::info('🔍 CupsService@buscarCups iniciado', [
         'termino' => $termino,
@@ -45,14 +45,14 @@ class CupsService
                     // ✅ ENRIQUECER CON INFORMACIÓN DE CONTRATOS Y ALMACENAR OFFLINE
                     foreach ($cups as &$cupsItem) {
                         if (isset($cupsItem['uuid'])) {
-                            // Buscar contrato vigente
-                            $contratoResponse = $this->apiService->get("/cups-contratados/por-cups/{$cupsItem['uuid']}");
-                            if ($contratoResponse['success']) {
-                                $cupsItem['contrato_vigente'] = $contratoResponse['data'];
+                            // ✅ BUSCAR Y ALMACENAR CONTRATO VIGENTE
+                            $this->sincronizarCupsContratadoPorCups($cupsItem['uuid']);
+                            
+                            // Buscar contrato vigente offline
+                            $contratoResponse = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsItem['uuid']);
+                            if ($contratoResponse) {
+                                $cupsItem['contrato_vigente'] = $contratoResponse;
                                 $cupsItem['tiene_contrato'] = true;
-                                
-                                // ✅ ALMACENAR CUPS CONTRATADO OFFLINE
-                                $this->offlineService->storeCupsContratadoOffline($contratoResponse['data']);
                             } else {
                                 $cupsItem['tiene_contrato'] = false;
                             }
@@ -113,6 +113,30 @@ class CupsService
             'error' => 'Error buscando CUPS: ' . $e->getMessage(),
             'data' => []
         ];
+    }
+}
+
+/**
+ * ✅ NUEVO: Sincronizar CUPS contratado específico
+ */
+private function sincronizarCupsContratadoPorCups(string $cupsUuid): void
+{
+    try {
+        $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+        
+        if ($response['success']) {
+            $this->offlineService->storeCupsContratadoOffline($response['data']);
+            
+            Log::info('✅ CUPS contratado sincronizado', [
+                'cups_uuid' => $cupsUuid,
+                'cups_contratado_uuid' => $response['data']['uuid'] ?? 'N/A'
+            ]);
+        }
+    } catch (\Exception $e) {
+        Log::warning('⚠️ No se pudo sincronizar CUPS contratado', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $e->getMessage()
+        ]);
     }
 }
     /**

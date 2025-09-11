@@ -138,8 +138,13 @@ public function getCupsContratadoPorCups(string $cupsUuid)
                 $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
                 
                 if ($response['success']) {
-                    // Almacenar offline para futuro uso
+                    // ✅ ALMACENAR OFFLINE PARA FUTURO USO
                     $this->offlineService->storeCupsContratadoOffline($response['data']);
+                    
+                    // ✅ TAMBIÉN ALMACENAR EL CUPS SI NO EXISTE
+                    if (isset($response['data']['cups'])) {
+                        $this->offlineService->storeCupsOffline($response['data']['cups']);
+                    }
                     
                     return response()->json($response);
                 }
@@ -175,6 +180,30 @@ public function getCupsContratadoPorCups(string $cupsUuid)
         return response()->json([
             'success' => false,
             'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
+public function sincronizarCupsContratados()
+{
+    try {
+        $success = $this->offlineService->syncCupsContratadosFromApi();
+        
+        if ($success) {
+            return response()->json([
+                'success' => true,
+                'message' => 'CUPS contratados sincronizados exitosamente'
+            ]);
+        } else {
+            return response()->json([
+                'success' => false,
+                'error' => 'Error sincronizando CUPS contratados'
+            ]);
+        }
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage()
         ], 500);
     }
 }

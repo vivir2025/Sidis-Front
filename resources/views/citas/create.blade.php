@@ -646,64 +646,75 @@ function validarPaso(paso) {
     return true;
 }
 
-// ✅ FUNCIÓN CORREGIDA PARA RESOLVER CUPS_CONTRATADO
-// En resources/views/citas/create.blade.php - FUNCIÓN initCupsAutocomplete
-
+// ✅ INICIALIZAR CUPS AUTOCOMPLETE - CORREGIDO
 function initCupsAutocomplete() {
     try {
         cupsAutocomplete = new CupsAutocomplete({
             codigoInput: document.getElementById('cups_codigo'),
             nombreInput: document.getElementById('cups_nombre'),
-            hiddenInput: document.getElementById('cups_contratado_uuid'), // ✅ CAMBIAR AQUÍ
+            hiddenInput: document.getElementById('cups_contratado_uuid'), // ✅ CAMPO CORRECTO
             resultsContainer: document.getElementById('cups_results'),
             minLength: 2,
             delay: 300
         });
         
-        // ✅ ACTUALIZAR EL EVENTO
+        // ✅ EVENTO CUANDO SE SELECCIONA UN CUPS
         document.getElementById('cups_codigo').addEventListener('cupsSelected', async function(e) {
             const cups = e.detail;
             
-            console.log('🔍 CUPS seleccionado, resolviendo contrato...', cups);
+            console.log('🔍 CUPS seleccionado, resolviendo contrato...', {
+                cups_uuid: cups.uuid,
+                cups_codigo: cups.codigo,
+                cups_nombre: cups.nombre
+            });
             
             try {
                 const cupsContratadoUuid = await resolverCupsContratado(cups.uuid);
                 
                 if (cupsContratadoUuid) {
-                    // ✅ ACTUALIZAR EL CAMPO CORRECTO
+                    // ✅ ESTABLECER EL UUID DEL CUPS CONTRATADO
                     document.getElementById('cups_contratado_uuid').value = cupsContratadoUuid;
                     
+                    // ✅ AGREGAR AL OBJETO CUPS PARA REFERENCIA
                     cups.cups_contratado_uuid = cupsContratadoUuid;
+                    
+                    // ✅ MOSTRAR INFORMACIÓN
                     mostrarInfoCups(cups);
                     
-                    console.log('✅ CUPS contratado resuelto:', {
-                        codigo: cups.codigo,
-                        nombre: cups.nombre,
+                    console.log('✅ CUPS contratado configurado exitosamente:', {
+                        cups_codigo: cups.codigo,
                         cups_uuid: cups.uuid,
-                        cups_contratado_uuid: cupsContratadoUuid
+                        cups_contratado_uuid: cupsContratadoUuid,
+                        campo_valor: document.getElementById('cups_contratado_uuid').value
                     });
                 } else {
+                    // ✅ LIMPIAR SI NO HAY CONTRATO
+                    document.getElementById('cups_contratado_uuid').value = '';
                     cupsAutocomplete.clear();
                     ocultarInfoCups();
+                    
+                    console.log('⚠️ No se encontró contrato vigente para el CUPS');
                 }
                 
             } catch (error) {
                 console.error('❌ Error resolviendo CUPS contratado:', error);
+                document.getElementById('cups_contratado_uuid').value = '';
                 cupsAutocomplete.clear();
                 ocultarInfoCups();
             }
         });
         
-        console.log('✅ CUPS Autocomplete inicializado');
+        console.log('✅ CUPS Autocomplete inicializado correctamente');
         
     } catch (error) {
         console.error('❌ Error inicializando CUPS autocomplete:', error);
     }
 }
 
+// ✅ RESOLVER CUPS CONTRATADO - CORREGIDO
 async function resolverCupsContratado(cupsUuid) {
     console.log('🚀 === INICIANDO resolverCupsContratado ===');
-    console.log('📝 CUPS UUID:', cupsUuid);
+    console.log('📝 CUPS UUID recibido:', cupsUuid);
     
     try {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -712,12 +723,12 @@ async function resolverCupsContratado(cupsUuid) {
             throw new Error('❌ No se encontró CSRF token');
         }
         
-        // ✅ USAR ENDPOINT LOCAL PRIMERO
-        const localUrl = `/cups-contratados/por-cups/${cupsUuid}`;
+        // ✅ USAR ENDPOINT ESPECÍFICO PARA CUPS CONTRATADOS
+        const url = `/cups-contratados/por-cups/${cupsUuid}`;
         
-        console.log('🔗 URL local:', localUrl);
+        console.log('🔗 Consultando URL:', url);
         
-        const response = await fetch(localUrl, {
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
@@ -730,43 +741,71 @@ async function resolverCupsContratado(cupsUuid) {
         console.log('📡 Response status:', response.status);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Error response:', errorText);
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+            if (response.status === 404) {
+                console.log('⚠️ CUPS sin contrato vigente (404)');
+                
+                await Swal.fire({
+                    title: 'CUPS sin Contrato Vigente',
+                    text: 'Este CUPS no tiene un contrato vigente. La cita se creará sin CUPS asociado.',
+                    icon: 'warning',
+                    confirmButtonText: 'Continuar'
+                });
+                
+                return null;
+            }
+            
+            throw new Error(`Error HTTP ${response.status}`);
         }
         
         const result = await response.json();
-        console.log('📥 JSON parseado:', result);
+        console.log('📥 Respuesta parseada:', result);
         
-        if (result.success) {
-            console.log('✅ Éxito:', result.data);
+        if (result.success && result.data && result.data.uuid) {
+            console.log('✅ CUPS contratado encontrado:', {
+                uuid: result.data.uuid,
+                tarifa: result.data.tarifa,
+                estado: result.data.estado
+            });
+            
             return result.data.uuid;
         } else {
-            console.warn('⚠️ Success=false:', result.message);
+            console.log('⚠️ Respuesta sin éxito o sin datos:', result);
+            
+            await Swal.fire({
+                title: 'CUPS sin Contrato',
+                text: result.message || 'No se encontró un contrato vigente para este CUPS',
+                icon: 'info',
+                confirmButtonText: 'Continuar'
+            });
+            
             return null;
         }
         
     } catch (error) {
         console.error('❌ === ERROR EN resolverCupsContratado ===');
-        console.error('❌ Mensaje:', error.message);
-        throw error;
+        console.error('❌ Error:', error.message);
+        
+        await Swal.fire({
+            title: 'Error de Conexión',
+            text: 'No se pudo verificar el contrato del CUPS. La cita se creará sin CUPS asociado.',
+            icon: 'error',
+            confirmButtonText: 'Continuar'
+        });
+        
+        return null;
     }
 }
 
-
-
-
+// ✅ CONFIGURAR BOTONES DE CUPS - CORREGIDO
 function setupCupsButtons() {
     // ✅ BOTÓN LIMPIAR CUPS
     document.getElementById('btnLimpiarCups').addEventListener('click', function() {
         if (cupsAutocomplete) {
             cupsAutocomplete.clear();
         } else {
-            // Fallback manual
             document.getElementById('cups_codigo').value = '';
             document.getElementById('cups_nombre').value = '';
-            document.getElementById('cups_contratado_id').value = '';
-            document.getElementById('cups_contratado_uuid').value = '';
+            document.getElementById('cups_contratado_uuid').value = ''; // ✅ CORREGIDO
         }
         
         ocultarInfoCups();
@@ -794,7 +833,6 @@ function mostrarInfoCups(cups) {
         infoDiv.style.display = 'block';
     }
 }
-
 
 function ocultarInfoCups() {
     const infoDiv = document.getElementById('cups_info');
@@ -851,15 +889,21 @@ async function sincronizarCupsDesdeServidor() {
     }
 }
 
-// ✅ ACTUALIZAR FUNCIÓN DE RESUMEN PARA INCLUIR CUPS
-// ✅ FUNCIÓN MEJORADA PARA INCLUIR CUPS EN RESUMEN
+// ✅ ACTUALIZAR RESUMEN FINAL - CORREGIDO
 function actualizarResumenFinal() {
     if (!pacienteSeleccionado || !agendaSeleccionada || !horarioSeleccionado) {
         return;
     }
     
     const fecha = new Date(agendaSeleccionada.fecha).toLocaleDateString('es-ES');
+    const cupsContratadoUuid = document.getElementById('cups_contratado_uuid').value;
     const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
+    
+    console.log('📋 Actualizando resumen final:', {
+        cups_contratado_uuid: cupsContratadoUuid,
+        cups_seleccionado: cupsSeleccionado,
+        campo_dom_valor: document.getElementById('cups_contratado_uuid')?.value
+    });
     
     let resumen = `
         <div class="row">
@@ -885,16 +929,31 @@ function actualizarResumenFinal() {
     `;
     
     // ✅ AGREGAR INFORMACIÓN DE CUPS SI ESTÁ SELECCIONADO
-    if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
+    if (cupsContratadoUuid && cupsContratadoUuid !== '' && cupsSeleccionado) {
         resumen += `
             <div class="row mt-3">
                 <div class="col-12">
-                    <h6><i class="fas fa-file-medical me-2"></i>CUPS Seleccionado</h6>
-                    <p class="mb-2">
-                        <strong>${cupsSeleccionado.codigo}</strong> - ${cupsSeleccionado.nombre}
-                        ${cupsSeleccionado.categoria ? `<br><small class="text-muted">Categoría: ${cupsSeleccionado.categoria}</small>` : ''}
-                        <br><small class="text-success">✅ Contrato vigente</small>
-                    </p>
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-file-medical me-2"></i>CUPS Seleccionado</h6>
+                        <p class="mb-0">
+                            <strong>${cupsSeleccionado.codigo}</strong> - ${cupsSeleccionado.nombre}
+                            <br><small class="text-success">✅ Contrato vigente (UUID: ${cupsContratadoUuid})</small>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (cupsSeleccionado && (!cupsContratadoUuid || cupsContratadoUuid === '')) {
+        resumen += `
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-file-medical me-2"></i>CUPS Sin Contrato</h6>
+                        <p class="mb-0">
+                            <strong>${cupsSeleccionado.codigo}</strong> - ${cupsSeleccionado.nombre}
+                            <br><small class="text-warning">⚠️ Sin contrato vigente - La cita se creará sin CUPS</small>
+                        </p>
+                    </div>
                 </div>
             </div>
         `;
@@ -1190,7 +1249,7 @@ function mostrarHorarios(horarios) {
         // ✅ SOLO MOSTRAR HORARIOS DISPONIBLES
         if (disponible) {
             html += `
-                <div class="col-md-3 col-lg-2 mb-2">
+                                <div class="col-md-3 col-lg-2 mb-2">
                     <button type="button" 
                             class="btn ${btnClass} w-100 horario-btn ${selectedClass}" 
                             title="${title}"
@@ -1317,7 +1376,7 @@ function seleccionarHorario(horaInicio, horaFin) {
     document.getElementById('fecha_final').value = fechaFinalCorrecta;
     
     console.log('✅ Horario seleccionado final:', horarioSeleccionado);
-        console.log('✅ Valores en campos del formulario:', {
+    console.log('✅ Valores en campos del formulario:', {
         fecha_inicio: document.getElementById('fecha_inicio').value,
         fecha_final: document.getElementById('fecha_final').value
     });
@@ -1444,56 +1503,13 @@ function mostrarPacienteNoEncontrado() {
     actualizarBotones(pasoActual);
 }
 
-// ✅ SUBMIT DEL FORMULARIO CON LOGGING DETALLADO COMPLETO
+// ✅ SUBMIT DEL FORMULARIO - CORREGIDO
 document.getElementById('citaForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    console.log('🔍 DEBUG SUBMIT - Iniciando validaciones...');
+    console.log('🔍 === INICIANDO SUBMIT DE CITA ===');
     
-    // ✅ VERIFICAR ESTADO COMPLETO ANTES DE ENVIAR
-    console.log('🔍 ESTADO COMPLETO ANTES DE ENVIAR:');
-    console.log('  pacienteSeleccionado:', pacienteSeleccionado);
-    console.log('  agendaSeleccionada:', agendaSeleccionada);
-    console.log('  horarioSeleccionado:', horarioSeleccionado);
-    
-    // ✅ VERIFICAR TODOS LOS CAMPOS DEL FORMULARIO
-    const formData = new FormData(this);
-    
-    console.log('📋 TODOS LOS CAMPOS DEL FORMULARIO:');
-    for (let [key, value] of formData.entries()) {
-        console.log(`  ${key}: "${value}"`);
-    }
-    
-    // ✅ VERIFICAR CAMPOS CRÍTICOS ESPECÍFICAMENTE
-    const camposCriticos = {
-        paciente_uuid: formData.get('paciente_uuid'),
-        agenda_uuid: formData.get('agenda_uuid'),
-        fecha: formData.get('fecha'),
-        fecha_inicio: formData.get('fecha_inicio'),
-        fecha_final: formData.get('fecha_final'),
-        nota: formData.get('nota'),
-        estado: formData.get('estado')
-    };
-    
-    console.log('🔍 CAMPOS CRÍTICOS:');
-    Object.entries(camposCriticos).forEach(([campo, valor]) => {
-        console.log(`  ${campo}: "${valor}" (${typeof valor}) - ${valor ? 'OK' : 'FALTA'}`);
-    });
-    
-    // ✅ VALIDAR QUE PACIENTE_UUID NO ESTÉ VACÍO
-    if (!camposCriticos.paciente_uuid || camposCriticos.paciente_uuid.trim() === '') {
-        console.error('❌ paciente_uuid está vacío!');
-        Swal.fire('Error', 'El UUID del paciente no se ha establecido correctamente', 'error');
-        return;
-    }
-    
-    // ✅ VALIDAR QUE AGENDA_UUID NO ESTÉ VACÍO
-    if (!camposCriticos.agenda_uuid || camposCriticos.agenda_uuid.trim() === '') {
-        console.error('❌ agenda_uuid está vacío!');
-        Swal.fire('Error', 'El UUID de la agenda no se ha establecido correctamente', 'error');
-        return;
-    }
-    
+    // ✅ VALIDACIONES BÁSICAS
     if (!pacienteSeleccionado) {
         Swal.fire('Atención', 'Debe seleccionar un paciente', 'warning');
         return;
@@ -1509,7 +1525,6 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         return;
     }
     
-    // ✅ VALIDAR NOTA OBLIGATORIA
     const nota = document.getElementById('nota').value.trim();
     if (!nota) {
         Swal.fire('Atención', 'Las notas adicionales son obligatorias', 'warning');
@@ -1517,65 +1532,72 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         return;
     }
     
-    // ✅ OBTENER VALORES ACTUALES DE LOS CAMPOS
-    const fechaInicio = document.getElementById('fecha_inicio').value;
-    const fechaFinal = document.getElementById('fecha_final').value;
+    // ✅ CREAR FormData Y AGREGAR CUPS MANUALMENTE SI ES NECESARIO
+    const formData = new FormData(this);
     
-    console.log('🔍 DEBUG SUBMIT - Valores de fechas:', {
-        fecha_inicio: fechaInicio,
-        fecha_final: fechaFinal,
-        horarioSeleccionado: horarioSeleccionado
+    // ✅ VERIFICAR Y FORZAR CUPS CONTRATADO UUID
+    const cupsContratadoUuid = document.getElementById('cups_contratado_uuid').value;
+    if (cupsContratadoUuid && cupsContratadoUuid.trim() !== '') {
+        // ✅ ASEGURAR QUE SE INCLUYA EN FormData
+        formData.set('cups_contratado_uuid', cupsContratadoUuid.trim());
+        console.log('✅ CUPS contratado UUID forzado en FormData:', cupsContratadoUuid);
+    } else {
+        console.log('ℹ️ No hay CUPS contratado para incluir');
+    }
+    
+    // ✅ LOG DETALLADO DE TODOS LOS CAMPOS
+    console.log('📋 === DATOS DEL FORMULARIO ===');
+    for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}: "${value}"`);
+    }
+    
+    // ✅ VERIFICAR CAMPOS CRÍTICOS
+    const camposCriticos = {
+        paciente_uuid: formData.get('paciente_uuid'),
+        agenda_uuid: formData.get('agenda_uuid'),
+        fecha: formData.get('fecha'),
+        fecha_inicio: formData.get('fecha_inicio'),
+        fecha_final: formData.get('fecha_final'),
+        cups_contratado_uuid: formData.get('cups_contratado_uuid'), // ✅ INCLUIR CUPS
+        nota: formData.get('nota')
+    };
+    
+    console.log('🔍 === CAMPOS CRÍTICOS ===');
+    Object.entries(camposCriticos).forEach(([campo, valor]) => {
+        const estado = valor && valor.trim() !== '' ? '✅ OK' : '❌ FALTA';
+        console.log(`  ${campo}: "${valor}" - ${estado}`);
     });
     
-    // ✅ SI LOS CAMPOS ESTÁN VACÍOS, RECONSTRUIR DESDE horarioSeleccionado
-    if (!fechaInicio || !fechaFinal) {
-        console.log('⚠️ Campos de fecha vacíos, reconstruyendo...');
+    // ✅ VALIDAR CAMPOS OBLIGATORIOS
+    if (!camposCriticos.paciente_uuid) {
+        Swal.fire('Error', 'UUID del paciente no establecido', 'error');
+        return;
+    }
+    
+    if (!camposCriticos.agenda_uuid) {
+        Swal.fire('Error', 'UUID de la agenda no establecido', 'error');
+        return;
+    }
+    
+    if (!camposCriticos.fecha_inicio || !camposCriticos.fecha_final) {
+        Swal.fire('Error', 'Fechas de la cita no establecidas', 'error');
+        return;
+    }
+    
+    // ✅ LOG ESPECÍFICO DE CUPS
+    if (camposCriticos.cups_contratado_uuid) {
+        console.log('✅ === CUPS CONTRATADO INCLUIDO ===');
+        console.log(`  UUID: ${camposCriticos.cups_contratado_uuid}`);
         
-        if (horarioSeleccionado && agendaSeleccionada) {
-            const fechaBase = agendaSeleccionada.fecha.includes('T') 
-                ? agendaSeleccionada.fecha.split('T')[0] 
-                : agendaSeleccionada.fecha;
-            const nuevaFechaInicio = `${fechaBase}T${horarioSeleccionado.hora_inicio}:00`;
-            const nuevaFechaFinal = `${fechaBase}T${horarioSeleccionado.hora_fin}:00`;
-            
-            document.getElementById('fecha_inicio').value = nuevaFechaInicio;
-            document.getElementById('fecha_final').value = nuevaFechaFinal;
-            
-            console.log('✅ Fechas reconstruidas:', {
-                nuevaFechaInicio,
-                nuevaFechaFinal
-            });
-        } else {
-            Swal.fire('Error', 'No se pudieron determinar las fechas de la cita', 'error');
-            return;
+        // ✅ VERIFICAR QUE EL CUPS SELECCIONADO COINCIDA
+        const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
+        if (cupsSeleccionado) {
+            console.log('  CUPS Código:', cupsSeleccionado.codigo);
+            console.log('  CUPS Nombre:', cupsSeleccionado.nombre);
         }
+    } else {
+        console.log('ℹ️ === CITA SIN CUPS CONTRATADO ===');
     }
-    
-    // ✅ VALIDAR FORMATO DE FECHAS FINAL
-    const fechaInicioFinal = document.getElementById('fecha_inicio').value;
-    const fechaFinalFinal = document.getElementById('fecha_final').value;
-    
-    console.log('🔍 DEBUG SUBMIT - Fechas finales para validar:', {
-        fechaInicioFinal,
-        fechaFinalFinal
-    });
-    
-    // Verificar que las fechas tengan el formato correcto
-    const formatoFechaRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
-    
-    if (!formatoFechaRegex.test(fechaInicioFinal)) {
-        console.error('❌ Formato de fecha_inicio incorrecto:', fechaInicioFinal);
-        Swal.fire('Error', `Error en el formato de fecha de inicio: ${fechaInicioFinal}`, 'error');
-        return;
-    }
-    
-    if (!formatoFechaRegex.test(fechaFinalFinal)) {
-        console.error('❌ Formato de fecha_final incorrecto:', fechaFinalFinal);
-        Swal.fire('Error', `Error en el formato de fecha final: ${fechaFinalFinal}`, 'error');
-        return;
-    }
-    
-    console.log('✅ Validación de fechas exitosa, procediendo con el envío...');
     
     const btnGuardar = document.getElementById('btnGuardar');
     const originalText = btnGuardar.innerHTML;
@@ -1584,33 +1606,11 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         btnGuardar.disabled = true;
         btnGuardar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Agendando...';
         
-        // ✅ RECREAR FORMDATA PARA ASEGURAR DATOS ACTUALIZADOS
-        const finalFormData = new FormData(this);
-        
-        // ✅ FORZAR VALORES CRÍTICOS
-        finalFormData.set('paciente_uuid', pacienteSeleccionado.uuid);
-        finalFormData.set('agenda_uuid', agendaSeleccionada.uuid);
-        finalFormData.set('fecha', agendaSeleccionada.fecha.includes('T') 
-            ? agendaSeleccionada.fecha.split('T')[0] 
-            : agendaSeleccionada.fecha);
-        finalFormData.set('fecha_inicio', fechaInicioFinal);
-        finalFormData.set('fecha_final', fechaFinalFinal);
-        
-        // ✅ AGREGAR CUPS SI ESTÁ SELECCIONADO - MODIFICAR ESTA PARTE
-const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
-if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
-    finalFormData.set('cups_contratado_uuid', cupsSeleccionado.cups_contratado_uuid); // ✅ CAMBIAR AQUÍ
-    console.log('✅ CUPS contratado agregado al formulario:', cupsSeleccionado.cups_contratado_uuid);
-}
-        // ✅ LOG FINAL DE DATOS DEL FORMULARIO
-        console.log('📤 Datos finales del formulario (FORZADOS):');
-        for (let [key, value] of finalFormData.entries()) {
-            console.log(`  ${key}: "${value}"`);
-        }
+        console.log('📤 === ENVIANDO CITA AL SERVIDOR ===');
         
         const response = await fetch(this.action, {
             method: 'POST',
-            body: finalFormData,
+            body: formData,
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json'
@@ -1619,25 +1619,42 @@ if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
         
         const data = await response.json();
         
-        console.log('📥 Respuesta del servidor:', data);
+        console.log('📥 === RESPUESTA DEL SERVIDOR ===');
+        console.log('Status:', response.status);
+        console.log('Success:', data.success);
+        console.log('Data:', data);
         
         if (data.success) {
-            Swal.fire({
+            console.log('🎉 === CITA CREADA EXITOSAMENTE ===');
+            
+            // ✅ VERIFICAR SI LA CITA TIENE CUPS CONTRATADO
+            if (data.data && data.data.cups_contratado_uuid) {
+                console.log('✅ Cita creada CON CUPS contratado:', data.data.cups_contratado_uuid);
+            } else if (camposCriticos.cups_contratado_uuid) {
+                console.log('⚠️ Se envió CUPS pero no se reflejó en la respuesta');
+            }
+            
+            await Swal.fire({
                 title: '¡Cita Agendada!',
                 text: data.message || 'La cita ha sido creada exitosamente',
                 icon: 'success',
                 timer: 3000,
                 showConfirmButton: false
-            }).then(() => {
-                if (data.redirect_url) {
-                    window.location.href = data.redirect_url;
-                } else {
-                    window.location.href = '{{ route("citas.index") }}';
-                }
             });
+            
+            // ✅ REDIRECCIONAR
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url;
+            } else {
+                window.location.href = '{{ route("citas.index") }}';
+            }
+            
         } else {
+            console.error('❌ === ERROR DEL SERVIDOR ===');
+            console.error('Error:', data.error);
+            console.error('Errors:', data.errors);
+            
             if (data.errors) {
-                console.error('❌ Errores de validación:', data.errors);
                 showValidationErrors(data.errors);
             } else {
                 throw new Error(data.error || 'Error desconocido');
@@ -1645,7 +1662,9 @@ if (cupsSeleccionado && cupsSeleccionado.cups_contratado_uuid) {
         }
         
     } catch (error) {
-        console.error('❌ Error guardando cita:', error);
+        console.error('❌ === ERROR CRÍTICO ===');
+        console.error('Error:', error);
+        
         Swal.fire({
             title: 'Error',
             text: 'Error agendando cita: ' + error.message,
@@ -1685,7 +1704,7 @@ function showValidationErrors(errors) {
     }
 }
 
-// ✅ FUNCIÓN DE DEBUG MANUAL - AGREGAR ESTA FUNCIÓN
+// ✅ FUNCIONES DE DEBUG MEJORADAS
 window.debugFormulario = function() {
     console.log('=== 🔍 DEBUG MANUAL DEL FORMULARIO ===');
     
@@ -1700,15 +1719,33 @@ window.debugFormulario = function() {
     console.log('  fecha:', document.getElementById('fecha')?.value);
     console.log('  fecha_inicio:', document.getElementById('fecha_inicio')?.value);
     console.log('  fecha_final:', document.getElementById('fecha_final')?.value);
+    console.log('  cups_contratado_uuid:', document.getElementById('cups_contratado_uuid')?.value);
     
-    console.log('3. Otros campos importantes:');
-    console.log('  nota:', document.getElementById('nota')?.value);
-    console.log('  estado:', document.getElementById('estado')?.value);
-    console.log('  motivo:', document.getElementById('motivo')?.value);
+    console.log('3. Estado de CUPS:');
+    if (cupsAutocomplete) {
+        const selected = cupsAutocomplete.getSelected();
+        console.log('  CUPS seleccionado:', selected);
+        console.log('  CUPS contratado UUID:', selected?.cups_contratado_uuid);
+    }
     
-    console.log('4. FormData completo:');
+    console.log('4. Elemento del campo CUPS:');
+    const cupsField = document.getElementById('cups_contratado_uuid');
+    console.log('  Elemento existe:', !!cupsField);
+    console.log('  Valor actual:', cupsField?.value);
+    console.log('  Tipo de input:', cupsField?.type);
+    console.log('  Nombre del campo:', cupsField?.name);
+    
+    console.log('5. FormData simulado:');
     const form = document.getElementById('citaForm');
     const formData = new FormData(form);
+    
+    // ✅ FORZAR CUPS SI EXISTE
+    const cupsUuid = document.getElementById('cups_contratado_uuid')?.value;
+    if (cupsUuid && cupsUuid.trim() !== '') {
+        formData.set('cups_contratado_uuid', cupsUuid.trim());
+        console.log('  ✅ CUPS forzado en FormData:', cupsUuid);
+    }
+    
     for (let [key, value] of formData.entries()) {
         console.log(`  ${key}: "${value}"`);
     }
@@ -1716,10 +1753,40 @@ window.debugFormulario = function() {
     console.log('=== FIN DEBUG ===');
 };
 
+// ✅ FUNCIÓN PARA VERIFICAR CUPS ESPECÍFICAMENTE
+window.debugCups = function() {
+    console.log('=== 🔍 DEBUG ESPECÍFICO DE CUPS ===');
+    
+    const cupsField = document.getElementById('cups_contratado_uuid');
+    console.log('1. Campo cups_contratado_uuid:');
+    console.log('  Existe:', !!cupsField);
+    console.log('  Valor:', cupsField?.value);
+    console.log('  Atributos:', {
+        id: cupsField?.id,
+        name: cupsField?.name,
+        type: cupsField?.type,
+        required: cupsField?.required
+    });
+    
+    console.log('2. CUPS Autocomplete:');
+    if (cupsAutocomplete) {
+        const selected = cupsAutocomplete.getSelected();
+        console.log('  Seleccionado:', selected);
+        console.log('  UUID contratado:', selected?.cups_contratado_uuid);
+    } else {
+        console.log('  No inicializado');
+    }
+    
+    console.log('3. Campos de CUPS en el DOM:');
+    console.log('  cups_codigo:', document.getElementById('cups_codigo')?.value);
+    console.log('  cups_nombre:', document.getElementById('cups_nombre')?.value);
+    
+    console.log('=== FIN DEBUG CUPS ===');
+};
+
 // Inicializar vista
 mostrarPaso(1);
 </script>
-
 
 @endpush
 @endsection

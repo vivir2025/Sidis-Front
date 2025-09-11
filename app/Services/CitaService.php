@@ -143,7 +143,9 @@ class CitaService
 {
     try {
         Log::info('🩺 CitaService::store - Datos recibidos', [
-            'data' => $data
+            'data' => $data,
+            'has_cups_contratado_uuid' => isset($data['cups_contratado_uuid']),
+            'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ENVIADO'
         ]);
 
         $user = $this->authService->usuario();
@@ -151,108 +153,106 @@ class CitaService
         $data['usuario_creo_cita_id'] = $user['id'];
         $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
 
-        // ✅ VALIDAR QUE VENGA EL CUPS_CONTRATADO_UUID CORRECTO
-        if (isset($data['cups_contratado_id']) && !empty($data['cups_contratado_id'])) {
-            // Ya viene el UUID del CUPS_CONTRATADO, solo cambiar el nombre del campo
-            $data['cups_contratado_uuid'] = $data['cups_contratado_id'];
-            unset($data['cups_contratado_id']);
-            
-            Log::info('✅ CUPS contratado UUID configurado', [
+        // ✅ MANTENER cups_contratado_uuid SI VIENE
+        if (isset($data['cups_contratado_uuid']) && !empty($data['cups_contratado_uuid'])) {
+            Log::info('✅ CUPS contratado UUID recibido', [
                 'cups_contratado_uuid' => $data['cups_contratado_uuid']
             ]);
+        } else {
+            Log::info('ℹ️ Cita sin CUPS contratado');
         }
 
         $isOnline = $this->apiService->isOnline();
         
         if ($isOnline) {
-                Log::info('🌐 Conexión disponible, intentando crear cita en API...');
+            Log::info('🌐 Conexión disponible, intentando crear cita en API...');
+            
+            try {
+                $endpoint = $this->buildApiUrl('store');
+                Log::info('📤 Enviando cita a API', [
+                    'endpoint' => $endpoint,
+                    'data_keys' => array_keys($data),
+                    'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ENVIADO'
+                ]);
                 
-                try {
-                    // ✅ CAMBIAR cups_contratado_id por cups_contratado_uuid si viene
-                    if (isset($data['cups_contratado_id']) && !empty($data['cups_contratado_id'])) {
-                        $data['cups_contratado_uuid'] = $data['cups_contratado_id'];
-                        unset($data['cups_contratado_id']);
-                    }
-
-                    $endpoint = $this->buildApiUrl('store');
-                    Log::info('📤 Enviando cita a API', [
-                        'endpoint' => $endpoint,
-                        'data_keys' => array_keys($data)
-                    ]);
+                $response = $this->apiService->post($endpoint, $data);
+                
+                Log::info('📥 Respuesta de API recibida', [
+                    'success' => $response['success'] ?? false,
+                    'has_data' => isset($response['data']),
+                    'has_error' => isset($response['error']),
+                    'response_keys' => array_keys($response)
+                ]);
+                
+                if ($response['success'] ?? false) {
+                    $citaData = $response['data'];
                     
-                    $response = $this->apiService->post($endpoint, $data);
-                    
-                    Log::info('📥 Respuesta de API recibida', [
-                        'success' => $response['success'] ?? false,
-                        'has_data' => isset($response['data']),
-                        'has_error' => isset($response['error']),
-                        'response_keys' => array_keys($response)
-                    ]);
-                    
-                    if ($response['success'] ?? false) {
-                        $citaData = $response['data'];
-                        $this->offlineService->storeCitaOffline($citaData, false);
-                        
-                        Log::info('🎉 Cita creada exitosamente en API', [
-                            'cita_uuid' => $citaData['uuid'] ?? 'N/A'
+                    // ✅ LOG SI LA CITA TIENE CUPS CONTRATADO
+                    if (isset($citaData['cups_contratado_uuid'])) {
+                        Log::info('✅ Cita creada CON CUPS contratado', [
+                            'cita_uuid' => $citaData['uuid'],
+                            'cups_contratado_uuid' => $citaData['cups_contratado_uuid']
                         ]);
-                        
-                        return [
-                            'success' => true,
-                            'data' => $citaData,
-                            'message' => '✅ Cita creada exitosamente en el servidor',
-                            'offline' => false
-                        ];
+                    } else {
+                        Log::info('ℹ️ Cita creada SIN CUPS contratado', [
+                            'cita_uuid' => $citaData['uuid']
+                        ]);
                     }
                     
-                    Log::warning('⚠️ API respondió con error, creando offline como fallback', [
-                        'api_error' => $response['error'] ?? 'Error desconocido',
-                        'full_response' => $response
-                    ]);
+                    $this->offlineService->storeCitaOffline($citaData, false);
                     
-                } catch (\Exception $e) {
-                    Log::warning('⚠️ Excepción conectando con API, creando offline como fallback', [
-                        'error' => $e->getMessage(),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine()
-                    ]);
+                    return [
+                        'success' => true,
+                        'data' => $citaData,
+                        'message' => '✅ Cita creada exitosamente en el servidor',
+                        'offline' => false
+                    ];
                 }
-            } else {
-                Log::info('📱 Sin conexión detectada, creando cita offline directamente...');
+                
+                Log::warning('⚠️ API respondió con error, creando offline como fallback', [
+                    'api_error' => $response['error'] ?? 'Error desconocido',
+                    'full_response' => $response
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Excepción conectando con API, creando offline como fallback', [
+                    'error' => $e->getMessage()
+                ]);
             }
-
-            // ✅ CREAR OFFLINE
-            Log::info('💾 Creando cita en modo offline...');
-            
-            $data['uuid'] = Str::uuid();
-            $this->offlineService->storeCitaOffline($data, true);
-
-            Log::info('✅ Cita creada offline exitosamente', [
-                'uuid' => $data['uuid'],
-                'needs_sync' => true
-            ]);
-
-            return [
-                'success' => true,
-                'data' => $data,
-                'message' => '📱 Cita creada offline (se sincronizará cuando vuelva la conexión)',
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('💥 Error crítico creando cita', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'data' => $data
-            ]);
-            
-            return [
-                'success' => false,
-                'error' => 'Error interno: ' . $e->getMessage()
-            ];
         }
+
+        // ✅ CREAR OFFLINE
+        Log::info('💾 Creando cita en modo offline...');
+        
+        $data['uuid'] = \Illuminate\Support\Str::uuid();
+        $this->offlineService->storeCitaOffline($data, true);
+
+        Log::info('✅ Cita creada offline exitosamente', [
+            'uuid' => $data['uuid'],
+            'has_cups_contratado_uuid' => isset($data['cups_contratado_uuid']),
+            'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ENVIADO',
+            'needs_sync' => true
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $data,
+            'message' => '📱 Cita creada offline (se sincronizará cuando vuelva la conexión)',
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error crítico creando cita', [
+            'error' => $e->getMessage(),
+            'data' => $data
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage()
+        ];
     }
+}
 
     public function show(string $uuid): array
     {

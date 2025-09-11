@@ -139,6 +139,8 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
             ->where('cupsUuid', '[0-9a-f-]{36}'); // ✅ VALIDAR UUID
     });
     
+    Route::post('/cups-contratados/sincronizar', [CupsController::class, 'sincronizarCupsContratados'])
+    ->name('cups-contratados.sincronizar');
     // ✅ SINCRONIZACIÓN
     Route::post('/sync-pacientes', [PacienteController::class, 'syncPendingPacientes'])
         ->name('pacientes.sync');

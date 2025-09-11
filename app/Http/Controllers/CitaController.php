@@ -103,7 +103,7 @@ class CitaController extends Controller
                 'patologia' => 'nullable|string|max:50',
                 'paciente_uuid' => 'required|string|max:100',
                 'agenda_uuid' => 'required|string|max:100',
-                'cups_contratado_id' => 'nullable|string|max:100',
+                'cups_contratado_uuid' => 'nullable|string|max:100',
             ]);
 
             $result = $this->citaService->store($validatedData);

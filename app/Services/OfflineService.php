@@ -207,6 +207,7 @@ class OfflineService
     ');
 }
 
+
 private function createCitasTable(): void
 {
     DB::connection('offline')->statement('
@@ -226,7 +227,8 @@ private function createCitasTable(): void
             paciente_uuid TEXT,
             agenda_id INTEGER,
             agenda_uuid TEXT,
-            cups_contratado_id INTEGER,
+            cups_contratado_id TEXT,
+            cups_contratado_uuid TEXT,
             usuario_creo_cita_id INTEGER,
             sync_status TEXT DEFAULT "synced",
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -235,7 +237,6 @@ private function createCitasTable(): void
         )
     ');
 }
-
 
     // ✅ MÉTODOS DE CREACIÓN DE TABLAS (SIN CAMBIOS)
     private function createDepartamentosTable(): void
@@ -561,6 +562,8 @@ private function createCupsContratadosTable(): void
             categoria_cups_id INTEGER,
             cups_id INTEGER,
             cups_uuid TEXT,
+            cups_codigo TEXT,
+            cups_nombre TEXT,
             tarifa TEXT,
             estado TEXT DEFAULT "ACTIVO",
             contrato_fecha_inicio DATE,
@@ -579,6 +582,10 @@ private function createCupsContratadosTable(): void
     
     DB::connection('offline')->statement('
         CREATE INDEX IF NOT EXISTS idx_cups_contratados_estado ON cups_contratados(estado)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_cups_contratados_cups_codigo ON cups_contratados(cups_codigo)
     ');
 }
 
@@ -1944,6 +1951,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
 }
 
 
+// ✅ CORREGIR storeCitaOffline
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
     try {
@@ -1957,10 +1965,22 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             $citaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
+        // ✅ LOGGING ESPECÍFICO DE CUPS
+        if (!empty($citaData['cups_contratado_uuid'])) {
+            Log::info('💾 Guardando cita CON CUPS contratado', [
+                'cita_uuid' => $citaData['uuid'],
+                'cups_contratado_uuid' => $citaData['cups_contratado_uuid']
+            ]);
+        } else {
+            Log::info('💾 Guardando cita SIN CUPS contratado', [
+                'cita_uuid' => $citaData['uuid']
+            ]);
+        }
+
+        // ✅ PREPARAR DATOS LIMPIOS PARA SQLITE
         $offlineData = [
-            'id' => $citaData['id'] ?? null,
             'uuid' => $citaData['uuid'],
-            'sede_id' => $citaData['sede_id'],
+            'sede_id' => (int) $citaData['sede_id'],
             'fecha' => $citaData['fecha'],
             'fecha_inicio' => $citaData['fecha_inicio'],
             'fecha_final' => $citaData['fecha_final'],
@@ -1969,12 +1989,13 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             'nota' => $citaData['nota'] ?? '',
             'estado' => $citaData['estado'] ?? 'PROGRAMADA',
             'patologia' => $citaData['patologia'] ?? null,
-            'paciente_id' => $citaData['paciente_id'] ?? null,
+            'paciente_id' => null,
             'paciente_uuid' => $citaData['paciente_uuid'] ?? null,
-            'agenda_id' => $citaData['agenda_id'] ?? null,
+            'agenda_id' => null,
             'agenda_uuid' => $citaData['agenda_uuid'] ?? null,
-            'cups_contratado_id' => $citaData['cups_contratado_id'] ?? null,
-            'usuario_creo_cita_id' => $citaData['usuario_creo_cita_id'] ?? null,
+            'cups_contratado_id' => null, // ✅ SIEMPRE NULL
+            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? null, // ✅ ESTE ES EL IMPORTANTE
+            'usuario_creo_cita_id' => (int) ($citaData['usuario_creo_cita_id'] ?? 1),
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'created_at' => $citaData['created_at'] ?? now()->toISOString(),
             'updated_at' => now()->toISOString(),
@@ -1989,12 +2010,13 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         }
 
         // También guardar en JSON como backup
-        $this->storeData('citas/' . $citaData['uuid'] . '.json', $offlineData);
+        $this->storeData('citas/' . $citaData['uuid'] . '.json', $citaData);
 
         Log::debug('✅ Cita almacenada offline', [
             'uuid' => $citaData['uuid'],
             'fecha' => $citaData['fecha'],
-            'paciente_uuid' => $citaData['paciente_uuid']
+            'paciente_uuid' => $citaData['paciente_uuid'],
+            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? 'null'
         ]);
 
     } catch (\Exception $e) {
@@ -2004,6 +2026,7 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         ]);
     }
 }
+
 
 public function getAgendasOffline(int $sedeId, array $filters = []): array
 {
@@ -3227,8 +3250,7 @@ private function prepareCitaDataForSync(array $cita): array
 {
     Log::info('🧹 Preparando datos de cita para API', [
         'uuid' => $cita['uuid'],
-        'original_keys' => array_keys($cita),
-        'cups_contratado_id_original' => $cita['cups_contratado_id'] ?? 'null'
+        'cups_contratado_uuid_original' => $cita['cups_contratado_uuid'] ?? 'null'
     ]);
 
     $cleanData = [
@@ -3246,30 +3268,15 @@ private function prepareCitaDataForSync(array $cita): array
         'usuario_creo_cita_id' => (int) ($cita['usuario_creo_cita_id'] ?? 1)
     ];
 
-    // ✅ MANEJO ESPECÍFICO DE CUPS CONTRATADO
-    if (!empty($cita['cups_contratado_id']) && $cita['cups_contratado_id'] !== 'null') {
-        // ✅ VERIFICAR SI ES UUID O ID NUMÉRICO
-        if ($this->isValidUuid($cita['cups_contratado_id'])) {
-            // Es UUID - enviarlo como cups_contratado_uuid
-            $cleanData['cups_contratado_uuid'] = $cita['cups_contratado_id'];
-            Log::info('✅ CUPS contratado UUID agregado', [
-                'cups_contratado_uuid' => $cita['cups_contratado_id']
-            ]);
-        } else {
-            // Es ID numérico - intentar resolverlo a UUID
-            $cupsContratadoUuid = $this->resolveCupsContratadoIdToUuid($cita['cups_contratado_id']);
-            if ($cupsContratadoUuid) {
-                $cleanData['cups_contratado_uuid'] = $cupsContratadoUuid;
-                Log::info('✅ CUPS contratado ID resuelto a UUID', [
-                    'original_id' => $cita['cups_contratado_id'],
-                    'resolved_uuid' => $cupsContratadoUuid
-                ]);
-            } else {
-                Log::warning('⚠️ No se pudo resolver CUPS contratado ID a UUID', [
-                    'cups_contratado_id' => $cita['cups_contratado_id']
-                ]);
-            }
-        }
+    // ✅ MANEJO SIMPLE DE CUPS CONTRATADO
+    if (!empty($cita['cups_contratado_uuid']) && $cita['cups_contratado_uuid'] !== 'null') {
+        $cleanData['cups_contratado_uuid'] = $cita['cups_contratado_uuid'];
+        
+        Log::info('✅ CUPS contratado incluido en datos de sincronización', [
+            'cups_contratado_uuid' => $cita['cups_contratado_uuid']
+        ]);
+    } else {
+        Log::info('ℹ️ Cita sin CUPS contratado para sincronización');
     }
 
     Log::info('🧹 Datos de cita limpiados para API', [
@@ -3281,7 +3288,6 @@ private function prepareCitaDataForSync(array $cita): array
 
     return $cleanData;
 }
-
 /**
  * ✅ NUEVO: Resolver CUPS contratado ID a UUID
  */
@@ -3876,6 +3882,7 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             return;
         }
 
+        // ✅ EXTRAER INFORMACIÓN ANIDADA CORRECTAMENTE
         $offlineData = [
             'uuid' => $cupsContratadoData['uuid'],
             'contrato_id' => $cupsContratadoData['contrato_id'] ?? null,
@@ -3883,6 +3890,8 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             'categoria_cups_id' => $cupsContratadoData['categoria_cups_id'] ?? null,
             'cups_id' => $cupsContratadoData['cups_id'] ?? null,
             'cups_uuid' => $cupsContratadoData['cups']['uuid'] ?? null,
+            'cups_codigo' => $cupsContratadoData['cups']['codigo'] ?? null,
+            'cups_nombre' => $cupsContratadoData['cups']['nombre'] ?? null,
             'tarifa' => $cupsContratadoData['tarifa'] ?? '0',
             'estado' => $cupsContratadoData['estado'] ?? 'ACTIVO',
             'contrato_fecha_inicio' => $cupsContratadoData['contrato']['fecha_inicio'] ?? null,
@@ -3905,7 +3914,8 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
 
         Log::debug('✅ CUPS contratado almacenado offline', [
             'uuid' => $cupsContratadoData['uuid'],
-            'cups_uuid' => $offlineData['cups_uuid']
+            'cups_uuid' => $offlineData['cups_uuid'],
+            'cups_codigo' => $offlineData['cups_codigo']
         ]);
 
     } catch (\Exception $e) {
@@ -3915,6 +3925,7 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
         ]);
     }
 }
+
 
 /**
  * ✅ BUSCAR CUPS CONTRATADO POR CUPS UUID OFFLINE
@@ -3938,7 +3949,8 @@ public function getCupsContratadoPorCupsUuidOffline(string $cupsUuid): ?array
             if ($cupsContratado) {
                 $result = (array) $cupsContratado;
                 Log::info('✅ CUPS contratado encontrado en SQLite', [
-                    'cups_contratado_uuid' => $result['uuid']
+                    'cups_contratado_uuid' => $result['uuid'],
+                    'cups_codigo' => $result['cups_codigo'] ?? 'N/A'
                 ]);
                 return $result;
             }
@@ -3974,6 +3986,58 @@ public function getCupsContratadoPorCupsUuidOffline(string $cupsUuid): ?array
             'cups_uuid' => $cupsUuid
         ]);
         return null;
+    }
+}
+
+/**
+ * ✅ NUEVO: Sincronizar CUPS contratados desde API
+ */
+public function syncCupsContratadosFromApi(): bool
+{
+    try {
+        Log::info('🔄 Sincronizando CUPS contratados desde API');
+
+        $apiService = app(ApiService::class);
+        
+        if (!$apiService->isOnline()) {
+            Log::warning('⚠️ Sin conexión para sincronizar CUPS contratados');
+            return false;
+        }
+
+        $response = $apiService->get('/cups-contratados/disponibles');
+        
+        if (!$response['success']) {
+            Log::error('❌ Error obteniendo CUPS contratados de API', [
+                'error' => $response['error'] ?? 'Error desconocido'
+            ]);
+            return false;
+        }
+
+        $cupsContratados = $response['data'];
+        
+        if (empty($cupsContratados)) {
+            Log::info('ℹ️ No hay CUPS contratados para sincronizar');
+            return true;
+        }
+
+        $syncCount = 0;
+        foreach ($cupsContratados as $cupsContratado) {
+            $this->storeCupsContratadoOffline($cupsContratado);
+            $syncCount++;
+        }
+
+        Log::info('✅ CUPS contratados sincronizados', [
+            'total' => count($cupsContratados),
+            'sincronizados' => $syncCount
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando CUPS contratados', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
     }
 }
 
