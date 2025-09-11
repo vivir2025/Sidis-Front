@@ -485,4 +485,123 @@ class CitaController extends Controller
         
         return null;
     }
+
+    // ✅ NUEVO: Obtener citas pendientes de sincronización
+public function getPendientesSync(Request $request)
+{
+    try {
+        Log::info('🔍 Obteniendo citas pendientes de sincronización');
+        
+        $pendingCount = $this->offlineService->getPendingSyncCount();
+        
+        Log::info('📊 Conteo de pendientes obtenido', [
+            'citas_pendientes' => $pendingCount['citas'] ?? 0,
+            'total_pendientes' => $pendingCount['total'] ?? 0
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'pending_count' => $pendingCount['citas'] ?? 0,
+            'total_pending' => $pendingCount['total'] ?? 0,
+            'details' => $pendingCount
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo citas pendientes', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error obteniendo citas pendientes: ' . $e->getMessage(),
+            'pending_count' => 0
+        ], 500);
+    }
+}
+
+// ✅ NUEVO: Sincronizar citas pendientes CON MANEJO ESPECÍFICO DE CUPS
+public function sincronizarPendientes(Request $request)
+{
+    try {
+        Log::info('🔄 Iniciando sincronización de citas pendientes');
+        
+        // ✅ VERIFICAR CONEXIÓN
+        if (!$this->apiService->isOnline()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sin conexión al servidor',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ]);
+        }
+        
+        // ✅ VERIFICAR TOKEN
+        if (!$this->authService->hasValidToken()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Token de autenticación inválido',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ]);
+        }
+        
+        // ✅ EJECUTAR SINCRONIZACIÓN
+        $result = $this->offlineService->syncPendingCitas();
+        
+        Log::info('✅ Sincronización de citas completada', [
+            'success' => $result['success'] ?? 0,
+            'errors' => $result['errors'] ?? 0
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Sincronización completada',
+            'synced_count' => $result['success'] ?? 0,
+            'failed_count' => $result['errors'] ?? 0,
+            'details' => $result['details'] ?? []
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando citas', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage(),
+            'synced_count' => 0,
+            'failed_count' => 0
+        ], 500);
+    }
+}
+
+// ✅ NUEVO: Obtener estado de sincronización
+public function getSyncStatus(Request $request)
+{
+    try {
+        $stats = $this->offlineService->getPendingSyncCount();
+        $isOnline = $this->apiService->isOnline();
+        $hasToken = $this->authService->hasValidToken();
+        
+        return response()->json([
+            'success' => true,
+            'is_online' => $isOnline,
+            'has_valid_token' => $hasToken,
+            'can_sync' => $isOnline && $hasToken,
+            'pending_stats' => $stats,
+            'last_check' => now()->toISOString()
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo estado de sync', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error obteniendo estado: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

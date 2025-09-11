@@ -2082,9 +2082,31 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                 $query->where('agenda_uuid', $filters['agenda_uuid']);
             }
 
-            $citas = $query->orderBy('fecha_inicio', 'desc')
-                ->get()
-                ->toArray();
+            $results = $query->orderBy('fecha_inicio', 'desc')->get();
+            
+            // ✅ CONVERTIR OBJETOS stdClass A ARRAYS
+            $citas = $results->map(function($cita) {
+                $citaArray = (array) $cita;
+                
+                // ✅ AGREGAR INFORMACIÓN DEL PACIENTE SI ESTÁ DISPONIBLE
+                if (!empty($citaArray['paciente_uuid'])) {
+                    $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
+                    if ($paciente) {
+                        $citaArray['paciente'] = $paciente;
+                    }
+                }
+                
+                // ✅ AGREGAR INFORMACIÓN DE LA AGENDA SI ESTÁ DISPONIBLE
+                if (!empty($citaArray['agenda_uuid'])) {
+                    $agenda = $this->getAgendaOffline($citaArray['agenda_uuid']);
+                    if ($agenda) {
+                        $citaArray['agenda'] = $agenda;
+                    }
+                }
+                
+                return $citaArray;
+            })->toArray();
+            
         } else {
             // Fallback a JSON
             $citasPath = $this->getStoragePath() . '/citas';
@@ -2997,13 +3019,14 @@ private function cleanAgendaDataForSync(array $agendaData): array
     return $cleanData;
 }
 
-
 /**
- * ✅ SINCRONIZAR CITAS PENDIENTES
+ * ✅ MEJORADO: Sincronizar citas pendientes CON MANEJO ESPECÍFICO DE CUPS
  */
 public function syncPendingCitas(): array
 {
     try {
+        Log::info('🔄 Iniciando sincronización de citas pendientes');
+        
         $results = [
             'success' => 0,
             'errors' => 0,
@@ -3011,75 +3034,297 @@ public function syncPendingCitas(): array
         ];
 
         if (!$this->isSQLiteAvailable()) {
-            return $results; // Por ahora solo SQLite
+            Log::warning('⚠️ SQLite no disponible para sincronización de citas');
+            return $results;
         }
 
+        // ✅ VERIFICAR CONEXIÓN PRIMERO
+        $apiService = app(ApiService::class);
+        if (!$apiService->isOnline()) {
+            Log::warning('⚠️ Sin conexión para sincronizar citas');
+            return [
+                'success' => false,
+                'error' => 'Sin conexión al servidor',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ];
+        }
+
+        // Obtener citas pendientes
         $pendingCitas = DB::connection('offline')
             ->table('citas')
             ->where('sync_status', 'pending')
+            ->orWhere('sync_status', 'error')
             ->get();
 
-        Log::info('🔄 Sincronizando citas pendientes', [
+        Log::info('📊 Citas pendientes encontradas', [
             'count' => $pendingCitas->count()
         ]);
 
+        if ($pendingCitas->isEmpty()) {
+            return [
+                'success' => true,
+                'message' => 'No hay citas pendientes',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ];
+        }
+
         foreach ($pendingCitas as $cita) {
             try {
-                $citaData = (array) $cita;
-                unset($citaData['id'], $citaData['sync_status']);
-
-                $apiService = app(ApiService::class);
+                $citaArray = (array) $cita;
                 
-                if ($citaData['deleted_at']) {
+                Log::info('📡 Procesando cita para sincronización', [
+                    'uuid' => $cita->uuid,
+                    'fecha' => $cita->fecha,
+                    'paciente_uuid' => $cita->paciente_uuid,
+                    'cups_contratado_id' => $cita->cups_contratado_id ?? 'null'
+                ]);
+
+                // ✅ PREPARAR DATOS LIMPIOS PARA LA API CON CUPS
+                $syncData = $this->prepareCitaDataForSync($citaArray);
+                
+                Log::info('📤 Datos preparados para API', [
+                    'uuid' => $cita->uuid,
+                    'sync_data_keys' => array_keys($syncData),
+                    'has_cups_contratado' => isset($syncData['cups_contratado_uuid'])
+                ]);
+
+                // ✅ ENVIAR A LA API
+                if ($citaArray['deleted_at']) {
+                    // Cita eliminada - enviar DELETE
                     $response = $apiService->delete("/citas/{$cita->uuid}");
                 } else {
-                    $response = $apiService->post('/citas', $citaData);
+                    // Cita nueva/actualizada - enviar POST
+                    $response = $apiService->post('/citas', $syncData);
                 }
+                
+                Log::info('📥 Respuesta de API para cita', [
+                    'uuid' => $cita->uuid,
+                    'success' => $response['success'] ?? false,
+                    'error' => $response['error'] ?? null
+                ]);
 
-                if ($response['success']) {
+                if (isset($response['success']) && $response['success'] === true) {
+                    // ✅ ÉXITO
                     DB::connection('offline')
                         ->table('citas')
                         ->where('uuid', $cita->uuid)
-                        ->update(['sync_status' => 'synced']);
+                        ->update([
+                            'sync_status' => 'synced',
+                            'updated_at' => now()
+                        ]);
                     
                     $results['success']++;
                     $results['details'][] = [
                         'uuid' => $cita->uuid,
-                        'status' => 'success'
+                        'status' => 'success',
+                        'action' => $citaArray['deleted_at'] ? 'deleted' : 'created'
                     ];
+                    
+                    Log::info('✅ Cita sincronizada exitosamente', [
+                        'uuid' => $cita->uuid
+                    ]);
+                    
                 } else {
-                    $results['errors']++;
-                    $results['details'][] = [
-                        'uuid' => $cita->uuid,
-                        'status' => 'error',
-                        'error' => $response['error'] ?? 'Error desconocido'
-                    ];
+                    // ✅ ERROR
+                    $errorMessage = $response['error'] ?? 'Error desconocido';
+                    
+                    // ✅ VERIFICAR SI ES ERROR DE DUPLICADO
+                    $errorLower = strtolower($errorMessage);
+                    if (str_contains($errorLower, 'ya existe') || 
+                        str_contains($errorLower, 'duplicate') ||
+                        str_contains($errorLower, 'already exists')) {
+                        
+                        // Marcar como sincronizado si ya existe
+                        DB::connection('offline')
+                            ->table('citas')
+                            ->where('uuid', $cita->uuid)
+                            ->update([
+                                'sync_status' => 'synced',
+                                'updated_at' => now()
+                            ]);
+                        
+                        $results['success']++;
+                        $results['details'][] = [
+                            'uuid' => $cita->uuid,
+                            'status' => 'success',
+                            'action' => 'already_exists'
+                        ];
+                        
+                        Log::info('✅ Cita ya existía en servidor', [
+                            'uuid' => $cita->uuid
+                        ]);
+                    } else {
+                        // Error real
+                        DB::connection('offline')
+                            ->table('citas')
+                            ->where('uuid', $cita->uuid)
+                            ->update(['sync_status' => 'error']);
+                        
+                        $results['errors']++;
+                        $results['details'][] = [
+                            'uuid' => $cita->uuid,
+                            'status' => 'error',
+                            'error' => $errorMessage
+                        ];
+                        
+                        Log::error('❌ Error sincronizando cita', [
+                            'uuid' => $cita->uuid,
+                            'error' => $errorMessage
+                        ]);
+                    }
                 }
 
             } catch (\Exception $e) {
                 $results['errors']++;
                 $results['details'][] = [
-                    'uuid' => $cita->uuid,
+                    'uuid' => $cita->uuid ?? 'unknown',
                     'status' => 'error',
                     'error' => $e->getMessage()
                 ];
+                
+                Log::error('❌ Excepción sincronizando cita', [
+                    'uuid' => $cita->uuid ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
             }
         }
 
-        return $results;
+        Log::info('🏁 Sincronización de citas completada', [
+            'success' => $results['success'],
+            'errors' => $results['errors'],
+            'total' => $pendingCitas->count()
+        ]);
+
+        return [
+            'success' => true,
+            'message' => "Sincronización completada: {$results['success']} exitosas, {$results['errors']} errores",
+            'synced_count' => $results['success'],
+            'failed_count' => $results['errors'],
+            'details' => $results['details']
+        ];
 
     } catch (\Exception $e) {
-        Log::error('❌ Error en sincronización de citas', [
-            'error' => $e->getMessage()
+        Log::error('💥 Error crítico en sincronización de citas', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return [
-            'success' => 0,
-            'errors' => 1,
-            'details' => [['error' => $e->getMessage()]]
+            'success' => false,
+            'error' => 'Error crítico: ' . $e->getMessage(),
+            'synced_count' => 0,
+            'failed_count' => 0
         ];
     }
 }
+
+/**
+ * ✅ NUEVO: Preparar datos de cita para sincronización CON MANEJO DE CUPS
+ */
+private function prepareCitaDataForSync(array $cita): array
+{
+    Log::info('🧹 Preparando datos de cita para API', [
+        'uuid' => $cita['uuid'],
+        'original_keys' => array_keys($cita),
+        'cups_contratado_id_original' => $cita['cups_contratado_id'] ?? 'null'
+    ]);
+
+    $cleanData = [
+        'fecha' => $cita['fecha'],
+        'fecha_inicio' => $cita['fecha_inicio'],
+        'fecha_final' => $cita['fecha_final'],
+        'fecha_deseada' => $cita['fecha_deseada'] ?? null,
+        'motivo' => $cita['motivo'] ?? null,
+        'nota' => $cita['nota'] ?? '',
+        'estado' => $cita['estado'] ?? 'PROGRAMADA',
+        'patologia' => $cita['patologia'] ?? null,
+        'paciente_uuid' => $cita['paciente_uuid'],
+        'agenda_uuid' => $cita['agenda_uuid'],
+        'sede_id' => (int) ($cita['sede_id'] ?? 1),
+        'usuario_creo_cita_id' => (int) ($cita['usuario_creo_cita_id'] ?? 1)
+    ];
+
+    // ✅ MANEJO ESPECÍFICO DE CUPS CONTRATADO
+    if (!empty($cita['cups_contratado_id']) && $cita['cups_contratado_id'] !== 'null') {
+        // ✅ VERIFICAR SI ES UUID O ID NUMÉRICO
+        if ($this->isValidUuid($cita['cups_contratado_id'])) {
+            // Es UUID - enviarlo como cups_contratado_uuid
+            $cleanData['cups_contratado_uuid'] = $cita['cups_contratado_id'];
+            Log::info('✅ CUPS contratado UUID agregado', [
+                'cups_contratado_uuid' => $cita['cups_contratado_id']
+            ]);
+        } else {
+            // Es ID numérico - intentar resolverlo a UUID
+            $cupsContratadoUuid = $this->resolveCupsContratadoIdToUuid($cita['cups_contratado_id']);
+            if ($cupsContratadoUuid) {
+                $cleanData['cups_contratado_uuid'] = $cupsContratadoUuid;
+                Log::info('✅ CUPS contratado ID resuelto a UUID', [
+                    'original_id' => $cita['cups_contratado_id'],
+                    'resolved_uuid' => $cupsContratadoUuid
+                ]);
+            } else {
+                Log::warning('⚠️ No se pudo resolver CUPS contratado ID a UUID', [
+                    'cups_contratado_id' => $cita['cups_contratado_id']
+                ]);
+            }
+        }
+    }
+
+    Log::info('🧹 Datos de cita limpiados para API', [
+        'uuid' => $cita['uuid'],
+        'clean_data_keys' => array_keys($cleanData),
+        'has_cups_contratado' => isset($cleanData['cups_contratado_uuid']),
+        'cups_contratado_uuid' => $cleanData['cups_contratado_uuid'] ?? 'no-enviado'
+    ]);
+
+    return $cleanData;
+}
+
+/**
+ * ✅ NUEVO: Resolver CUPS contratado ID a UUID
+ */
+private function resolveCupsContratadoIdToUuid($cupsContratadoId): ?string
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $cupsContratado = DB::connection('offline')
+                ->table('cups_contratados')
+                ->where('id', $cupsContratadoId)
+                ->orWhere('uuid', $cupsContratadoId)
+                ->first();
+            
+            if ($cupsContratado) {
+                return $cupsContratado->uuid;
+            }
+        }
+        
+        // Fallback a archivos JSON
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        if (is_dir($cupsContratadosPath)) {
+            $files = glob($cupsContratadosPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && 
+                    (($data['id'] ?? null) == $cupsContratadoId || 
+                     ($data['uuid'] ?? null) === $cupsContratadoId)) {
+                    return $data['uuid'];
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error resolviendo CUPS contratado ID a UUID', [
+            'cups_contratado_id' => $cupsContratadoId,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
 
 /**
  * ✅ OBTENER CONTEO DE REGISTROS PENDIENTES

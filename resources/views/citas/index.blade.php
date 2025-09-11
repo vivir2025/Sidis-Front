@@ -23,6 +23,12 @@
                             <i class="fas fa-wifi-slash"></i> Modo Offline
                         </span>
                     @endif
+                    
+                    {{-- ✅ NUEVO: Botón de sincronización de citas --}}
+                    <button type="button" class="btn btn-info me-2" onclick="sincronizarCitas()" id="btnSincronizarCitas">
+                        <i class="fas fa-sync-alt"></i> Sincronizar Citas
+                    </button>
+                    
                     <a href="{{ route('citas.create') }}" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Nueva Cita
                     </a>
@@ -31,6 +37,29 @@
         </div>
     </div>
 
+    {{-- ✅ NUEVO: Panel de estado de sincronización --}}
+    <div class="row mb-4" id="panelSincronizacionCitas" style="display: none;">
+        <div class="col-12">
+            <div class="alert alert-info" role="alert">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-3" role="status" id="spinnerSyncCitas">
+                        <span class="visually-hidden">Sincronizando...</span>
+                    </div>
+                    <div>
+                        <strong>Sincronizando citas...</strong>
+                        <div id="estadoSincronizacionCitas" class="small text-muted">
+                            Preparando sincronización...
+                        </div>
+                    </div>
+                </div>
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar" role="progressbar" id="progressSyncCitas" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resto del contenido existente... -->
     <!-- Filtros -->
     <div class="card mb-4">
         <div class="card-header">
@@ -87,6 +116,9 @@
                 <button type="button" class="btn btn-sm btn-info" onclick="citasDelDia()">
                     <i class="fas fa-calendar-day"></i> Citas del Día
                 </button>
+                <button type="button" class="btn btn-sm btn-warning" onclick="mostrarCitasPendientes()">
+                    <i class="fas fa-clock"></i> Pendientes
+                </button>
                 <button type="button" class="btn btn-sm btn-success" onclick="exportarCitas()">
                     <i class="fas fa-download"></i> Exportar
                 </button>
@@ -113,6 +145,7 @@
                             <th>Consultorio</th>
                             <th>Modalidad</th>
                             <th>Estado</th>
+                            <th>Sync</th> {{-- ✅ COLUMNA DE SYNC --}}
                             <th>Motivo</th>
                             <th>Acciones</th>
                         </tr>
@@ -150,12 +183,14 @@
 let currentPage = 1;
 let totalPages = 1;
 let isLoading = false;
+let isSyncingCitas = false; // ✅ NUEVO
 
 document.addEventListener('DOMContentLoaded', function() {
     cargarCitas();
+    verificarCitasPendientes(); // ✅ NUEVO
 });
 
-// ✅ CARGAR CITAS
+// ✅ CARGAR CITAS (ACTUALIZADA PARA MOSTRAR ESTADO DE SYNC)
 async function cargarCitas(page = 1, filters = {}) {
     if (isLoading) return;
     
@@ -194,7 +229,7 @@ async function cargarCitas(page = 1, filters = {}) {
     }
 }
 
-// ✅ MOSTRAR CITAS EN TABLA
+// ✅ MOSTRAR CITAS EN TABLA (ACTUALIZADA CON COLUMNA DE SYNC)
 function mostrarCitas(citas) {
     const tbody = document.getElementById('citasTableBody');
     const sinResultados = document.getElementById('sinResultados');
@@ -221,6 +256,7 @@ function mostrarCitas(citas) {
         
         const estadoBadge = getEstadoBadge(cita.estado);
         const modalidadBadge = getModalidadBadge(cita.agenda?.modalidad);
+        const syncBadge = getSyncBadge(cita.sync_status || 'synced', cita.offline); // ✅ NUEVO
         
         html += `
             <tr>
@@ -231,6 +267,7 @@ function mostrarCitas(citas) {
                 <td>${cita.agenda?.consultorio || 'No disponible'}</td>
                 <td>${modalidadBadge}</td>
                 <td>${estadoBadge}</td>
+                <td>${syncBadge}</td>
                 <td>
                     <span title="${cita.motivo || 'Sin motivo'}">
                         ${truncateText(cita.motivo || 'Sin motivo', 20)}
@@ -244,7 +281,7 @@ function mostrarCitas(citas) {
                         <a href="/citas/${cita.uuid}/edit" class="btn btn-outline-warning" title="Editar">
                             <i class="fas fa-edit"></i>
                         </a>
-                                                <button type="button" class="btn btn-outline-danger" 
+                        <button type="button" class="btn btn-outline-danger" 
                                 onclick="eliminarCita('${cita.uuid}')" title="Eliminar">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -280,7 +317,224 @@ function mostrarCitas(citas) {
     tbody.innerHTML = html;
 }
 
-// ✅ FUNCIONES AUXILIARES
+// ✅ NUEVA FUNCIÓN: Badge de estado de sincronización
+function getSyncBadge(syncStatus, isOffline) {
+    if (isOffline || syncStatus === 'pending') {
+        return '<span class="badge bg-warning text-dark" title="Pendiente de sincronización"><i class="fas fa-clock"></i> Pendiente</span>';
+    } else if (syncStatus === 'synced') {
+        return '<span class="badge bg-success" title="Sincronizado"><i class="fas fa-check"></i> Sync</span>';
+    } else if (syncStatus === 'error') {
+        return '<span class="badge bg-danger" title="Error de sincronización"><i class="fas fa-exclamation-triangle"></i> Error</span>';
+    }
+    return '<span class="badge bg-secondary" title="Estado desconocido"><i class="fas fa-question"></i> N/A</span>';
+}
+
+// ✅ NUEVA FUNCIÓN: Verificar citas pendientes
+async function verificarCitasPendientes() {
+    try {
+        const response = await fetch('/citas/pendientes-sync', {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.pending_count > 0) {
+            const btnSincronizar = document.getElementById('btnSincronizarCitas');
+            btnSincronizar.innerHTML = `
+                <i class="fas fa-sync-alt"></i> 
+                Sincronizar Citas 
+                <span class="badge bg-warning text-dark ms-1">${data.pending_count}</span>
+            `;
+            btnSincronizar.classList.add('btn-warning');
+            btnSincronizar.classList.remove('btn-info');
+        }
+        
+    } catch (error) {
+        console.error('Error verificando citas pendientes:', error);
+    }
+}
+
+// ✅ NUEVA FUNCIÓN: Sincronizar citas
+async function sincronizarCitas() {
+    if (isSyncingCitas) {
+        Swal.fire({
+            title: 'Sincronización en progreso',
+            text: 'Ya hay una sincronización de citas en curso, por favor espera.',
+            icon: 'info'
+        });
+        return;
+    }
+
+    try {
+        // Confirmar sincronización
+        const result = await Swal.fire({
+            title: '¿Sincronizar citas?',
+            text: 'Se sincronizarán todas las citas pendientes con el servidor.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, sincronizar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#28a745'
+        });
+
+        if (!result.isConfirmed) return;
+
+        isSyncingCitas = true;
+        mostrarPanelSincronizacionCitas(true);
+        actualizarEstadoSincronizacionCitas('Iniciando sincronización...', 10);
+
+        // Verificar conexión
+        actualizarEstadoSincronizacionCitas('Verificando conexión...', 20);
+        const healthResponse = await fetch('/api/health');
+        
+        if (!healthResponse.ok) {
+            throw new Error('Sin conexión al servidor');
+        }
+
+        // Obtener citas pendientes
+        actualizarEstadoSincronizacionCitas('Obteniendo citas pendientes...', 30);
+        const pendingResponse = await fetch('/citas/pendientes-sync', {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        const pendingData = await pendingResponse.json();
+        
+        if (!pendingData.success) {
+            throw new Error(pendingData.error || 'Error obteniendo citas pendientes');
+        }
+
+        if (pendingData.pending_count === 0) {
+            mostrarPanelSincronizacionCitas(false);
+            Swal.fire({
+                title: 'Sin citas pendientes',
+                text: 'No hay citas pendientes de sincronización.',
+                icon: 'info'
+            });
+            return;
+        }
+
+        // Sincronizar
+        actualizarEstadoSincronizacionCitas(`Sincronizando ${pendingData.pending_count} citas...`, 50);
+        
+        const syncResponse = await fetch('/citas/sincronizar', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
+            }
+        });
+
+        const syncData = await syncResponse.json();
+        
+        actualizarEstadoSincronizacionCitas('Procesando resultados...', 80);
+
+        if (syncData.success) {
+            actualizarEstadoSincronizacionCitas('Sincronización completada', 100);
+            
+            setTimeout(() => {
+                mostrarPanelSincronizacionCitas(false);
+                
+                Swal.fire({
+                    title: '¡Sincronización completada!',
+                    html: `
+                        <div class="text-start">
+                            <p><strong>Resultados:</strong></p>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success me-2"></i>Sincronizadas: ${syncData.synced_count || 0}</li>
+                                <li><i class="fas fa-times text-danger me-2"></i>Errores: ${syncData.failed_count || 0}</li>
+                            </ul>
+                        </div>
+                    `,
+                    icon: 'success',
+                    confirmButtonText: 'Aceptar'
+                }).then(() => {
+                    // Recargar tabla y verificar pendientes
+                    const filtros = obtenerFiltrosActuales();
+                    cargarCitas(currentPage, filtros);
+                    verificarCitasPendientes();
+                });
+            }, 1000);
+
+        } else {
+            throw new Error(syncData.error || 'Error en la sincronización');
+        }
+
+    } catch (error) {
+        console.error('Error sincronizando citas:', error);
+        mostrarPanelSincronizacionCitas(false);
+        
+        Swal.fire({
+            title: 'Error de sincronización',
+            text: error.message,
+            icon: 'error'
+        });
+    } finally {
+        isSyncingCitas = false;
+    }
+}
+
+// ✅ NUEVAS FUNCIONES: Panel de sincronización
+function mostrarPanelSincronizacionCitas(show) {
+    const panel = document.getElementById('panelSincronizacionCitas');
+    const btnSincronizar = document.getElementById('btnSincronizarCitas');
+    
+    if (show) {
+        panel.style.display = 'block';
+        btnSincronizar.disabled = true;
+        btnSincronizar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
+    } else {
+        panel.style.display = 'none';
+        btnSincronizar.disabled = false;
+        btnSincronizar.innerHTML = '<i class="fas fa-sync-alt"></i> Sincronizar Citas';
+        btnSincronizar.classList.remove('btn-warning');
+        btnSincronizar.classList.add('btn-info');
+    }
+}
+
+function actualizarEstadoSincronizacionCitas(mensaje, progreso) {
+    const estadoElement = document.getElementById('estadoSincronizacionCitas');
+    const progressElement = document.getElementById('progressSyncCitas');
+    
+    if (estadoElement) {
+        estadoElement.textContent = mensaje;
+    }
+    
+    if (progressElement) {
+        progressElement.style.width = progreso + '%';
+    }
+}
+
+// ✅ NUEVA FUNCIÓN: Mostrar citas pendientes
+async function mostrarCitasPendientes() {
+    try {
+        document.getElementById('filtro_fecha').value = '';
+        document.getElementById('filtro_estado').value = '';
+        document.getElementById('filtro_documento').value = '';
+        
+        // Aplicar filtro especial para pendientes
+        const filtros = { sync_status: 'pending' };
+        cargarCitas(1, filtros);
+        
+        Swal.fire({
+            title: 'Citas Pendientes',
+            text: 'Mostrando solo citas pendientes de sincronización',
+            icon: 'info',
+            timer: 2000,
+            showConfirmButton: false
+        });
+    } catch (error) {
+        console.error('Error mostrando citas pendientes:', error);
+    }
+}
+
+// ✅ RESTO DE FUNCIONES EXISTENTES (sin cambios)
 function getEstadoBadge(estado) {
     const badges = {
         'PROGRAMADA': '<span class="badge bg-primary">Programada</span>',
@@ -307,27 +561,24 @@ function truncateText(text, maxLength) {
     return text.substring(0, maxLength) + '...';
 }
 
-// ✅ PAGINACIÓN
+// ✅ PAGINACIÓN (sin cambios)
 function actualizarPaginacion(meta) {
     if (!meta) return;
     
     const infoPaginacion = document.getElementById('infoPaginacion');
     const paginacionLinks = document.getElementById('paginacionLinks');
     
-    // Información de paginación
     const desde = meta.from || 0;
     const hasta = meta.to || 0;
     const total = meta.total || 0;
     
     infoPaginacion.innerHTML = `Mostrando ${desde} a ${hasta} de ${total} resultados`;
     
-    // Links de paginación
     totalPages = meta.last_page || 1;
     const currentPageNum = meta.current_page || 1;
     
     let linksHtml = '';
     
-    // Botón anterior
     if (currentPageNum > 1) {
         linksHtml += `
             <li class="page-item">
@@ -338,7 +589,6 @@ function actualizarPaginacion(meta) {
         `;
     }
     
-    // Números de página
     const startPage = Math.max(1, currentPageNum - 2);
     const endPage = Math.min(totalPages, currentPageNum + 2);
     
@@ -373,7 +623,6 @@ function actualizarPaginacion(meta) {
         `;
     }
     
-    // Botón siguiente
     if (currentPageNum < totalPages) {
         linksHtml += `
             <li class="page-item">
@@ -394,7 +643,7 @@ function cambiarPagina(page) {
     }
 }
 
-// ✅ FILTROS
+// ✅ FILTROS (sin cambios)
 function aplicarFiltros() {
     const filtros = obtenerFiltrosActuales();
     cargarCitas(1, filtros);
@@ -419,7 +668,7 @@ function obtenerFiltrosActuales() {
     return filtros;
 }
 
-// ✅ ACCIONES
+// ✅ ACCIONES (sin cambios)
 async function cambiarEstado(uuid, nuevoEstado) {
     try {
         const result = await Swal.fire({
@@ -446,14 +695,13 @@ async function cambiarEstado(uuid, nuevoEstado) {
 
             if (data.success) {
                 Swal.fire({
-                    title: '¡Éxito!',
+                                        title: '¡Éxito!',
                     text: data.message || 'Estado cambiado exitosamente',
                     icon: 'success',
                     timer: 2000,
                     showConfirmButton: false
                 });
                 
-                // Recargar tabla
                 const filtros = obtenerFiltrosActuales();
                 cargarCitas(currentPage, filtros);
             } else {
@@ -503,7 +751,6 @@ async function eliminarCita(uuid) {
                     showConfirmButton: false
                 });
                 
-                // Recargar tabla
                 const filtros = obtenerFiltrosActuales();
                 cargarCitas(currentPage, filtros);
             } else {

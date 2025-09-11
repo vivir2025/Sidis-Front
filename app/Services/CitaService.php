@@ -33,96 +33,108 @@ class CitaService
         return $endpoints[$action] ?? '/citas';
     }
 
-    public function index(array $filters = [], int $page = 1): array
-    {
-        try {
-            Log::info("🩺 CitaService::index - Iniciando", [
-                'filters' => $filters,
-                'page' => $page
-            ]);
+   public function index(array $filters = [], int $page = 1): array
+{
+    try {
+        Log::info("🩺 CitaService::index - Iniciando", [
+            'filters' => $filters,
+            'page' => $page
+        ]);
 
-            $user = $this->authService->usuario();
-            $sedeId = $user['sede_id'];
+        $user = $this->authService->usuario();
+        $sedeId = $user['sede_id'];
 
-            $apiParams = array_merge($filters, [
-                'page' => $page,
-                'sede_id' => $sedeId
-            ]);
+        $apiParams = array_merge($filters, [
+            'page' => $page,
+            'sede_id' => $sedeId
+        ]);
 
-            $apiParams = array_filter($apiParams, function($value) {
-                return !empty($value) && $value !== '';
-            });
+        $apiParams = array_filter($apiParams, function($value) {
+            return !empty($value) && $value !== '';
+        });
 
-            if ($this->apiService->isOnline()) {
-                try {
-                    $url = $this->buildApiUrl('index');
-                    $response = $this->apiService->get($url, $apiParams);
+        if ($this->apiService->isOnline()) {
+            try {
+                $url = $this->buildApiUrl('index');
+                $response = $this->apiService->get($url, $apiParams);
 
-                    if ($response['success'] && isset($response['data'])) {
-                        $citas = $response['data']['data'] ?? $response['data'];
-                        $meta = $response['data']['meta'] ?? $response['meta'] ?? [];
-                        
-                        if (!empty($citas)) {
-                            foreach ($citas as $cita) {
-                                $this->offlineService->storeCitaOffline($cita, false);
-                            }
+                if ($response['success'] && isset($response['data'])) {
+                    $citas = $response['data']['data'] ?? $response['data'];
+                    $meta = $response['data']['meta'] ?? $response['meta'] ?? [];
+                    
+                    if (!empty($citas)) {
+                        foreach ($citas as $cita) {
+                            $this->offlineService->storeCitaOffline($cita, false);
                         }
-
-                        return [
-                            'success' => true,
-                            'data' => $citas,
-                            'meta' => $meta,
-                            'message' => '✅ Citas actualizadas desde el servidor',
-                            'offline' => false
-                        ];
                     }
-                } catch (\Exception $e) {
-                    Log::warning('⚠️ Error conectando con API citas', [
-                        'error' => $e->getMessage()
-                    ]);
+
+                    return [
+                        'success' => true,
+                        'data' => $citas,
+                        'meta' => $meta,
+                        'message' => '✅ Citas actualizadas desde el servidor',
+                        'offline' => false
+                    ];
                 }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error conectando con API citas', [
+                    'error' => $e->getMessage()
+                ]);
             }
-
-            $citas = $this->offlineService->getCitasOffline($sedeId, $filters);
-            
-            $perPage = 15;
-            $total = count($citas);
-            $offset = ($page - 1) * $perPage;
-            $paginatedData = array_slice($citas, $offset, $perPage);
-
-            return [
-                'success' => true,
-                'data' => $paginatedData,
-                'meta' => [
-                    'current_page' => $page,
-                    'last_page' => ceil($total / $perPage),
-                    'per_page' => $perPage,
-                    'total' => $total
-                ],
-                'message' => '📱 Trabajando en modo offline - Datos locales',
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('💥 Error en CitaService::index', [
-                'error' => $e->getMessage(),
-                'filters' => $filters
-            ]);
-
-            return [
-                'success' => true,
-                'data' => [],
-                'meta' => [
-                    'current_page' => $page,
-                    'last_page' => 1,
-                    'per_page' => 15,
-                    'total' => 0
-                ],
-                'message' => '❌ Error cargando citas: ' . $e->getMessage(),
-                'offline' => true
-            ];
         }
+
+        // ✅ MODO OFFLINE - INCLUIR sync_status Y FILTROS
+        $citas = $this->offlineService->getCitasOffline($sedeId, $filters);
+        
+        // ✅ AGREGAR INFORMACIÓN DE SYNC STATUS
+        $citas = array_map(function($cita) {
+            // Marcar como offline si tiene sync_status pending
+            $cita['offline'] = ($cita['sync_status'] ?? 'synced') === 'pending';
+            return $cita;
+        }, $citas);
+        
+        $perPage = 15;
+        $total = count($citas);
+        $offset = ($page - 1) * $perPage;
+        $paginatedData = array_slice($citas, $offset, $perPage);
+
+        return [
+            'success' => true,
+            'data' => $paginatedData,
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => ceil($total / $perPage),
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total)
+            ],
+            'message' => '📱 Trabajando en modo offline - Datos locales',
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error en CitaService::index', [
+            'error' => $e->getMessage(),
+            'filters' => $filters
+        ]);
+
+        return [
+            'success' => true,
+            'data' => [],
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => 1,
+                'per_page' => 15,
+                'total' => 0,
+                'from' => 0,
+                'to' => 0
+            ],
+            'message' => '❌ Error cargando citas: ' . $e->getMessage(),
+            'offline' => true
+        ];
     }
+}
 
     /**
      * ✅ CREAR CITA - VERSIÓN SIMPLIFICADA SIN CONVERSIÓN DE UUIDs

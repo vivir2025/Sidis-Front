@@ -112,6 +112,10 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         // ✅ NUEVAS RUTAS PARA HORARIOS
         Route::get('/agenda/{agenda}/horarios', [CitaController::class, 'getHorariosDisponibles'])->name('citas.horarios-disponibles');
         Route::get('/agenda/{agenda}/details', [CitaController::class, 'getAgendaDetails'])->name('citas.agenda-details');
+         // ✅ NUEVAS RUTAS PARA SINCRONIZACIÓN DE CITAS
+    Route::get('/pendientes-sync', [CitaController::class, 'getPendientesSync'])->name('citas.pendientes-sync');
+    Route::post('/sincronizar', [CitaController::class, 'sincronizarPendientes'])->name('citas.sincronizar');
+    Route::get('/sync-status', [CitaController::class, 'getSyncStatus'])->name('citas.sync-status');
         Route::get('/{uuid}', [CitaController::class, 'show'])->name('show');
         Route::get('/{uuid}/edit', [CitaController::class, 'edit'])->name('edit');
         Route::put('/{uuid}', [CitaController::class, 'update'])->name('update');
