@@ -9,6 +9,7 @@ use App\Http\Controllers\{
     OfflineController,
     CitaController,
     AgendaController,
+    CronogramaController,
     CupsController
 };
 
@@ -192,7 +193,15 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::get('/detailed-stats', [OfflineController::class, 'getDetailedStats'])
             ->name('detailed-stats');
     });
+
+
 });
+    Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
+        // Cronograma
+        Route::get('/cronograma', [CronogramaController::class, 'index'])->name('cronograma.index');
+        Route::get('/cronograma/cita/{uuid}', [CronogramaController::class, 'getDetalleCita'])->name('cronograma.cita.detalle');
+        Route::patch('/cronograma/cita/{uuid}/estado', [CronogramaController::class, 'cambiarEstadoCita'])->name('cronograma.cita.estado');
+    });
 
 // ✅ NUEVA: Ruta de fallback para SPA (si usas Vue/React)
 Route::fallback(function () {

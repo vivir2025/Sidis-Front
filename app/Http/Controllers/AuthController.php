@@ -24,7 +24,9 @@ class AuthController extends Controller
     {
         // Verificar si ya está autenticado
         if ($this->authService->check()) {
-            return redirect()->route('dashboard');
+            // ✅ REDIRIGIR SEGÚN EL ROL AL ESTAR YA AUTENTICADO
+            $redirectRoute = $this->authService->getDashboardRoute();
+            return redirect($redirectRoute);
         }
 
         $isOnline = $this->apiService->isOnline();
@@ -93,6 +95,7 @@ class AuthController extends Controller
 
                 Log::info('Login exitoso desde web', [
                     'usuario' => $result['usuario']['login'] ?? 'unknown',
+                    'rol' => $result['usuario']['rol']['nombre'] ?? 'unknown',
                     'sede_id' => $credentials['sede_id'],
                     'offline' => $result['offline'] ?? false,
                     'ip' => $request->ip()
@@ -103,8 +106,17 @@ class AuthController extends Controller
                     $this->rememberLoginData($credentials);
                 }
 
+                // ✅ REDIRIGIR SEGÚN EL ROL DEL USUARIO
+                $redirectRoute = $this->authService->getDashboardRoute();
+                
+                Log::info('Redirigiendo usuario según rol', [
+                    'usuario' => $result['usuario']['login'] ?? 'unknown',
+                    'rol' => $result['usuario']['rol']['nombre'] ?? 'unknown',
+                    'redirect_route' => $redirectRoute
+                ]);
+
                 return redirect()
-                    ->intended(route('dashboard'))
+                    ->intended($redirectRoute)
                     ->with('success', $message);
             }
 
@@ -349,121 +361,285 @@ class AuthController extends Controller
         
         return response()->json($rememberedData);
     }
-    
 
-    // Agregar estos métodos al AuthController.php
+    /**
+     * ✅ NUEVO: Verificar estado de sesión
+     */
+    public function sessionStatus(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
 
-/**
- * ✅ NUEVO: Verificar estado de sesión
- */
-public function sessionStatus(Request $request)
-{
-    if (!$request->ajax()) {
-        abort(404);
+        try {
+            $user = $this->authService->usuario();
+            $isOnline = $this->apiService->isOnline();
+            $isOffline = $this->authService->isOffline();
+
+            return response()->json([
+                'authenticated' => true,
+                'user' => [
+                    'login' => $user['login'],
+                    'nombre' => $user['nombre'],
+                    'rol' => $user['rol'],
+                    'sede_nombre' => $user['sede_nombre']
+                ],
+                'online' => $isOnline,
+                'offline_mode' => $isOffline,
+                'session_expires_at' => session('session_expires_at'),
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'authenticated' => false,
+                'error' => 'Sesión inválida'
+            ], 401);
+        }
     }
 
-    try {
+    /**
+     * ✅ NUEVO: Obtener sedes via AJAX
+     */
+    public function getSedesAjax(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            $isOnline = $this->apiService->isOnline();
+            $sedes = $this->getSedesAjax($isOnline);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $sedes,
+                'online' => $isOnline,
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo sedes via AJAX', ['error' => $e->getMessage()]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo sedes',
+                'data' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Mostrar perfil de usuario
+     */
+    public function showProfile()
+    {
         $user = $this->authService->usuario();
         $isOnline = $this->apiService->isOnline();
-        $isOffline = $this->authService->isOffline();
+        
+        return view('auth.profile', compact('user', 'isOnline'));
+    }
 
-        return response()->json([
-            'authenticated' => true,
-            'user' => [
-                'login' => $user['login'],
-                'nombre' => $user['nombre'],
-                'rol' => $user['rol'],
-                'sede_nombre' => $user['sede_nombre']
-            ],
-            'online' => $isOnline,
-            'offline_mode' => $isOffline,
-            'session_expires_at' => session('session_expires_at'),
-            'timestamp' => now()->toISOString()
+    /**
+     * ✅ NUEVO: Actualizar perfil
+     */
+    public function updateProfile(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'nombre' => 'required|string|max:100',
+            'email' => 'nullable|email|max:100'
         ]);
 
-    } catch (\Exception $e) {
-        return response()->json([
-            'authenticated' => false,
-            'error' => 'Sesión inválida'
-        ], 401);
-    }
-}
-
-/**
- * ✅ NUEVO: Obtener sedes via AJAX
- */
-
-/**
- * ✅ NUEVO: Mostrar perfil de usuario
- */
-public function showProfile()
-{
-    $user = $this->authService->usuario();
-    $isOnline = $this->apiService->isOnline();
-    
-    return view('auth.profile', compact('user', 'isOnline'));
-}
-
-/**
- * ✅ NUEVO: Actualizar perfil
- */
-public function updateProfile(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'nombre' => 'required|string|max:100',
-        'email' => 'nullable|email|max:100'
-    ]);
-
-    if ($validator->fails()) {
-        return back()->withErrors($validator)->withInput();
-    }
-
-    try {
-        $result = $this->authService->updateProfile($request->only('nombre', 'email'));
-        
-        if ($result['success']) {
-            return back()->with('success', 'Perfil actualizado correctamente');
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput();
         }
-        
-        return back()->withErrors(['error' => $result['error']]);
 
-    } catch (\Exception $e) {
-        Log::error('Error actualizando perfil', ['error' => $e->getMessage()]);
-        return back()->withErrors(['error' => 'Error interno del sistema']);
-    }
-}
+        try {
+            $result = $this->authService->updateProfile($request->only('nombre', 'email'));
+            
+            if ($result['success']) {
+                return back()->with('success', 'Perfil actualizado correctamente');
+            }
+            
+            return back()->withErrors(['error' => $result['error']]);
 
-/**
- * ✅ NUEVO: Cambiar contraseña
- */
-public function changePassword(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'current_password' => 'required',
-        'new_password' => 'required|min:4|confirmed',
-        'new_password_confirmation' => 'required'
-    ]);
-
-    if ($validator->fails()) {
-        return back()->withErrors($validator);
-    }
-
-    try {
-        $result = $this->authService->changePassword(
-            $request->current_password,
-            $request->new_password
-        );
-        
-        if ($result['success']) {
-            return back()->with('success', 'Contraseña cambiada correctamente');
+        } catch (\Exception $e) {
+            Log::error('Error actualizando perfil', ['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => 'Error interno del sistema']);
         }
-        
-        return back()->withErrors(['current_password' => $result['error']]);
-
-    } catch (\Exception $e) {
-        Log::error('Error cambiando contraseña', ['error' => $e->getMessage()]);
-        return back()->withErrors(['error' => 'Error interno del sistema']);
     }
-}
 
+    /**
+     * ✅ NUEVO: Cambiar contraseña
+     */
+    public function changePassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required',
+            'new_password' => 'required|min:4|confirmed',
+            'new_password_confirmation' => 'required'
+        ]);
+
+        if ($validator->fails()) {
+            return back()->withErrors($validator);
+        }
+
+        try {
+            $result = $this->authService->changePassword(
+                $request->current_password,
+                $request->new_password
+            );
+            
+            if ($result['success']) {
+                return back()->with('success', 'Contraseña cambiada correctamente');
+            }
+            
+            return back()->withErrors(['current_password' => $result['error']]);
+
+        } catch (\Exception $e) {
+            Log::error('Error cambiando contraseña', ['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => 'Error interno del sistema']);
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Obtener información del usuario autenticado
+     */
+    public function getUserInfo(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            if (!$this->authService->check()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $user = $this->authService->usuario();
+            $isOnline = $this->apiService->isOnline();
+            $isOffline = $this->authService->isOffline();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'user' => $user,
+                    'is_online' => $isOnline,
+                    'is_offline' => $isOffline,
+                    'is_profesional_salud' => $this->authService->isProfesionalEnSalud(),
+                    'dashboard_route' => $this->authService->getDashboardRoute(),
+                    'permissions' => $user['permisos'] ?? [],
+                    'role' => $user['rol'] ?? null
+                ],
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo información del usuario', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Verificar permisos del usuario
+     */
+    public function checkPermissions(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            $permissions = $request->get('permissions', []);
+            
+            if (!$this->authService->check()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $results = [];
+            foreach ($permissions as $permission) {
+                $results[$permission] = $this->authService->hasPermission($permission);
+            }
+
+            return response()->json([
+                'success' => true,
+                'permissions' => $results,
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error verificando permisos', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Extender sesión
+     */
+    public function extendSession(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            if (!$this->authService->check()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            // Actualizar último acceso
+            $this->authService->updateLastAccess();
+
+            // Si está online y el token necesita renovación, intentar renovarlo
+            if (!$this->authService->isOffline() && 
+                $this->apiService->isOnline() && 
+                $this->authService->tokenNeedsRefresh()) {
+                
+                $refreshResult = $this->authService->refreshToken();
+                
+                if (!$refreshResult['success']) {
+                    Log::warning('No se pudo renovar token durante extensión de sesión', [
+                        'error' => $refreshResult['error']
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sesión extendida',
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error extendiendo sesión', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
 }

@@ -670,4 +670,35 @@ public function hasValidToken(): bool
         return false;
     }
 }
+/**
+ * ✅ VERIFICAR SI EL USUARIO ES PROFESIONAL EN SALUD
+ */
+public function isProfesionalEnSalud(): bool
+{
+    $usuario = $this->usuario();
+    if (!$usuario) return false;
+    
+    $rolNombre = strtolower($usuario['rol']['nombre'] ?? '');
+    
+    return in_array($rolNombre, [
+        'profesional en salud', 
+        'medico', 
+        'doctor', 
+        'profesional',
+        'médico'
+    ]);
+}
+
+/**
+ * ✅ OBTENER TIPO DE DASHBOARD SEGÚN ROL
+ */
+public function getDashboardRoute(): string
+{
+    if ($this->isProfesionalEnSalud()) {
+        return route('cronograma.index');
+    }
+    
+    // Otros roles van al dashboard normal
+    return route('dashboard');
+}
 }
