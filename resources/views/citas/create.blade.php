@@ -391,6 +391,45 @@
 @push('styles')
 <style>
 /* Estilos para el indicador de pasos */
+.horario-btn:disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: white !important;
+}
+
+.horario-btn:disabled:hover {
+    transform: none !important;
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+}
+
+.horario-btn:disabled small {
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-size: 0.7em;
+}
+
+/* Horarios disponibles */
+.horario-btn:not(:disabled) {
+    transition: all 0.2s ease;
+}
+
+.horario-btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.horario-btn.selected {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    color: white !important;
+}
+
+.horario-btn.selected:hover {
+    background-color: #218838 !important;
+    border-color: #1e7e34 !important;
+}
 .step-indicator {
     display: flex;
     align-items: center;
@@ -1228,11 +1267,26 @@ function mostrarHorarios(horarios) {
         console.log(`🔍 DEBUG - Procesando horario ${index}:`, horario);
         
         const disponible = horario.disponible;
-        const btnClass = disponible ? 'btn-outline-success' : 'btn-outline-danger';
-        const disabled = disponible ? '' : 'disabled';
-        const icon = disponible ? 'fa-check-circle' : 'fa-times-circle';
-        const title = disponible ? 'Horario disponible' : `Ocupado por: ${horario.ocupado_por?.paciente || 'Paciente no identificado'}`;
+        
+        // ✅ ESTILOS DIFERENTES PARA DISPONIBLES Y OCUPADOS
+        let btnClass, icon, opacity, title, clickAction;
+        
+        if (disponible) {
+            btnClass = 'btn-outline-success';
+            icon = 'fa-check-circle';
+            opacity = '';
+            title = 'Horario disponible - Click para seleccionar';
+            clickAction = `seleccionarHorario('${horario.hora_inicio}', '${horario.hora_fin}')`;
+        } else {
+            btnClass = 'btn-outline-danger';
+            icon = 'fa-times-circle';
+            opacity = 'style="opacity: 0.6;"';
+            title = `Ocupado por: ${horario.ocupado_por?.paciente || 'Paciente no identificado'}`;
+            clickAction = 'alertaHorarioOcupado()';
+        }
+        
         const selectedClass = horarioSeleccionado?.hora_inicio === horario.hora_inicio ? 'selected' : '';
+        const disabled = disponible ? '' : 'disabled';
         
         // ✅ EXTRAER SOLO LAS HORAS (HH:MM) DE LOS HORARIOS
         const horaInicio = extraerHora(horario.hora_inicio);
@@ -1246,28 +1300,40 @@ function mostrarHorarios(horarios) {
             disponible
         });
         
-        // ✅ SOLO MOSTRAR HORARIOS DISPONIBLES
-        if (disponible) {
-            html += `
-                                <div class="col-md-3 col-lg-2 mb-2">
-                    <button type="button" 
-                            class="btn ${btnClass} w-100 horario-btn ${selectedClass}" 
-                            title="${title}"
-                            data-hora-inicio="${horaInicio}"
-                            data-hora-fin="${horaFin}"
-                            onclick="seleccionarHorario('${horaInicio}', '${horaFin}')">
-                        <i class="fas ${icon} me-1"></i>
-                        ${horaInicio}
-                    </button>
-                </div>
-            `;
-        }
+        // ✅ MOSTRAR TODOS LOS HORARIOS (disponibles y ocupados)
+        html += `
+            <div class="col-md-3 col-lg-2 mb-2">
+                <button type="button" 
+                        class="btn ${btnClass} w-100 horario-btn ${selectedClass}" 
+                        title="${title}"
+                        data-hora-inicio="${horaInicio}"
+                        data-hora-fin="${horaFin}"
+                        ${disabled}
+                        ${opacity}
+                        onclick="${clickAction}">
+                    <i class="fas ${icon} me-1"></i>
+                    <div>${horaInicio}</div>
+                    ${!disponible ? '<small class="text-muted">Ocupado</small>' : ''}
+                </button>
+            </div>
+        `;
     });
     
     console.log('🔍 DEBUG - HTML generado:', html);
     
     container.innerHTML = html;
 }
+
+// ✅ NUEVA FUNCIÓN para alertar horario ocupado
+function alertaHorarioOcupado() {
+    Swal.fire({
+        title: 'Horario Ocupado',
+        text: 'Este horario ya está ocupado por otro paciente.',
+        icon: 'warning',
+        confirmButtonText: 'Entendido'
+    });
+}
+
 
 // ✅ FUNCIÓN AUXILIAR PARA EXTRAER HORA
 function extraerHora(fechaHora) {
@@ -1295,6 +1361,38 @@ function extraerHora(fechaHora) {
     return fechaHora;
 }
 
+function extraerFecha(fechaCompleta) {
+    if (!fechaCompleta) return '';
+    
+    console.log('🔍 DEBUG extraerFecha - Input:', fechaCompleta);
+    
+    // Si viene como "2025-09-12T00:00:00" o similar, extraer solo la fecha
+    if (fechaCompleta.includes('T')) {
+        const fecha = fechaCompleta.split('T')[0]; // "2025-09-12"
+        console.log('🔍 DEBUG extraerFecha - Extraído:', fecha);
+        return fecha;
+    }
+    
+    // Si ya viene como "2025-09-12"
+    if (fechaCompleta.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        console.log('🔍 DEBUG extraerFecha - Ya en formato correcto:', fechaCompleta);
+        return fechaCompleta;
+    }
+    
+    // Si viene como Date object, convertir sin zona horaria
+    if (fechaCompleta instanceof Date) {
+        const year = fechaCompleta.getFullYear();
+        const month = String(fechaCompleta.getMonth() + 1).padStart(2, '0');
+        const day = String(fechaCompleta.getDate()).padStart(2, '0');
+        const fecha = `${year}-${month}-${day}`;
+        console.log('🔍 DEBUG extraerFecha - Convertido de Date:', fecha);
+        return fecha;
+    }
+    
+    console.log('🔍 DEBUG extraerFecha - Sin cambios:', fechaCompleta);
+    return fechaCompleta;
+}
+
 // ✅ FUNCIÓN CORREGIDA seleccionarHorario
 function seleccionarHorario(horaInicio, horaFin) {
     console.log('🔍 DEBUG seleccionarHorario - Parámetros recibidos:', {
@@ -1307,24 +1405,8 @@ function seleccionarHorario(horaInicio, horaFin) {
         return;
     }
     
-    console.log('🔍 DEBUG - Agenda seleccionada:', {
-        fecha: agendaSeleccionada.fecha,
-        typeof_fecha: typeof agendaSeleccionada.fecha
-    });
-    
-    // ✅ EXTRAER SOLO LA FECHA (YYYY-MM-DD) DE LA AGENDA
-    let fechaBase;
-    if (agendaSeleccionada.fecha) {
-        // Si viene como "2025-09-09T00:00:00.000000Z", extraer solo la fecha
-        if (agendaSeleccionada.fecha.includes('T')) {
-            fechaBase = agendaSeleccionada.fecha.split('T')[0]; // "2025-09-09"
-        } else {
-            fechaBase = agendaSeleccionada.fecha; // "2025-09-09"
-        }
-    } else {
-        console.error('❌ No se encontró fecha en la agenda');
-        return;
-    }
+    // ✅ EXTRAER FECHA SIN DESFASE
+    const fechaBase = extraerFecha(agendaSeleccionada.fecha);
     
     console.log('🔍 DEBUG - Fecha base extraída:', {
         fechaOriginal: agendaSeleccionada.fecha,
@@ -1341,7 +1423,7 @@ function seleccionarHorario(horaInicio, horaFin) {
     const horaInicioFormateada = horaInicio.includes(':') ? horaInicio : horaInicio + ':00';
     const horaFinFormateada = horaFin.includes(':') ? horaFin : horaFin + ':00';
     
-    // ✅ CONSTRUIR FECHAS EN FORMATO ISO CORRECTO
+    // ✅ CONSTRUIR FECHAS EN FORMATO ISO SIN ZONA HORARIA
     const fechaInicioCorrecta = `${fechaBase}T${horaInicioFormateada}:00`;
     const fechaFinalCorrecta = `${fechaBase}T${horaFinFormateada}:00`;
     
@@ -1353,17 +1435,6 @@ function seleccionarHorario(horaInicio, horaFin) {
         fechaFinalCorrecta
     });
     
-    // Validar que el formato final sea correcto
-    const formatoEsperado = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
-    if (!formatoEsperado.test(fechaInicioCorrecta)) {
-        console.error('❌ Formato de fecha_inicio incorrecto después de construcción:', fechaInicioCorrecta);
-        return;
-    }
-    if (!formatoEsperado.test(fechaFinalCorrecta)) {
-        console.error('❌ Formato de fecha_final incorrecto después de construcción:', fechaFinalCorrecta);
-        return;
-    }
-    
     horarioSeleccionado = {
         fecha_inicio: fechaInicioCorrecta,
         fecha_final: fechaFinalCorrecta,
@@ -1374,9 +1445,11 @@ function seleccionarHorario(horaInicio, horaFin) {
     // ✅ ASIGNAR FECHAS CORRECTAS A LOS CAMPOS OCULTOS
     document.getElementById('fecha_inicio').value = fechaInicioCorrecta;
     document.getElementById('fecha_final').value = fechaFinalCorrecta;
+    document.getElementById('fecha').value = fechaBase; // ✅ FECHA SIN HORA
     
     console.log('✅ Horario seleccionado final:', horarioSeleccionado);
     console.log('✅ Valores en campos del formulario:', {
+        fecha: document.getElementById('fecha').value,
         fecha_inicio: document.getElementById('fecha_inicio').value,
         fecha_final: document.getElementById('fecha_final').value
     });
@@ -1386,7 +1459,7 @@ function seleccionarHorario(horaInicio, horaFin) {
         btn.classList.remove('selected');
     });
     
-    // ✅ MARCAR EL BOTÓN SELECCIONADO CORRECTAMENTE
+    // Marcar el botón seleccionado
     const botones = document.querySelectorAll('.horario-btn');
     botones.forEach(btn => {
         const btnHoraInicio = btn.getAttribute('data-hora-inicio');

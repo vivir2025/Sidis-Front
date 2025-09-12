@@ -139,7 +139,7 @@ class CitaService
     /**
      * ✅ CREAR CITA - VERSIÓN SIMPLIFICADA SIN CONVERSIÓN DE UUIDs
      */
-    public function store(array $data): array
+   public function store(array $data): array
 {
     try {
         Log::info('🩺 CitaService::store - Datos recibidos', [
@@ -152,15 +152,6 @@ class CitaService
         $data['sede_id'] = $user['sede_id'];
         $data['usuario_creo_cita_id'] = $user['id'];
         $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
-
-        // ✅ MANTENER cups_contratado_uuid SI VIENE
-        if (isset($data['cups_contratado_uuid']) && !empty($data['cups_contratado_uuid'])) {
-            Log::info('✅ CUPS contratado UUID recibido', [
-                'cups_contratado_uuid' => $data['cups_contratado_uuid']
-            ]);
-        } else {
-            Log::info('ℹ️ Cita sin CUPS contratado');
-        }
 
         $isOnline = $this->apiService->isOnline();
         
@@ -187,19 +178,16 @@ class CitaService
                 if ($response['success'] ?? false) {
                     $citaData = $response['data'];
                     
-                    // ✅ LOG SI LA CITA TIENE CUPS CONTRATADO
-                    if (isset($citaData['cups_contratado_uuid'])) {
-                        Log::info('✅ Cita creada CON CUPS contratado', [
-                            'cita_uuid' => $citaData['uuid'],
-                            'cups_contratado_uuid' => $citaData['cups_contratado_uuid']
-                        ]);
-                    } else {
-                        Log::info('ℹ️ Cita creada SIN CUPS contratado', [
-                            'cita_uuid' => $citaData['uuid']
-                        ]);
-                    }
-                    
+                    // ✅ GUARDAR OFFLINE INMEDIATAMENTE DESPUÉS DEL ÉXITO ONLINE
                     $this->offlineService->storeCitaOffline($citaData, false);
+                    
+                    // ✅ ACTUALIZAR TAMBIÉN LA AGENDA OFFLINE PARA REFLEJAR EL CUPO OCUPADO
+                    $this->actualizarAgendaOfflineDespuesDeCita($citaData['agenda_uuid']);
+                    
+                    Log::info('✅ Cita creada online y sincronizada offline', [
+                        'cita_uuid' => $citaData['uuid'],
+                        'agenda_uuid' => $citaData['agenda_uuid']
+                    ]);
                     
                     return [
                         'success' => true,
@@ -227,10 +215,12 @@ class CitaService
         $data['uuid'] = \Illuminate\Support\Str::uuid();
         $this->offlineService->storeCitaOffline($data, true);
 
+        // ✅ ACTUALIZAR AGENDA OFFLINE PARA REFLEJAR EL CUPO OCUPADO
+        $this->actualizarAgendaOfflineDespuesDeCita($data['agenda_uuid']);
+
         Log::info('✅ Cita creada offline exitosamente', [
             'uuid' => $data['uuid'],
-            'has_cups_contratado_uuid' => isset($data['cups_contratado_uuid']),
-            'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ENVIADO',
+            'agenda_uuid' => $data['agenda_uuid'],
             'needs_sync' => true
         ]);
 
@@ -253,6 +243,69 @@ class CitaService
         ];
     }
 }
+private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
+{
+    try {
+        // Obtener la agenda offline
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if (!$agenda) {
+            Log::warning('⚠️ No se encontró agenda offline para actualizar', [
+                'agenda_uuid' => $agendaUuid
+            ]);
+            return;
+        }
+        
+        // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA
+        $fechaAgenda = $agenda['fecha'];
+        if (strpos($fechaAgenda, 'T') !== false) {
+            $fechaAgenda = explode('T', $fechaAgenda)[0];
+        }
+        
+        // Recalcular cupos disponibles
+        $user = $this->authService->usuario();
+        $citasActivas = $this->offlineService->getCitasOffline($user['sede_id'], [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fechaAgenda // ✅ USAR FECHA LIMPIA
+        ]);
+        
+        // Filtrar solo citas no canceladas
+        $citasValidas = array_filter($citasActivas, function($cita) {
+            return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+        });
+        
+        // Calcular cupos totales
+        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        $duracionMinutos = $fin->diffInMinutes($inicio);
+        $totalCupos = floor($duracionMinutos / $intervalo);
+        
+        // Actualizar cupos disponibles
+        $agenda['cupos_disponibles'] = max(0, $totalCupos - count($citasValidas));
+        $agenda['citas_count'] = count($citasValidas);
+        $agenda['total_cupos'] = $totalCupos;
+        
+        // Guardar agenda actualizada
+        $this->offlineService->storeAgendaOffline($agenda, false);
+        
+        Log::info('✅ Agenda offline actualizada después de crear cita', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha_agenda' => $fechaAgenda,
+            'cupos_disponibles' => $agenda['cupos_disponibles'],
+            'citas_count' => $agenda['citas_count'],
+            'total_cupos' => $totalCupos
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando agenda offline después de cita', [
+            'agenda_uuid' => $agendaUuid,
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
 
     public function show(string $uuid): array
     {
@@ -609,6 +662,16 @@ public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null
     try {
         $fecha = $fecha ?: now()->format('Y-m-d');
         
+        // ✅ LIMPIAR FECHA SI VIENE CON TIMESTAMP
+        if (strpos($fecha, 'T') !== false) {
+            $fecha = explode('T', $fecha)[0];
+        }
+        
+        Log::info('🔍 Obteniendo horarios disponibles', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha_solicitada' => $fecha
+        ]);
+        
         // Obtener agenda
         $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
         
@@ -619,8 +682,20 @@ public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null
             ];
         }
         
+        // ✅ EXTRAER FECHA DE LA AGENDA SIN TIMESTAMP
+        $fechaAgenda = $agenda['fecha'];
+        if (strpos($fechaAgenda, 'T') !== false) {
+            $fechaAgenda = explode('T', $fechaAgenda)[0];
+        }
+        
+        Log::info('📅 Comparando fechas', [
+            'fecha_solicitada' => $fecha,
+            'fecha_agenda' => $fechaAgenda,
+            'coinciden' => $fechaAgenda === $fecha
+        ]);
+        
         // Si la fecha solicitada es diferente a la fecha de la agenda, retornar vacío
-        if ($agenda['fecha'] !== $fecha) {
+        if ($fechaAgenda !== $fecha) {
             return [
                 'success' => true,
                 'data' => [],
@@ -649,7 +724,6 @@ public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null
         ];
     }
 }
-
 /**
  * ✅ NUEVO: Calcular horarios disponibles
  */
@@ -662,26 +736,86 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
         $horaFin = $agenda['hora_fin'];
         $intervalo = (int) ($agenda['intervalo'] ?? 15);
         
-        // Obtener citas existentes
+        // ✅ EXTRAER SOLO LA FECHA (YYYY-MM-DD) SIN ZONA HORARIA
+        $fechaLimpia = $fecha;
+        if (strpos($fecha, 'T') !== false) {
+            $fechaLimpia = explode('T', $fecha)[0]; // "2025-09-12T00:00:00.000000Z" -> "2025-09-12"
+        }
+        
+        Log::info('🔍 Calculando horarios con fecha limpia', [
+            'fecha_original' => $fecha,
+            'fecha_limpia' => $fechaLimpia,
+            'agenda_uuid' => $agenda['uuid']
+        ]);
+        
+        // ✅ OBTENER CITAS EXISTENTES CON FECHA LIMPIA
         $user = $this->authService->usuario();
         $citasExistentes = $this->offlineService->getCitasOffline($user['sede_id'], [
             'agenda_uuid' => $agenda['uuid'],
-            'fecha' => $fecha
+            'fecha' => $fechaLimpia
         ]);
+        
+        // ✅ SI ESTAMOS ONLINE, TAMBIÉN VERIFICAR CITAS RECIENTES DE LA API
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$agenda['uuid']}/citas", [
+                    'fecha' => $fechaLimpia
+                ]);
+                
+                if ($response['success'] && isset($response['data'])) {
+                    $citasApi = $response['data'];
+                    $uuidsOffline = array_column($citasExistentes, 'uuid');
+                    
+                    foreach ($citasApi as $citaApi) {
+                        if (!in_array($citaApi['uuid'], $uuidsOffline)) {
+                            $citasExistentes[] = $citaApi;
+                            // También guardar offline para futura referencia
+                            $this->offlineService->storeCitaOffline($citaApi, false);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo citas recientes de API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
         
         // Filtrar solo citas no canceladas
         $citasActivas = array_filter($citasExistentes, function($cita) {
             return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
         });
         
-        // Crear array de horarios ocupados
+        Log::info('📊 Citas encontradas para horarios', [
+            'total_citas' => count($citasExistentes),
+            'citas_activas' => count($citasActivas),
+            'fecha_consulta' => $fechaLimpia
+        ]);
+        
+        // Crear array de horarios ocupados con información del paciente
         $horariosOcupados = [];
         foreach ($citasActivas as $cita) {
-            $horaCita = date('H:i', strtotime($cita['fecha_inicio']));
-            $horariosOcupados[$horaCita] = $cita;
+            // ✅ EXTRAER HORA DE FECHA_INICIO CORRECTAMENTE
+            $fechaInicioCita = $cita['fecha_inicio'];
+            if (strpos($fechaInicioCita, 'T') !== false) {
+                $horaCita = explode('T', $fechaInicioCita)[1]; // "2025-09-12T09:01:00" -> "09:01:00"
+                $horaCita = substr($horaCita, 0, 5); // "09:01:00" -> "09:01"
+            } else {
+                $horaCita = date('H:i', strtotime($fechaInicioCita));
+            }
+            
+            $horariosOcupados[$horaCita] = [
+                'cita_uuid' => $cita['uuid'],
+                'paciente' => $cita['paciente']['nombre_completo'] ?? 'Paciente no identificado',
+                'estado' => $cita['estado']
+            ];
         }
         
-        // Generar horarios disponibles
+        Log::info('🕒 Horarios ocupados identificados', [
+            'horarios_ocupados' => array_keys($horariosOcupados)
+        ]);
+        
+        // ✅ GENERAR TODOS LOS HORARIOS (disponibles y ocupados)
         $inicio = \Carbon\Carbon::createFromFormat('H:i', $horaInicio);
         $fin = \Carbon\Carbon::createFromFormat('H:i', $horaFin);
         
@@ -694,30 +828,34 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
             $horario = [
                 'hora_inicio' => $horarioStr,
                 'hora_fin' => $finHorario->format('H:i'),
-                'fecha_inicio' => $fecha . 'T' . $horarioStr . ':00',
-                'fecha_final' => $fecha . 'T' . $finHorario->format('H:i') . ':00',
+                'fecha_inicio' => $fechaLimpia . 'T' . $horarioStr . ':00',
+                'fecha_final' => $fechaLimpia . 'T' . $finHorario->format('H:i') . ':00',
                 'disponible' => $disponible,
                 'intervalo' => $intervalo
             ];
             
             if (!$disponible && isset($horariosOcupados[$horarioStr])) {
-                $cita = $horariosOcupados[$horarioStr];
-                $horario['ocupado_por'] = [
-                    'cita_uuid' => $cita['uuid'],
-                    'paciente' => $cita['paciente']['nombre_completo'] ?? 'Paciente no identificado',
-                    'estado' => $cita['estado']
-                ];
+                $horario['ocupado_por'] = $horariosOcupados[$horarioStr];
             }
             
             $horarios[] = $horario;
             $inicio->addMinutes($intervalo);
         }
         
+        Log::info('✅ Horarios calculados completamente', [
+            'agenda_uuid' => $agenda['uuid'],
+            'fecha_limpia' => $fechaLimpia,
+            'total_horarios' => count($horarios),
+            'horarios_disponibles' => count(array_filter($horarios, fn($h) => $h['disponible'])),
+            'horarios_ocupados' => count(array_filter($horarios, fn($h) => !$h['disponible']))
+        ]);
+        
         return $horarios;
         
     } catch (\Exception $e) {
         Log::error('Error calculando horarios disponibles', [
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return [];

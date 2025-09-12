@@ -2457,12 +2457,7 @@ private function prepareAgendaDataForSync(array $agenda): array
             return $this->cleanDataForApi($originalData);
         }
     }
-    
-    // ✅ SINO, USAR DATOS ACTUALES
-    Log::info('📋 Usando datos actuales para sincronización', [
-        'uuid' => $agenda['uuid'],
-        'current_keys' => array_keys($agenda)
-    ]);
+
     return $this->cleanDataForApi($agenda);
 }
 
