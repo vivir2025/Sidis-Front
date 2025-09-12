@@ -684,72 +684,143 @@ private function performFullSyncManual(int $sedeId, array $baseFilters = []): ar
         }
     }
 
- /**
-     * ✅ CORREGIDO: Enriquecer agenda con cálculo de cupos
-     */
-    private function enrichAgendaWithCupos(array $agenda): array
-    {
-        try {
-            if (empty($agenda['hora_inicio']) || empty($agenda['hora_fin'])) {
-                $agenda['total_cupos'] = 0;
-                $agenda['citas_count'] = 0;
-                $agenda['cupos_disponibles'] = 0;
-                return $agenda;
-            }
-
-            // Calcular cupos totales
-            $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
-            $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
-            $intervalo = (int) ($agenda['intervalo'] ?? 15);
-            
-            if ($intervalo <= 0) $intervalo = 15;
-            
-            $duracionMinutos = $fin->diffInMinutes($inicio);
-            $totalCupos = floor($duracionMinutos / $intervalo);
-            
-            // Contar citas (si está disponible SQLite)
-            $citasCount = 0;
-            if ($this->offlineService->isSQLiteAvailable() && !empty($agenda['uuid'])) {
-                try {
-                    $citasCount = DB::connection('offline')
-                        ->table('citas')
-                        ->where('agenda_uuid', $agenda['uuid'])
-                        ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
-                        ->whereNull('deleted_at')
-                        ->count();
-                } catch (\Exception $e) {
-                    // Silenciar error y usar 0
-                    Log::debug('No se pudieron contar citas para agenda', [
-                        'agenda_uuid' => $agenda['uuid'],
-                        'error' => $e->getMessage()
-                    ]);
-                    $citasCount = 0;
-                }
-            }
-            
-            $cuposDisponibles = max(0, $totalCupos - $citasCount);
-            
-            $agenda['total_cupos'] = $totalCupos;
-            $agenda['citas_count'] = $citasCount;
-            $agenda['cupos_disponibles'] = $cuposDisponibles;
-            
-            return $agenda;
-            
-        } catch (\Exception $e) {
-            Log::error('Error enriqueciendo agenda con cupos', [
-                'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
-                'error' => $e->getMessage()
-            ]);
-            
-            // Valores por defecto en caso de error
+ private function enrichAgendaWithCupos(array $agenda): array
+{
+    try {
+        if (empty($agenda['hora_inicio']) || empty($agenda['hora_fin'])) {
             $agenda['total_cupos'] = 0;
             $agenda['citas_count'] = 0;
             $agenda['cupos_disponibles'] = 0;
-            
             return $agenda;
         }
-    }
 
+        // Calcular cupos totales
+        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
+        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        $intervalo = (int) ($agenda['intervalo'] ?? 15);
+        
+        if ($intervalo <= 0) $intervalo = 15;
+        
+        $duracionMinutos = $fin->diffInMinutes($inicio);
+        $totalCupos = floor($duracionMinutos / $intervalo);
+        
+        // ✅ CONTAR CITAS REALES (MEJORADO)
+        $citasCount = $this->contarCitasReales($agenda);
+        
+        $cuposDisponibles = max(0, $totalCupos - $citasCount);
+        
+        $agenda['total_cupos'] = $totalCupos;
+        $agenda['citas_count'] = $citasCount;
+        $agenda['cupos_disponibles'] = $cuposDisponibles;
+        
+        Log::info('✅ Cupos calculados correctamente', [
+            'agenda_uuid' => $agenda['uuid'],
+            'fecha' => $agenda['fecha'],
+            'total_cupos' => $totalCupos,
+            'citas_count' => $citasCount,
+            'cupos_disponibles' => $cuposDisponibles
+        ]);
+        
+        return $agenda;
+        
+    } catch (\Exception $e) {
+        Log::error('Error enriqueciendo agenda con cupos', [
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
+            'error' => $e->getMessage()
+        ]);
+        
+        // Valores por defecto en caso de error
+        $agenda['total_cupos'] = 0;
+        $agenda['citas_count'] = 0;
+        $agenda['cupos_disponibles'] = 0;
+        
+        return $agenda;
+    }
+}
+
+/**
+ * ✅ NUEVO: Contar citas reales de una agenda
+ */
+private function contarCitasReales(array $agenda): int
+{
+    try {
+        $citasCount = 0;
+        
+        // ✅ EXTRAER FECHA LIMPIA
+        $fechaAgenda = $agenda['fecha'];
+        if (strpos($fechaAgenda, 'T') !== false) {
+            $fechaAgenda = explode('T', $fechaAgenda)[0];
+        }
+        
+        // ✅ INTENTAR DESDE API PRIMERO SI HAY CONEXIÓN
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$agenda['uuid']}/citas", [
+                    'fecha' => $fechaAgenda
+                ]);
+                
+                if ($response['success'] && isset($response['data'])) {
+                    $citasApi = array_filter($response['data'], function($cita) {
+                        return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+                    });
+                    
+                    $citasCount = count($citasApi);
+                    
+                    Log::info('📊 Citas contadas desde API', [
+                        'agenda_uuid' => $agenda['uuid'],
+                        'citas_count' => $citasCount
+                    ]);
+                    
+                    return $citasCount;
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error contando citas desde API, usando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // ✅ CONTAR DESDE OFFLINE
+        if ($this->offlineService->isSQLiteAvailable()) {
+            $citasCount = DB::connection('offline')
+                ->table('citas')
+                ->where('agenda_uuid', $agenda['uuid'])
+                ->where('fecha', $fechaAgenda)
+                ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
+                ->whereNull('deleted_at')
+                ->count();
+        } else {
+            // Fallback a archivos JSON
+            $user = $this->authService->usuario();
+            $citas = $this->offlineService->getCitasOffline($user['sede_id'], [
+                'agenda_uuid' => $agenda['uuid'],
+                'fecha' => $fechaAgenda
+            ]);
+            
+            $citasActivas = array_filter($citas, function($cita) {
+                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            });
+            
+            $citasCount = count($citasActivas);
+        }
+        
+        Log::info('📊 Citas contadas desde offline', [
+            'agenda_uuid' => $agenda['uuid'],
+            'fecha' => $fechaAgenda,
+            'citas_count' => $citasCount
+        ]);
+        
+        return $citasCount;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error contando citas reales', [
+            'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
+            'error' => $e->getMessage()
+        ]);
+        
+        return 0;
+    }
+}
     /**
      * ✅ VERIFICAR SI LOS DATOS COINCIDEN CON LOS FILTROS
      */

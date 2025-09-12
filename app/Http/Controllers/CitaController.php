@@ -333,28 +333,48 @@ class CitaController extends Controller
         }
     }
 
-    // ✅ NUEVO: Obtener horarios disponibles de una agenda
-    public function getHorariosDisponibles(Request $request, string $agendaUuid)
-    {
-        try {
-            $fecha = $request->get('fecha');
+   /**
+ * ✅ CORREGIDO: Obtener horarios disponibles de una agenda
+ */
+public function getHorariosDisponibles(Request $request, string $agendaUuid)
+{
+    try {
+        $fecha = $request->get('fecha');
+        
+        Log::info('🔍 Controlador: Obteniendo horarios disponibles', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha_solicitada' => $fecha
+        ]);
+        
+        $result = $this->citaService->getHorariosDisponibles($agendaUuid, $fecha);
+        
+        // ✅ AGREGAR LOGGING DETALLADO
+        if ($result['success'] && isset($result['data'])) {
+            $disponibles = count(array_filter($result['data'], fn($h) => $h['disponible']));
+            $ocupados = count(array_filter($result['data'], fn($h) => !$h['disponible']));
             
-            $result = $this->citaService->getHorariosDisponibles($agendaUuid, $fecha);
-            
-            return response()->json($result);
-            
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo horarios disponibles', [
+            Log::info('✅ Horarios obtenidos correctamente', [
                 'agenda_uuid' => $agendaUuid,
-                'error' => $e->getMessage()
+                'total_horarios' => count($result['data']),
+                'disponibles' => $disponibles,
+                'ocupados' => $ocupados
             ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
         }
+        
+        return response()->json($result);
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo horarios disponibles', [
+            'agenda_uuid' => $agendaUuid,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
     }
+}
 
     // ✅ NUEVO: Obtener detalles de agenda
     public function getAgendaDetails(string $agendaUuid)

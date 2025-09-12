@@ -229,7 +229,7 @@ async function cargarCitas(page = 1, filters = {}) {
     }
 }
 
-// ✅ MOSTRAR CITAS EN TABLA (ACTUALIZADA CON COLUMNA DE SYNC)
+// ✅ MOSTRAR CITAS EN TABLA (HORAS COMPACTAS)
 function mostrarCitas(citas) {
     const tbody = document.getElementById('citasTableBody');
     const sinResultados = document.getElementById('sinResultados');
@@ -244,26 +244,26 @@ function mostrarCitas(citas) {
     
     let html = '';
     citas.forEach(cita => {
-        const fecha = new Date(cita.fecha).toLocaleDateString('es-ES');
-        const horaInicio = new Date(cita.fecha_inicio).toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        const horaFin = new Date(cita.fecha_final).toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        // ✅ FORMATEAR FECHA CORRECTAMENTE SIN TIMEZONE ISSUES
+        const fecha = formatearFecha(cita.fecha);
+        const horaInicio = formatearHora(cita.fecha_inicio);
+        const horaFin = formatearHora(cita.fecha_final);
         
         const estadoBadge = getEstadoBadge(cita.estado);
         const modalidadBadge = getModalidadBadge(cita.agenda?.modalidad);
-        const syncBadge = getSyncBadge(cita.sync_status || 'synced', cita.offline); // ✅ NUEVO
+        const syncBadge = getSyncBadge(cita.sync_status || 'synced', cita.offline);
         
         html += `
             <tr>
                 <td>${fecha}</td>
-                <td>${horaInicio} - ${horaFin}</td>
-                <td>${cita.paciente?.nombre_completo || 'No disponible'}</td>
-                <td>${cita.paciente?.documento || 'No disponible'}</td>
+                <td>
+                    <div class="text-center">
+                        <div class="fw-bold">${horaInicio}</div>
+                        <small class="text-muted">${horaFin}</small>
+                    </div>
+                </td> <!-- ✅ HORAS EN FORMATO VERTICAL COMPACTO -->
+                <td>${cita.paciente?.nombre_completo || (cita.paciente?.nombres + ' ' + cita.paciente?.apellidos) || 'No disponible'}</td>
+                <td>${cita.paciente?.numero_documento || cita.paciente?.documento || 'No disponible'}</td>
                 <td>${cita.agenda?.consultorio || 'No disponible'}</td>
                 <td>${modalidadBadge}</td>
                 <td>${estadoBadge}</td>
@@ -316,6 +316,69 @@ function mostrarCitas(citas) {
     
     tbody.innerHTML = html;
 }
+
+
+// ✅ NUEVA FUNCIÓN: Formatear fecha sin problemas de timezone
+function formatearFecha(fechaString) {
+    if (!fechaString) return 'No disponible';
+    
+    try {
+        // Si viene con timestamp, extraer solo la fecha
+        if (fechaString.includes('T')) {
+            fechaString = fechaString.split('T')[0];
+        }
+        
+        // Parsear manualmente para evitar timezone issues
+        const partes = fechaString.split('-');
+        if (partes.length === 3) {
+            const año = parseInt(partes[0]);
+            const mes = parseInt(partes[1]);
+            const dia = parseInt(partes[2]);
+            
+            // Formatear como dd/mm/yyyy
+            return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${año}`;
+        }
+        
+        return fechaString;
+    } catch (error) {
+        console.error('Error formateando fecha:', error, fechaString);
+        return fechaString;
+    }
+}
+
+// ✅ FUNCIÓN CORREGIDA: Formatear hora (solo extraer HH:MM)
+function formatearHora(fechaHoraString) {
+    if (!fechaHoraString) return '00:00';
+    
+    try {
+        let horaString = fechaHoraString;
+        
+        // Si viene con fecha completa como "2025-09-12 10:48", extraer solo la hora
+        if (fechaHoraString.includes(' ')) {
+            const partes = fechaHoraString.split(' ');
+            horaString = partes[1]; // Tomar la segunda parte (la hora)
+        }
+        
+        // Si viene con fecha completa como "2025-09-12T10:48:00", extraer solo la hora
+        if (fechaHoraString.includes('T')) {
+            horaString = fechaHoraString.split('T')[1];
+        }
+        
+        // Si viene con segundos, extraer solo HH:MM
+        if (horaString && horaString.includes(':')) {
+            const partes = horaString.split(':');
+            if (partes.length >= 2) {
+                return `${partes[0].padStart(2, '0')}:${partes[1].padStart(2, '0')}`;
+            }
+        }
+        
+        return horaString || '00:00';
+    } catch (error) {
+        console.error('Error formateando hora:', error, fechaHoraString);
+        return '00:00';
+    }
+}
+
 
 // ✅ NUEVA FUNCIÓN: Badge de estado de sincronización
 function getSyncBadge(syncStatus, isOffline) {

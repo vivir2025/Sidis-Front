@@ -63,7 +63,46 @@ class CitaService
                     $meta = $response['data']['meta'] ?? $response['meta'] ?? [];
                     
                     if (!empty($citas)) {
-                        foreach ($citas as $cita) {
+                        foreach ($citas as &$cita) { // ✅ USAR REFERENCIA PARA MODIFICAR DIRECTAMENTE
+                            // ✅ CORREGIR FECHA PRINCIPAL
+                            if (isset($cita['fecha'])) {
+                                $fechaOriginal = $cita['fecha'];
+                                
+                                // Si es un timestamp completo, extraer solo la fecha
+                                if (strpos($fechaOriginal, 'T') !== false) {
+                                    $fechaCorregida = explode('T', $fechaOriginal)[0];
+                                    $cita['fecha'] = $fechaCorregida;
+                                    
+                                    Log::info('✅ Fecha corregida desde API', [
+                                        'cita_uuid' => $cita['uuid'],
+                                        'fecha_original' => $fechaOriginal,
+                                        'fecha_corregida' => $fechaCorregida
+                                    ]);
+                                }
+                            }
+                            
+                            // ✅ CORREGIR FECHA_INICIO Y FECHA_FINAL TAMBIÉN
+                            if (isset($cita['fecha_inicio'])) {
+                                $fechaInicio = $cita['fecha_inicio'];
+                                if (strpos($fechaInicio, 'T') !== false) {
+                                    $partes = explode('T', $fechaInicio);
+                                    $fechaLimpia = $partes[0];
+                                    $horaLimpia = isset($partes[1]) ? substr($partes[1], 0, 8) : '00:00:00';
+                                    $cita['fecha_inicio'] = $fechaLimpia . 'T' . $horaLimpia;
+                                }
+                            }
+                            
+                            if (isset($cita['fecha_final'])) {
+                                $fechaFinal = $cita['fecha_final'];
+                                if (strpos($fechaFinal, 'T') !== false) {
+                                    $partes = explode('T', $fechaFinal);
+                                    $fechaLimpia = $partes[0];
+                                    $horaLimpia = isset($partes[1]) ? substr($partes[1], 0, 8) : '00:00:00';
+                                    $cita['fecha_final'] = $fechaLimpia . 'T' . $horaLimpia;
+                                }
+                            }
+                            
+                            // ✅ AHORA GUARDAR OFFLINE CON FECHAS YA CORREGIDAS
                             $this->offlineService->storeCitaOffline($cita, false);
                         }
                     }
@@ -136,14 +175,16 @@ class CitaService
     }
 }
 
-    /**
-     * ✅ CREAR CITA - VERSIÓN SIMPLIFICADA SIN CONVERSIÓN DE UUIDs
-     */
+
+
    public function store(array $data): array
 {
     try {
         Log::info('🩺 CitaService::store - Datos recibidos', [
             'data' => $data,
+            'fecha_original' => $data['fecha'] ?? 'NO_ENVIADO',
+            'fecha_inicio_original' => $data['fecha_inicio'] ?? 'NO_ENVIADO',
+            'fecha_final_original' => $data['fecha_final'] ?? 'NO_ENVIADO',
             'has_cups_contratado_uuid' => isset($data['cups_contratado_uuid']),
             'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ENVIADO'
         ]);
@@ -152,6 +193,52 @@ class CitaService
         $data['sede_id'] = $user['sede_id'];
         $data['usuario_creo_cita_id'] = $user['id'];
         $data['estado'] = $data['estado'] ?? 'PROGRAMADA';
+
+        // ✅ CORREGIR FECHA PARA EVITAR DESFASE - IGUAL QUE EN AGENDAS
+        if (isset($data['fecha'])) {
+            // Extraer solo la fecha sin zona horaria, igual que en agendas
+            $fechaOriginal = $data['fecha'];
+            if (strpos($fechaOriginal, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaOriginal)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+                $data['fecha'] = $fechaLimpia;
+            }
+            
+            Log::info('✅ Fecha corregida en cita', [
+                'fecha_original' => $fechaOriginal,
+                'fecha_limpia' => $data['fecha']
+            ]);
+        }
+
+        // ✅ TAMBIÉN CORREGIR fecha_inicio Y fecha_final SI VIENEN CON ZONA HORARIA
+        if (isset($data['fecha_inicio'])) {
+            $fechaInicio = $data['fecha_inicio'];
+            if (strpos($fechaInicio, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaInicio)[0]; // "2025-09-12T09:00:00" -> "2025-09-12"
+                $horaLimpia = explode('T', $fechaInicio)[1]; // "2025-09-12T09:00:00" -> "09:00:00"
+                $horaLimpia = substr($horaLimpia, 0, 8); // "09:00:00.000Z" -> "09:00:00"
+                
+                // Reconstruir sin zona horaria
+                $data['fecha_inicio'] = $fechaLimpia . 'T' . $horaLimpia;
+            }
+        }
+
+        if (isset($data['fecha_final'])) {
+            $fechaFinal = $data['fecha_final'];
+            if (strpos($fechaFinal, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaFinal)[0]; // "2025-09-12T09:15:00" -> "2025-09-12"
+                $horaLimpia = explode('T', $fechaFinal)[1]; // "2025-09-12T09:15:00" -> "09:15:00"
+                $horaLimpia = substr($horaLimpia, 0, 8); // "09:15:00.000Z" -> "09:15:00"
+                
+                // Reconstruir sin zona horaria
+                $data['fecha_final'] = $fechaLimpia . 'T' . $horaLimpia;
+            }
+        }
+
+        Log::info('✅ Fechas corregidas para cita', [
+            'fecha' => $data['fecha'] ?? 'NO_SET',
+            'fecha_inicio_corregida' => $data['fecha_inicio'] ?? 'NO_SET',
+            'fecha_final_corregida' => $data['fecha_final'] ?? 'NO_SET'
+        ]);
 
         $isOnline = $this->apiService->isOnline();
         
@@ -221,6 +308,7 @@ class CitaService
         Log::info('✅ Cita creada offline exitosamente', [
             'uuid' => $data['uuid'],
             'agenda_uuid' => $data['agenda_uuid'],
+            'fecha_corregida' => $data['fecha'],
             'needs_sync' => true
         ]);
 
@@ -243,6 +331,7 @@ class CitaService
         ];
     }
 }
+
 private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
 {
     try {
@@ -256,11 +345,17 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
             return;
         }
         
-        // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA
+        // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA - IGUAL QUE EN AGENDAS
         $fechaAgenda = $agenda['fecha'];
         if (strpos($fechaAgenda, 'T') !== false) {
-            $fechaAgenda = explode('T', $fechaAgenda)[0];
+            $fechaAgenda = explode('T', $fechaAgenda)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
         }
+        
+        Log::info('🔄 Actualizando agenda offline después de cita', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha_agenda_original' => $agenda['fecha'],
+            'fecha_agenda_limpia' => $fechaAgenda
+        ]);
         
         // Recalcular cupos disponibles
         $user = $this->authService->usuario();
@@ -292,7 +387,7 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
         
         Log::info('✅ Agenda offline actualizada después de crear cita', [
             'agenda_uuid' => $agendaUuid,
-            'fecha_agenda' => $fechaAgenda,
+            'fecha_agenda_limpia' => $fechaAgenda,
             'cupos_disponibles' => $agenda['cupos_disponibles'],
             'citas_count' => $agenda['citas_count'],
             'total_cupos' => $totalCupos
@@ -654,10 +749,7 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
         }
     }
 
-  /**
- * ✅ NUEVO: Obtener horarios disponibles de una agenda
- */
-public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null): array
+ public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null): array
 {
     try {
         $fecha = $fecha ?: now()->format('Y-m-d');
@@ -724,8 +816,9 @@ public function getHorariosDisponibles(string $agendaUuid, ?string $fecha = null
         ];
     }
 }
+
 /**
- * ✅ NUEVO: Calcular horarios disponibles
+ * ✅ CORREGIDO: Calcular horarios disponibles
  */
 private function calcularHorariosDisponibles(array $agenda, string $fecha): array
 {
@@ -739,7 +832,7 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
         // ✅ EXTRAER SOLO LA FECHA (YYYY-MM-DD) SIN ZONA HORARIA
         $fechaLimpia = $fecha;
         if (strpos($fecha, 'T') !== false) {
-            $fechaLimpia = explode('T', $fecha)[0]; // "2025-09-12T00:00:00.000000Z" -> "2025-09-12"
+            $fechaLimpia = explode('T', $fecha)[0];
         }
         
         Log::info('🔍 Calculando horarios con fecha limpia', [

@@ -542,7 +542,6 @@
 @endpush
 
 @push('scripts')
-<script src="{{ asset('js/cups-autocomplete.js') }}"></script>
 <script>
 let pasoActual = 1;
 let agendaSeleccionada = null;
@@ -556,8 +555,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Establecer fecha mínima (hoy)
     document.getElementById('filtro_fecha').value = new Date().toISOString().split('T')[0];
     
-    // Cargar agendas iniciales
-    cargarAgendas();
+    // ✅ CARGAR AGENDAS CON DATOS REALES
+    cargarAgendasConDatosReales();
     
     // Mostrar primer paso
     mostrarPaso(1);
@@ -568,6 +567,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // ✅ CONFIGURAR BOTONES DE CUPS
     setupCupsButtons();
 });
+
+// ✅ NUEVA FUNCIÓN DE INICIALIZACIÓN CON DATOS REALES
+async function cargarAgendasConDatosReales() {
+    try {
+        console.log('🚀 Inicializando carga de agendas con datos reales...');
+        await cargarAgendas();
+    } catch (error) {
+        console.error('❌ Error en inicialización:', error);
+    }
+}
 
 // ✅ NAVEGACIÓN ENTRE PASOS
 function mostrarPaso(paso) {
@@ -691,7 +700,7 @@ function initCupsAutocomplete() {
         cupsAutocomplete = new CupsAutocomplete({
             codigoInput: document.getElementById('cups_codigo'),
             nombreInput: document.getElementById('cups_nombre'),
-            hiddenInput: document.getElementById('cups_contratado_uuid'), // ✅ CAMPO CORRECTO
+            hiddenInput: document.getElementById('cups_contratado_uuid'),
             resultsContainer: document.getElementById('cups_results'),
             minLength: 2,
             delay: 300
@@ -711,13 +720,8 @@ function initCupsAutocomplete() {
                 const cupsContratadoUuid = await resolverCupsContratado(cups.uuid);
                 
                 if (cupsContratadoUuid) {
-                    // ✅ ESTABLECER EL UUID DEL CUPS CONTRATADO
                     document.getElementById('cups_contratado_uuid').value = cupsContratadoUuid;
-                    
-                    // ✅ AGREGAR AL OBJETO CUPS PARA REFERENCIA
                     cups.cups_contratado_uuid = cupsContratadoUuid;
-                    
-                    // ✅ MOSTRAR INFORMACIÓN
                     mostrarInfoCups(cups);
                     
                     console.log('✅ CUPS contratado configurado exitosamente:', {
@@ -727,11 +731,9 @@ function initCupsAutocomplete() {
                         campo_valor: document.getElementById('cups_contratado_uuid').value
                     });
                 } else {
-                    // ✅ LIMPIAR SI NO HAY CONTRATO
                     document.getElementById('cups_contratado_uuid').value = '';
                     cupsAutocomplete.clear();
                     ocultarInfoCups();
-                    
                     console.log('⚠️ No se encontró contrato vigente para el CUPS');
                 }
                 
@@ -762,9 +764,7 @@ async function resolverCupsContratado(cupsUuid) {
             throw new Error('❌ No se encontró CSRF token');
         }
         
-        // ✅ USAR ENDPOINT ESPECÍFICO PARA CUPS CONTRATADOS
         const url = `/cups-contratados/por-cups/${cupsUuid}`;
-        
         console.log('🔗 Consultando URL:', url);
         
         const response = await fetch(url, {
@@ -837,28 +837,24 @@ async function resolverCupsContratado(cupsUuid) {
 
 // ✅ CONFIGURAR BOTONES DE CUPS - CORREGIDO
 function setupCupsButtons() {
-    // ✅ BOTÓN LIMPIAR CUPS
     document.getElementById('btnLimpiarCups').addEventListener('click', function() {
         if (cupsAutocomplete) {
             cupsAutocomplete.clear();
         } else {
             document.getElementById('cups_codigo').value = '';
             document.getElementById('cups_nombre').value = '';
-            document.getElementById('cups_contratado_uuid').value = ''; // ✅ CORREGIDO
+            document.getElementById('cups_contratado_uuid').value = '';
         }
         
         ocultarInfoCups();
-        
         console.log('🧹 CUPS limpiado');
     });
     
-    // ✅ BOTÓN SINCRONIZAR CUPS
     document.getElementById('btnSincronizarCups').addEventListener('click', function() {
         sincronizarCupsDesdeServidor();
     });
 }
 
-// ✅ FUNCIÓN MEJORADA PARA MOSTRAR INFO DE CUPS
 function mostrarInfoCups(cups) {
     const infoDiv = document.getElementById('cups_info');
     const infoText = document.getElementById('cups_info_text');
@@ -928,20 +924,66 @@ async function sincronizarCupsDesdeServidor() {
     }
 }
 
+// ✅ FUNCIÓN CORREGIDA PARA FORMATEAR FECHA SIN DESFASE
+function formatearFechaSinDesfase(fechaString) {
+    if (!fechaString) return 'No disponible';
+    
+    try {
+        console.log('🔍 DEBUG formatearFechaSinDesfase - Input:', fechaString);
+        
+        // Si viene con timestamp, extraer solo la fecha
+        if (fechaString.includes('T')) {
+            fechaString = fechaString.split('T')[0];
+        }
+        
+        // Parsear manualmente para evitar timezone issues
+        const partes = fechaString.split('-');
+        if (partes.length === 3) {
+            const año = parseInt(partes[0]);
+            const mes = parseInt(partes[1]);
+            const dia = parseInt(partes[2]);
+            
+            // ✅ CREAR FECHA LOCAL SIN ZONA HORARIA
+            const fechaLocal = new Date(año, mes - 1, dia);
+            
+            // ✅ FORMATEAR COMO dd/mm/yyyy
+            const fechaFormateada = fechaLocal.toLocaleDateString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+            
+            console.log('✅ Fecha formateada sin desfase:', {
+                original: fechaString,
+                parseado: { año, mes, dia },
+                resultado: fechaFormateada
+            });
+            
+            return fechaFormateada;
+        }
+        
+        return fechaString;
+    } catch (error) {
+        console.error('Error formateando fecha:', error, fechaString);
+        return fechaString;
+    }
+}
+
 // ✅ ACTUALIZAR RESUMEN FINAL - CORREGIDO
 function actualizarResumenFinal() {
     if (!pacienteSeleccionado || !agendaSeleccionada || !horarioSeleccionado) {
         return;
     }
     
-    const fecha = new Date(agendaSeleccionada.fecha).toLocaleDateString('es-ES');
+    const fecha = formatearFechaSinDesfase(agendaSeleccionada.fecha);
     const cupsContratadoUuid = document.getElementById('cups_contratado_uuid').value;
     const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
     
     console.log('📋 Actualizando resumen final:', {
+        fecha_original: agendaSeleccionada.fecha,
+        fecha_formateada: fecha,
         cups_contratado_uuid: cupsContratadoUuid,
-        cups_seleccionado: cupsSeleccionado,
-        campo_dom_valor: document.getElementById('cups_contratado_uuid')?.value
+        cups_seleccionado: cupsSeleccionado
     });
     
     let resumen = `
@@ -1001,9 +1043,11 @@ function actualizarResumenFinal() {
     document.getElementById('resumenCita').innerHTML = resumen;
 }
 
-// ✅ PASO 1: CARGAR Y SELECCIONAR AGENDAS
+// ✅ PASO 1: CARGAR Y SELECCIONAR AGENDAS CON DATOS REALES
 async function cargarAgendas() {
     try {
+        console.log('🔄 Cargando agendas...');
+        
         const filtros = {
             modalidad: document.getElementById('filtro_modalidad').value,
             fecha_desde: document.getElementById('filtro_fecha').value
@@ -1023,10 +1067,14 @@ async function cargarAgendas() {
         });
 
         const data = await response.json();
+        
+        console.log('📥 Respuesta de agendas:', data);
 
         if (data.success) {
             agendasDisponibles = data.data;
-            mostrarAgendas(agendasDisponibles);
+            
+            // ✅ MOSTRAR AGENDAS Y LUEGO ACTUALIZAR CON DATOS REALES
+            await mostrarAgendasConDatosReales(agendasDisponibles);
         } else {
             throw new Error(data.error);
         }
@@ -1038,23 +1086,11 @@ async function cargarAgendas() {
 }
 
 function filtrarAgendas() {
-    const fecha = document.getElementById('filtro_fecha').value;
-    const modalidad = document.getElementById('filtro_modalidad').value;
-    
-    let agendasFiltradas = agendasDisponibles;
-    
-    if (fecha) {
-        agendasFiltradas = agendasFiltradas.filter(agenda => agenda.fecha === fecha);
-    }
-    
-    if (modalidad) {
-        agendasFiltradas = agendasFiltradas.filter(agenda => agenda.modalidad === modalidad);
-    }
-    
-    mostrarAgendas(agendasFiltradas);
+    cargarAgendas(); // ✅ RECARGAR CON FILTROS APLICADOS
 }
 
-function mostrarAgendas(agendas) {
+// ✅ NUEVA FUNCIÓN PARA MOSTRAR AGENDAS CON DATOS REALES
+async function mostrarAgendasConDatosReales(agendas) {
     const container = document.getElementById('agendasDisponibles');
     const noAgendas = document.getElementById('noAgendas');
     
@@ -1066,20 +1102,17 @@ function mostrarAgendas(agendas) {
     
     noAgendas.style.display = 'none';
     
+    // ✅ MOSTRAR AGENDAS INICIALMENTE CON DATOS BÁSICOS
     let html = '';
-    agendas.forEach(agenda => {
-        const fecha = new Date(agenda.fecha).toLocaleDateString('es-ES');
-        const cuposDisponibles = agenda.cupos_disponibles || 0;
-        const cuposTotales = agenda.total_cupos || 0;
-        
-        const sinCupos = cuposDisponibles <= 0;
-        const cardClass = sinCupos ? 'agenda-card sin-cupos' : 'agenda-card';
-        const selectedClass = agendaSeleccionada?.uuid === agenda.uuid ? 'selected' : '';
+    
+    for (const agenda of agendas) {
+        const fecha = formatearFechaSinDesfase(agenda.fecha);
+        const cardId = `agenda-card-${agenda.uuid}`;
         
         html += `
             <div class="col-md-6 col-lg-4 mb-3">
-                <div class="card ${cardClass} ${selectedClass}" 
-                     onclick="${sinCupos ? 'alertaSinCupos()' : `seleccionarAgenda('${agenda.uuid}')`}">
+                <div class="card agenda-card" id="${cardId}"
+                     onclick="seleccionarAgenda('${agenda.uuid}')">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <h6 class="card-title mb-0">${agenda.consultorio}</h6>
@@ -1103,23 +1136,139 @@ function mostrarAgendas(agendas) {
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">Intervalo: ${agenda.intervalo}min</small>
                             <div class="text-end">
-                                <span class="${sinCupos ? 'text-danger' : 'text-success'} fw-semibold">
-                                    <i class="fas fa-users me-1"></i>${cuposDisponibles}/${cuposTotales}
+                                <span class="text-info fw-semibold cupos-display" 
+                                      data-agenda-uuid="${agenda.uuid}">
+                                    <i class="fas fa-spinner fa-spin me-1"></i>
+                                    <span class="cupos-numeros">Cargando...</span>
                                 </span>
                             </div>
                         </div>
-                        
-                        ${sinCupos ? 
-                            '<div class="mt-2"><span class="badge bg-danger w-100">Sin cupos disponibles</span></div>' : 
-                            ''
-                        }
                     </div>
                 </div>
             </div>
         `;
-    });
+    }
     
     container.innerHTML = html;
+    
+    // ✅ AHORA ACTUALIZAR CADA AGENDA CON DATOS REALES
+    for (const agenda of agendas) {
+        await actualizarCuposRealAgenda(agenda);
+    }
+}
+
+// ✅ NUEVA FUNCIÓN PARA OBTENER HORARIOS REALES
+async function obtenerHorariosRealesAgenda(agendaUuid, fecha) {
+    try {
+        console.log('🔍 Obteniendo horarios reales para agenda:', agendaUuid);
+        
+        const response = await fetch(`/citas/agenda/${agendaUuid}/horarios?fecha=${fecha}`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const disponibles = data.data.filter(h => h.disponible).length;
+            const total = data.data.length;
+            
+            console.log('✅ Horarios reales obtenidos:', {
+                agenda_uuid: agendaUuid,
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            });
+            
+            return {
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            };
+        }
+        
+        console.warn('⚠️ No se pudieron obtener horarios reales');
+        return { disponibles: 0, total: 0, ocupados: 0 };
+        
+    } catch (error) {
+        console.error('❌ Error obteniendo horarios reales:', error);
+        return { disponibles: 0, total: 0, ocupados: 0 };
+    }
+}
+
+// ✅ NUEVA FUNCIÓN PARA ACTUALIZAR CUPOS REAL DE UNA AGENDA
+async function actualizarCuposRealAgenda(agenda) {
+    try {
+        console.log('🔄 Actualizando cupos reales para:', agenda.uuid);
+        
+        const horariosReales = await obtenerHorariosRealesAgenda(agenda.uuid, agenda.fecha);
+        
+        const cuposDisponibles = horariosReales.disponibles;
+        const cuposTotales = horariosReales.total;
+        const sinCupos = cuposDisponibles <= 0;
+        
+        // ✅ ACTUALIZAR LA INTERFAZ
+        const cardElement = document.getElementById(`agenda-card-${agenda.uuid}`);
+        const cuposDisplay = cardElement?.querySelector('.cupos-display');
+        const cuposNumeros = cardElement?.querySelector('.cupos-numeros');
+        
+        if (cuposDisplay && cuposNumeros) {
+            // Actualizar números
+            cuposNumeros.textContent = `${cuposDisponibles}/${cuposTotales}`;
+            
+            // Actualizar clases y colores
+            cuposDisplay.className = `${sinCupos ? 'text-danger' : 'text-success'} fw-semibold cupos-display`;
+            cuposDisplay.innerHTML = `
+                <i class="fas fa-users me-1"></i>
+                <span class="cupos-numeros">${cuposDisponibles}/${cuposTotales}</span>
+            `;
+            
+            // Actualizar funcionalidad de la card
+            if (sinCupos) {
+                cardElement.classList.add('sin-cupos');
+                cardElement.setAttribute('onclick', 'alertaSinCupos()');
+                
+                // Agregar badge de sin cupos
+                const cardBody = cardElement.querySelector('.card-body');
+                const existingBadge = cardBody.querySelector('.badge.bg-danger');
+                if (!existingBadge) {
+                    cardBody.insertAdjacentHTML('beforeend', 
+                        '<div class="mt-2"><span class="badge bg-danger w-100">Sin cupos disponibles</span></div>'
+                    );
+                }
+            } else {
+                cardElement.classList.remove('sin-cupos');
+                cardElement.setAttribute('onclick', `seleccionarAgenda('${agenda.uuid}')`);
+                
+                // Remover badge de sin cupos si existe
+                const badge = cardElement.querySelector('.badge.bg-danger');
+                if (badge) {
+                    badge.parentElement.remove();
+                }
+            }
+        }
+        
+        console.log('✅ Cupos actualizados en interfaz:', {
+            agenda_uuid: agenda.uuid,
+            disponibles: cuposDisponibles,
+            total: cuposTotales,
+            sin_cupos: sinCupos
+        });
+        
+    } catch (error) {
+        console.error('❌ Error actualizando cupos de agenda:', error);
+        
+        // En caso de error, mostrar estado de error
+        const cardElement = document.getElementById(`agenda-card-${agenda.uuid}`);
+        const cuposNumeros = cardElement?.querySelector('.cupos-numeros');
+        if (cuposNumeros) {
+            cuposNumeros.textContent = 'Error';
+            cuposNumeros.parentElement.className = 'text-warning fw-semibold cupos-display';
+        }
+    }
 }
 
 // ✅ FUNCIÓN CORREGIDA CON LOGGING DETALLADO
@@ -1134,7 +1283,22 @@ function seleccionarAgenda(agendaUuid) {
         return;
     }
     
-    if (agenda.cupos_disponibles <= 0) {
+    // ✅ VERIFICAR CUPOS REALES DEL DOM
+    const cardElement = document.getElementById(`agenda-card-${agenda.uuid}`);
+    const cuposDisplay = cardElement?.querySelector('.cupos-numeros');
+    const cuposText = cuposDisplay?.textContent || '';
+    
+    // Extraer cupos disponibles del texto "X/Y"
+    const cuposMatch = cuposText.match(/^(\d+)\/(\d+)$/);
+    const cuposDisponibles = cuposMatch ? parseInt(cuposMatch[1]) : 0;
+    
+        console.log('🔍 Verificando cupos reales:', {
+        cupos_text: cuposText,
+        cupos_disponibles: cuposDisponibles,
+        sin_cupos: cuposDisponibles <= 0
+    });
+    
+    if (cuposDisponibles <= 0) {
         alertaSinCupos();
         return;
     }
@@ -1191,7 +1355,7 @@ function alertaSinCupos() {
     });
 }
 
-// ✅ PASO 2: CARGAR Y SELECCIONAR HORARIOS
+// ✅ PASO 2: CARGAR HORARIOS
 async function cargarHorariosDisponibles() {
     if (!agendaSeleccionada) {
         return;
@@ -1201,6 +1365,11 @@ async function cargarHorariosDisponibles() {
     mostrarInfoAgendaSeleccionada();
     
     try {
+        console.log('🔍 Cargando horarios para agenda:', {
+            agenda_uuid: agendaSeleccionada.uuid,
+            fecha: agendaSeleccionada.fecha
+        });
+        
         const response = await fetch(`/citas/agenda/${agendaSeleccionada.uuid}/horarios?fecha=${agendaSeleccionada.fecha}`, {
             method: 'GET',
             headers: {
@@ -1210,10 +1379,21 @@ async function cargarHorariosDisponibles() {
         });
 
         const data = await response.json();
+        
+        console.log('📥 Respuesta de horarios:', {
+            success: data.success,
+            horarios_count: data.data ? data.data.length : 0,
+            data: data
+        });
 
         if (data.success) {
             horariosDisponibles = data.data;
             mostrarHorarios(horariosDisponibles);
+            
+            // ✅ ACTUALIZAR CUPOS EN LA INTERFAZ
+            if (data.agenda) {
+                actualizarCuposEnInterfaz(data.agenda);
+            }
         } else {
             throw new Error(data.error);
         }
@@ -1224,10 +1404,40 @@ async function cargarHorariosDisponibles() {
     }
 }
 
+// ✅ NUEVA FUNCIÓN PARA ACTUALIZAR CUPOS EN LA INTERFAZ
+function actualizarCuposEnInterfaz(agenda) {
+    try {
+        // Calcular cupos reales
+        const disponibles = horariosDisponibles.filter(h => h.disponible).length;
+        const ocupados = horariosDisponibles.filter(h => !h.disponible).length;
+        const total = horariosDisponibles.length;
+        
+        console.log('📊 Actualizando cupos en interfaz:', {
+            total,
+            disponibles,
+            ocupados
+        });
+        
+        // Actualizar la card de agenda seleccionada si existe
+        const agendaCard = document.querySelector(`[onclick*="${agenda.uuid}"]`);
+        if (agendaCard) {
+            const cuposSpan = agendaCard.querySelector('.fw-semibold');
+            if (cuposSpan) {
+                cuposSpan.innerHTML = `<i class="fas fa-users me-1"></i>${disponibles}/${total}`;
+                cuposSpan.className = disponibles > 0 ? 'text-success fw-semibold' : 'text-danger fw-semibold';
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error actualizando cupos en interfaz:', error);
+    }
+}
+
+// ✅ FUNCIÓN CORREGIDA PARA MOSTRAR INFO DE AGENDA SIN DESFASE
 function mostrarInfoAgendaSeleccionada() {
     if (!agendaSeleccionada) return;
     
-    const fecha = new Date(agendaSeleccionada.fecha).toLocaleDateString('es-ES');
+    const fecha = formatearFechaSinDesfase(agendaSeleccionada.fecha);
     const info = `
         <div class="row">
             <div class="col-md-6">
@@ -1334,7 +1544,6 @@ function alertaHorarioOcupado() {
     });
 }
 
-
 // ✅ FUNCIÓN AUXILIAR PARA EXTRAER HORA
 function extraerHora(fechaHora) {
     if (!fechaHora) return '';
@@ -1361,6 +1570,7 @@ function extraerHora(fechaHora) {
     return fechaHora;
 }
 
+// ✅ FUNCIÓN CORREGIDA PARA EXTRAER FECHA SIN DESFASE
 function extraerFecha(fechaCompleta) {
     if (!fechaCompleta) return '';
     
@@ -1369,7 +1579,7 @@ function extraerFecha(fechaCompleta) {
     // Si viene como "2025-09-12T00:00:00" o similar, extraer solo la fecha
     if (fechaCompleta.includes('T')) {
         const fecha = fechaCompleta.split('T')[0]; // "2025-09-12"
-        console.log('🔍 DEBUG extraerFecha - Extraído:', fecha);
+        console.log('🔍 DEBUG extraerFecha - Extraído de timestamp:', fecha);
         return fecha;
     }
     
@@ -1379,14 +1589,32 @@ function extraerFecha(fechaCompleta) {
         return fechaCompleta;
     }
     
-    // Si viene como Date object, convertir sin zona horaria
+    // Si viene como Date object, usar métodos UTC para evitar zona horaria
     if (fechaCompleta instanceof Date) {
-        const year = fechaCompleta.getFullYear();
-        const month = String(fechaCompleta.getMonth() + 1).padStart(2, '0');
-        const day = String(fechaCompleta.getDate()).padStart(2, '0');
+        const year = fechaCompleta.getUTCFullYear();
+        const month = String(fechaCompleta.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(fechaCompleta.getUTCDate()).padStart(2, '0');
         const fecha = `${year}-${month}-${day}`;
-        console.log('🔍 DEBUG extraerFecha - Convertido de Date:', fecha);
+        console.log('🔍 DEBUG extraerFecha - Convertido de Date con UTC:', fecha);
         return fecha;
+    }
+    
+    // Si viene como string de fecha "Sep 12, 2025" o similar
+    if (fechaCompleta && typeof fechaCompleta === 'string') {
+        try {
+            // Crear fecha local sin zona horaria
+            const partes = fechaCompleta.split('-');
+            if (partes.length === 3) {
+                const year = partes[0];
+                const month = partes[1].padStart(2, '0');
+                const day = partes[2].padStart(2, '0');
+                const fecha = `${year}-${month}-${day}`;
+                console.log('🔍 DEBUG extraerFecha - Parseado manual:', fecha);
+                return fecha;
+            }
+        } catch (error) {
+            console.error('Error parseando fecha:', error);
+        }
     }
     
     console.log('🔍 DEBUG extraerFecha - Sin cambios:', fechaCompleta);
@@ -1405,7 +1633,7 @@ function seleccionarHorario(horaInicio, horaFin) {
         return;
     }
     
-    // ✅ EXTRAER FECHA SIN DESFASE
+    // ✅ EXTRAER FECHA SIN DESFASE USANDO LA FUNCIÓN CORREGIDA
     const fechaBase = extraerFecha(agendaSeleccionada.fecha);
     
     console.log('🔍 DEBUG - Fecha base extraída:', {
@@ -1419,13 +1647,17 @@ function seleccionarHorario(horaInicio, horaFin) {
         return;
     }
     
-    // Asegurar formato HH:MM para las horas
-    const horaInicioFormateada = horaInicio.includes(':') ? horaInicio : horaInicio + ':00';
-    const horaFinFormateada = horaFin.includes(':') ? horaFin : horaFin + ':00';
+    // Asegurar formato HH:MM:SS para las horas
+    const horaInicioFormateada = horaInicio.includes(':') ? 
+        (horaInicio.split(':').length === 2 ? horaInicio + ':00' : horaInicio) : 
+        horaInicio + ':00:00';
+    const horaFinFormateada = horaFin.includes(':') ? 
+        (horaFin.split(':').length === 2 ? horaFin + ':00' : horaFin) : 
+        horaFin + ':00:00';
     
-    // ✅ CONSTRUIR FECHAS EN FORMATO ISO SIN ZONA HORARIA
-    const fechaInicioCorrecta = `${fechaBase}T${horaInicioFormateada}:00`;
-    const fechaFinalCorrecta = `${fechaBase}T${horaFinFormateada}:00`;
+    // ✅ CONSTRUIR FECHAS EN FORMATO ISO LOCAL (sin Z al final)
+    const fechaInicioCorrecta = `${fechaBase}T${horaInicioFormateada}`;
+    const fechaFinalCorrecta = `${fechaBase}T${horaFinFormateada}`;
     
     console.log('🔍 DEBUG - Fechas construidas:', {
         fechaBase,
@@ -1438,8 +1670,8 @@ function seleccionarHorario(horaInicio, horaFin) {
     horarioSeleccionado = {
         fecha_inicio: fechaInicioCorrecta,
         fecha_final: fechaFinalCorrecta,
-        hora_inicio: horaInicioFormateada,
-        hora_fin: horaFinFormateada
+        hora_inicio: horaInicio.includes(':') ? horaInicio.substring(0, 5) : horaInicio,
+        hora_fin: horaFin.includes(':') ? horaFin.substring(0, 5) : horaFin
     };
     
     // ✅ ASIGNAR FECHAS CORRECTAS A LOS CAMPOS OCULTOS
@@ -1473,10 +1705,11 @@ function seleccionarHorario(horaInicio, horaFin) {
 }
 
 // ✅ PASO 3: BUSCAR PACIENTE
+// ✅ FUNCIÓN CORREGIDA PARA MOSTRAR INFO DE HORARIO SIN DESFASE
 function mostrarInfoHorarioSeleccionado() {
     if (!agendaSeleccionada || !horarioSeleccionado) return;
     
-    const fecha = new Date(agendaSeleccionada.fecha).toLocaleDateString('es-ES');
+    const fecha = formatearFechaSinDesfase(agendaSeleccionada.fecha);
     const info = `
         <div class="row">
             <div class="col-md-6">
@@ -1631,7 +1864,7 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         fecha: formData.get('fecha'),
         fecha_inicio: formData.get('fecha_inicio'),
         fecha_final: formData.get('fecha_final'),
-        cups_contratado_uuid: formData.get('cups_contratado_uuid'), // ✅ INCLUIR CUPS
+        cups_contratado_uuid: formData.get('cups_contratado_uuid'),
         nota: formData.get('nota')
     };
     
@@ -1662,7 +1895,6 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
         console.log('✅ === CUPS CONTRATADO INCLUIDO ===');
         console.log(`  UUID: ${camposCriticos.cups_contratado_uuid}`);
         
-        // ✅ VERIFICAR QUE EL CUPS SELECCIONADO COINCIDA
         const cupsSeleccionado = cupsAutocomplete ? cupsAutocomplete.getSelected() : null;
         if (cupsSeleccionado) {
             console.log('  CUPS Código:', cupsSeleccionado.codigo);
@@ -1719,7 +1951,7 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
             if (data.redirect_url) {
                 window.location.href = data.redirect_url;
             } else {
-                window.location.href = '{{ route("citas.index") }}';
+                window.location.href = '/citas';
             }
             
         } else {
@@ -1752,7 +1984,7 @@ document.getElementById('citaForm').addEventListener('submit', async function(e)
 function showValidationErrors(errors) {
     // Limpiar errores previos
     document.querySelectorAll('.is-invalid').forEach(el => {
-        el.classList.remove('is-invalid');
+                el.classList.remove('is-invalid');
     });
     document.querySelectorAll('.invalid-feedback').forEach(el => {
         el.remove();
@@ -1857,9 +2089,166 @@ window.debugCups = function() {
     console.log('=== FIN DEBUG CUPS ===');
 };
 
+// ✅ FUNCIÓN PARA VERIFICAR ESTADO COMPLETO
+window.debugEstadoCompleto = function() {
+    console.log('=== 🔍 DEBUG ESTADO COMPLETO ===');
+    
+    console.log('📊 PASO ACTUAL:', pasoActual);
+    
+    console.log('📋 AGENDAS DISPONIBLES:', agendasDisponibles?.length || 0);
+    if (agendaSeleccionada) {
+        console.log('✅ AGENDA SELECCIONADA:', {
+            uuid: agendaSeleccionada.uuid,
+            consultorio: agendaSeleccionada.consultorio,
+            fecha: agendaSeleccionada.fecha
+        });
+    } else {
+        console.log('❌ NO HAY AGENDA SELECCIONADA');
+    }
+    
+    console.log('⏰ HORARIOS DISPONIBLES:', horariosDisponibles?.length || 0);
+    if (horarioSeleccionado) {
+        console.log('✅ HORARIO SELECCIONADO:', horarioSeleccionado);
+    } else {
+        console.log('❌ NO HAY HORARIO SELECCIONADO');
+    }
+    
+    if (pacienteSeleccionado) {
+        console.log('✅ PACIENTE SELECCIONADO:', {
+            uuid: pacienteSeleccionado.uuid,
+            nombre: pacienteSeleccionado.nombre_completo,
+            documento: pacienteSeleccionado.documento
+        });
+    } else {
+        console.log('❌ NO HAY PACIENTE SELECCIONADO');
+    }
+    
+    console.log('💊 ESTADO DE CUPS:');
+    const cupsUuid = document.getElementById('cups_contratado_uuid')?.value;
+    if (cupsUuid && cupsUuid.trim() !== '') {
+        console.log('✅ CUPS CONTRATADO UUID:', cupsUuid);
+        if (cupsAutocomplete) {
+            const selected = cupsAutocomplete.getSelected();
+            if (selected) {
+                console.log('✅ CUPS SELECCIONADO:', {
+                    codigo: selected.codigo,
+                    nombre: selected.nombre
+                });
+            }
+        }
+    } else {
+        console.log('ℹ️ SIN CUPS SELECCIONADO');
+    }
+    
+    console.log('🔧 VALIDACIÓN DE FORMULARIO:');
+    const esValido = pacienteSeleccionado && agendaSeleccionada && horarioSeleccionado;
+    console.log('  Formulario válido:', esValido ? '✅ SÍ' : '❌ NO');
+    
+    if (!esValido) {
+        console.log('  Falta:');
+        if (!pacienteSeleccionado) console.log('    - Paciente');
+        if (!agendaSeleccionada) console.log('    - Agenda');
+        if (!horarioSeleccionado) console.log('    - Horario');
+    }
+    
+    console.log('=== FIN DEBUG COMPLETO ===');
+};
+
+// ✅ FUNCIÓN PARA SIMULAR ENVÍO (TESTING)
+window.simularEnvio = function() {
+    console.log('🧪 === SIMULACIÓN DE ENVÍO ===');
+    
+    if (!pacienteSeleccionado || !agendaSeleccionada || !horarioSeleccionado) {
+        console.log('❌ No se puede simular - faltan datos obligatorios');
+        debugEstadoCompleto();
+        return;
+    }
+    
+    const form = document.getElementById('citaForm');
+    const formData = new FormData(form);
+    
+    // Forzar CUPS si existe
+    const cupsUuid = document.getElementById('cups_contratado_uuid')?.value;
+    if (cupsUuid && cupsUuid.trim() !== '') {
+        formData.set('cups_contratado_uuid', cupsUuid.trim());
+    }
+    
+    console.log('📤 DATOS QUE SE ENVIARÍAN:');
+    for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}: "${value}"`);
+    }
+    
+    console.log('✅ Simulación completada - revisar datos arriba');
+};
+
+// ✅ FUNCIÓN PARA LIMPIAR TODO Y REINICIAR
+window.reiniciarFormulario = function() {
+    console.log('🔄 Reiniciando formulario...');
+    
+    // Limpiar variables globales
+    agendaSeleccionada = null;
+    horarioSeleccionado = null;
+    pacienteSeleccionado = null;
+    
+    // Limpiar campos del formulario
+    document.getElementById('citaForm').reset();
+    
+    // Limpiar CUPS
+    if (cupsAutocomplete) {
+        cupsAutocomplete.clear();
+    }
+    ocultarInfoCups();
+    
+    // Limpiar displays
+    document.getElementById('pacienteInfo').style.display = 'none';
+    document.getElementById('pacienteNoEncontrado').style.display = 'none';
+    
+    // Volver al paso 1
+    mostrarPaso(1);
+    
+    // Recargar agendas
+    cargarAgendasConDatosReales();
+    
+    console.log('✅ Formulario reiniciado');
+};
+
+// ✅ EXPONER FUNCIONES PARA DEBUGGING EN CONSOLA
+window.citas = {
+    debug: debugFormulario,
+    debugCups: debugCups,
+    debugCompleto: debugEstadoCompleto,
+    simular: simularEnvio,
+    reiniciar: reiniciarFormulario,
+    
+    // Getters para inspeccionar estado
+    get agenda() { return agendaSeleccionada; },
+    get horario() { return horarioSeleccionado; },
+    get paciente() { return pacienteSeleccionado; },
+    get paso() { return pasoActual; },
+    get agendas() { return agendasDisponibles; },
+    get horarios() { return horariosDisponibles; }
+};
+
+console.log('🚀 === SISTEMA DE CITAS INICIALIZADO ===');
+console.log('📋 Funciones de debug disponibles:');
+console.log('  - citas.debug() - Debug general del formulario');
+console.log('  - citas.debugCups() - Debug específico de CUPS');
+console.log('  - citas.debugCompleto() - Debug completo del estado');
+console.log('  - citas.simular() - Simular envío del formulario');
+console.log('  - citas.reiniciar() - Reiniciar formulario completo');
+console.log('📊 Variables de estado disponibles:');
+console.log('  - citas.agenda - Agenda seleccionada');
+console.log('  - citas.horario - Horario seleccionado');
+console.log('  - citas.paciente - Paciente seleccionado');
+console.log('  - citas.paso - Paso actual');
+console.log('  - citas.agendas - Lista de agendas disponibles');
+console.log('  - citas.horarios - Lista de horarios disponibles');
+
 // Inicializar vista
 mostrarPaso(1);
 </script>
+
+
 
 @endpush
 @endsection

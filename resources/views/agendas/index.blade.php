@@ -260,6 +260,46 @@
         </div>
     </div>
 </div>
+@push('styles')
+<style>
+/* Estilos para cupos en tiempo real */
+.cupos-display {
+    transition: all 0.3s ease;
+    cursor: help;
+}
+
+.cupos-display:hover {
+    transform: scale(1.05);
+}
+
+.cupos-display .fa-spinner {
+    color: #6c757d;
+}
+
+.cupos-display.text-success:hover {
+    color: #198754 !important;
+}
+
+.cupos-display.text-danger:hover {
+    color: #dc3545 !important;
+}
+
+.cupos-display.text-warning:hover {
+    color: #fd7e14 !important;
+}
+
+/* Animación para cupos que se actualizan */
+@keyframes cuposUpdate {
+    0% { opacity: 0.5; transform: scale(0.95); }
+    50% { opacity: 0.8; transform: scale(1.02); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.cupos-display.updating {
+    animation: cuposUpdate 0.5s ease-in-out;
+}
+</style>
+@endpush
 
 @push('scripts')
 <script>
@@ -269,7 +309,8 @@ let totalItems = 0;
 let currentPerPage = 15;
 let isLoading = false;
 let currentFilters = {};
-let currentSort = { field: 'fecha', order: 'desc' }; // ✅ ORDENAMIENTO POR DEFECTO
+let currentSort = { field: 'fecha', order: 'desc' };
+let currentAgendasData = []; 
 
 // ✅ CONTINUACIÓN DEL SCRIPT
 document.addEventListener('DOMContentLoaded', function() {
@@ -300,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(checkPendingSync, 30000);
 });
 
-// ✅ FUNCIÓN PRINCIPAL PARA CARGAR AGENDAS CON PAGINACIÓN
+/// ✅ FUNCIÓN PRINCIPAL PARA CARGAR AGENDAS CON PAGINACIÓN
 function loadAgendas(page = 1, filters = {}, perPage = null) {
     if (isLoading) return;
     
@@ -356,6 +397,9 @@ function loadAgendas(page = 1, filters = {}, perPage = null) {
         console.log('✅ Datos procesados:', data);
         
         if (data.success) {
+            // ✅ GUARDAR DATOS ACTUALES PARA REFRESCAR CUPOS
+            currentAgendasData = data.data || [];
+            
             // ✅ ACTUALIZAR VARIABLES GLOBALES DE PAGINACIÓN
             currentPage = data.current_page || page;
             totalPages = data.total_pages || 1;
@@ -387,6 +431,7 @@ function loadAgendas(page = 1, filters = {}, perPage = null) {
     });
 }
 
+
 // ✅ MOSTRAR AGENDAS EN TABLA
 function displayAgendas(agendas, meta) {
     console.log('🎨 Renderizando agendas:', agendas.length);
@@ -411,6 +456,11 @@ function displayAgendas(agendas, meta) {
     estadoVacio.style.display = 'none';
     
     updateRegistrosInfo(meta);
+    
+    // ✅ CARGAR CUPOS REALES DESPUÉS DE RENDERIZAR (IGUAL QUE EN CREATE)
+    setTimeout(() => {
+        actualizarCuposRealesTodasLasAgendas(agendas);
+    }, 100);
     
     console.log(`✅ ${agendas.length} agendas renderizadas en la tabla`);
 }
@@ -442,8 +492,6 @@ function createAgendaRow(agenda) {
     }
     
     const horario = `${agenda.hora_inicio || '--:--'} - ${agenda.hora_fin || '--:--'}`;
-    const cupos = agenda.cupos_disponibles || 0;
-    const cuposClass = cupos > 0 ? 'text-success' : 'text-warning';
     const consultorio = agenda.consultorio || 'Sin asignar';
     const etiqueta = agenda.etiqueta || 'Sin etiqueta';
     
@@ -467,7 +515,10 @@ function createAgendaRow(agenda) {
         <td>${etiqueta}</td>
         <td>${estadoBadge}</td>
         <td>
-            <span class="${cuposClass} fw-semibold">${cupos}</span>
+            <span class="cupos-display fw-semibold" data-agenda-uuid="${agenda.uuid}">
+                <i class="fas fa-spinner fa-spin me-1"></i>
+                <span class="cupos-numeros">Cargando...</span>
+            </span>
         </td>
         <td>
             <div class="btn-group btn-group-sm" role="group">
@@ -485,6 +536,125 @@ function createAgendaRow(agenda) {
     `;
     
     return row;
+}
+async function actualizarCuposRealesTodasLasAgendas(agendas) {
+    console.log('🔄 Actualizando cupos reales para', agendas.length, 'agendas');
+    
+    // ✅ PROCESAR AGENDAS UNA POR UNA PARA EVITAR SATURAR EL SERVIDOR
+    for (const agenda of agendas) {
+        try {
+            await actualizarCuposRealAgenda(agenda);
+            // Pequeña pausa entre requests
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (error) {
+            console.error('❌ Error actualizando cupos de agenda:', agenda.uuid, error);
+        }
+    }
+    
+    console.log('✅ Todos los cupos actualizados correctamente');
+}
+async function actualizarCuposRealAgenda(agenda) {
+    try {
+        console.log('🔍 Actualizando cupos para agenda:', agenda.uuid);
+        
+        // ✅ USAR LA MISMA FUNCIÓN QUE EN CREATE
+        const horariosReales = await obtenerHorariosRealesAgenda(agenda.uuid, agenda.fecha);
+        
+        const cuposDisponibles = horariosReales.disponibles;
+        const cuposTotales = horariosReales.total;
+        const sinCupos = cuposDisponibles <= 0;
+        
+        // ✅ ACTUALIZAR LA INTERFAZ EXACTAMENTE IGUAL QUE EN CREATE
+        const cuposDisplay = document.querySelector(`[data-agenda-uuid="${agenda.uuid}"]`);
+        const cuposNumeros = cuposDisplay?.querySelector('.cupos-numeros');
+        
+        if (cuposDisplay && cuposNumeros) {
+            // Actualizar números
+            cuposNumeros.textContent = `${cuposDisponibles}/${cuposTotales}`;
+            
+            // ✅ ACTUALIZAR CLASES Y COLORES IGUAL QUE EN CREATE
+            cuposDisplay.className = `cupos-display fw-semibold ${sinCupos ? 'text-danger' : 'text-success'}`;
+            cuposDisplay.innerHTML = `
+                <i class="fas fa-users me-1"></i>
+                <span class="cupos-numeros">${cuposDisponibles}/${cuposTotales}</span>
+            `;
+            
+            // ✅ AGREGAR TOOLTIP CON INFORMACIÓN DETALLADA
+            cuposDisplay.setAttribute('title', 
+                `Disponibles: ${cuposDisponibles}\nOcupados: ${cuposTotales - cuposDisponibles}\nTotal: ${cuposTotales}`
+            );
+            
+            console.log('✅ Cupos actualizados en interfaz:', {
+                agenda_uuid: agenda.uuid,
+                disponibles: cuposDisponibles,
+                total: cuposTotales
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Error actualizando cupos de agenda:', error);
+        
+        // ✅ EN CASO DE ERROR, MOSTRAR ESTADO DE ERROR IGUAL QUE EN CREATE
+        const cuposDisplay = document.querySelector(`[data-agenda-uuid="${agenda.uuid}"]`);
+        if (cuposDisplay) {
+            cuposDisplay.innerHTML = `
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                <span class="cupos-numeros">Error</span>
+            `;
+            cuposDisplay.className = 'cupos-display fw-semibold text-warning';
+            cuposDisplay.setAttribute('title', 'Error cargando cupos');
+        }
+    }
+}
+
+// ✅ OBTENER HORARIOS REALES DE UNA AGENDA - MISMA FUNCIÓN QUE EN CREATE
+async function obtenerHorariosRealesAgenda(agendaUuid, fecha) {
+    try {
+        console.log('🔍 Obteniendo horarios reales para agenda:', agendaUuid);
+        
+        const response = await fetch(`/citas/agenda/${agendaUuid}/horarios?fecha=${fecha}`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const disponibles = data.data.filter(h => h.disponible).length;
+            const total = data.data.length;
+            
+            console.log('✅ Horarios reales obtenidos:', {
+                agenda_uuid: agendaUuid,
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            });
+            
+            return {
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            };
+        }
+        
+        console.warn('⚠️ No se pudieron obtener horarios reales');
+        return { disponibles: 0, total: 0, ocupados: 0 };
+        
+    } catch (error) {
+        console.error('❌ Error obteniendo horarios reales:', error);
+        return { disponibles: 0, total: 0, ocupados: 0 };
+    }
+}
+
+// ✅ FUNCIÓN REFRESH MODIFICADA - SIN BOTÓN DE REFRESCAR CUPOS
+function refreshAgendas() {
+    console.log('🔄 Refrescando agendas...');
+    loadAgendas(currentPage, currentFilters, currentPerPage);
+    checkPendingSync();
+    // ✅ NO HAY FUNCIÓN SEPARADA DE REFRESCAR CUPOS, SE HACE AUTOMÁTICAMENTE
 }
 
 // ✅ CONTROLES DE PAGINACIÓN MEJORADOS

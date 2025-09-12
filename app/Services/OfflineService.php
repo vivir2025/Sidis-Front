@@ -1950,8 +1950,6 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
     }
 }
 
-
-// ✅ CORREGIR storeCitaOffline
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
     try {
@@ -1965,15 +1963,59 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             $citaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
+        // ✅ CORREGIR FECHA ANTES DE GUARDAR - IGUAL QUE EN AGENDAS
+        if (isset($citaData['fecha'])) {
+            $fechaOriginal = $citaData['fecha'];
+            
+            // Si la fecha viene con timestamp, extraer solo la fecha
+            if (strpos($fechaOriginal, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaOriginal)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+                $citaData['fecha'] = $fechaLimpia;
+                
+                Log::info('✅ Fecha de cita corregida al guardar offline', [
+                    'cita_uuid' => $citaData['uuid'],
+                    'fecha_original' => $fechaOriginal,
+                    'fecha_corregida' => $fechaLimpia
+                ]);
+            }
+        }
+
+        // ✅ TAMBIÉN CORREGIR fecha_inicio Y fecha_final SI VIENEN CON ZONA HORARIA
+        if (isset($citaData['fecha_inicio'])) {
+            $fechaInicio = $citaData['fecha_inicio'];
+            if (strpos($fechaInicio, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaInicio)[0]; // "2025-09-12T09:00:00" -> "2025-09-12"
+                $horaLimpia = explode('T', $fechaInicio)[1]; // "2025-09-12T09:00:00" -> "09:00:00"
+                $horaLimpia = substr($horaLimpia, 0, 8); // "09:00:00.000Z" -> "09:00:00"
+                
+                // Reconstruir sin zona horaria
+                $citaData['fecha_inicio'] = $fechaLimpia . 'T' . $horaLimpia;
+            }
+        }
+
+        if (isset($citaData['fecha_final'])) {
+            $fechaFinal = $citaData['fecha_final'];
+            if (strpos($fechaFinal, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaFinal)[0]; // "2025-09-12T09:15:00" -> "2025-09-12"
+                $horaLimpia = explode('T', $fechaFinal)[1]; // "2025-09-12T09:15:00" -> "09:15:00"
+                $horaLimpia = substr($horaLimpia, 0, 8); // "09:15:00.000Z" -> "09:15:00"
+                
+                // Reconstruir sin zona horaria
+                $citaData['fecha_final'] = $fechaLimpia . 'T' . $horaLimpia;
+            }
+        }
+
         // ✅ LOGGING ESPECÍFICO DE CUPS
         if (!empty($citaData['cups_contratado_uuid'])) {
             Log::info('💾 Guardando cita CON CUPS contratado', [
                 'cita_uuid' => $citaData['uuid'],
+                'fecha_corregida' => $citaData['fecha'],
                 'cups_contratado_uuid' => $citaData['cups_contratado_uuid']
             ]);
         } else {
             Log::info('💾 Guardando cita SIN CUPS contratado', [
-                'cita_uuid' => $citaData['uuid']
+                'cita_uuid' => $citaData['uuid'],
+                'fecha_corregida' => $citaData['fecha']
             ]);
         }
 
@@ -1981,7 +2023,7 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         $offlineData = [
             'uuid' => $citaData['uuid'],
             'sede_id' => (int) $citaData['sede_id'],
-            'fecha' => $citaData['fecha'],
+            'fecha' => $citaData['fecha'], // ✅ YA ESTÁ CORREGIDA
             'fecha_inicio' => $citaData['fecha_inicio'],
             'fecha_final' => $citaData['fecha_final'],
             'fecha_deseada' => $citaData['fecha_deseada'] ?? null,
@@ -2009,12 +2051,12 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             );
         }
 
-        // También guardar en JSON como backup
+        // También guardar en JSON como backup (con fecha corregida)
         $this->storeData('citas/' . $citaData['uuid'] . '.json', $citaData);
 
-        Log::debug('✅ Cita almacenada offline', [
+        Log::debug('✅ Cita almacenada offline con fecha corregida', [
             'uuid' => $citaData['uuid'],
-            'fecha' => $citaData['fecha'],
+            'fecha_final' => $citaData['fecha'], // ✅ MOSTRAR FECHA CORREGIDA
             'paciente_uuid' => $citaData['paciente_uuid'],
             'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? 'null'
         ]);
@@ -2026,7 +2068,6 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         ]);
     }
 }
-
 
 public function getAgendasOffline(int $sedeId, array $filters = []): array
 {
@@ -2091,10 +2132,21 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                 ->where('sede_id', $sedeId)
                 ->whereNull('deleted_at');
 
-            // Aplicar filtros
+            // ✅ APLICAR FILTROS CON FECHA LIMPIA - IGUAL QUE EN AGENDAS
             if (!empty($filters['fecha'])) {
-                $query->where('fecha', $filters['fecha']);
+                // Limpiar fecha del filtro igual que en agendas
+                $fechaFiltro = $filters['fecha'];
+                if (strpos($fechaFiltro, 'T') !== false) {
+                    $fechaFiltro = explode('T', $fechaFiltro)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+                }
+                $query->where('fecha', $fechaFiltro);
+                
+                Log::info('🔍 Filtro de fecha aplicado en citas', [
+                    'fecha_original' => $filters['fecha'],
+                    'fecha_limpia' => $fechaFiltro
+                ]);
             }
+            
             if (!empty($filters['estado'])) {
                 $query->where('estado', $filters['estado']);
             }
@@ -2131,13 +2183,31 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
             })->toArray();
             
         } else {
-            // Fallback a JSON
+            // Fallback a JSON con fecha limpia
             $citasPath = $this->getStoragePath() . '/citas';
             if (is_dir($citasPath)) {
                 $files = glob($citasPath . '/*.json');
                 foreach ($files as $file) {
                     $data = json_decode(file_get_contents($file), true);
                     if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
+                        
+                        // ✅ APLICAR FILTRO DE FECHA LIMPIA
+                        if (!empty($filters['fecha'])) {
+                            $fechaFiltro = $filters['fecha'];
+                            if (strpos($fechaFiltro, 'T') !== false) {
+                                $fechaFiltro = explode('T', $fechaFiltro)[0];
+                            }
+                            
+                            $fechaCita = $data['fecha'];
+                            if (strpos($fechaCita, 'T') !== false) {
+                                $fechaCita = explode('T', $fechaCita)[0];
+                            }
+                            
+                            if ($fechaCita !== $fechaFiltro) {
+                                continue; // Saltar esta cita si no coincide la fecha
+                            }
+                        }
+                        
                         $citas[] = $data;
                     }
                 }
