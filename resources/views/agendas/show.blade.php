@@ -479,12 +479,12 @@
 }
 </style>
 @endpush
-
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 // Variables globales
 const agendaUuid = '{{ $agenda["uuid"] }}';
+const agendaFecha = '{{ $agenda["fecha"] ?? "" }}';
 let cuposChart = null;
 let citasData = [];
 
@@ -495,8 +495,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Formatear fecha y día de la semana
     formatearFechaAgenda();
     
-    // Cargar datos de cupos y citas
-    loadAgendaData();
+    // ✅ CARGAR CUPOS REALES USANDO EL MISMO MÉTODO QUE EN INDEX
+    cargarCuposRealesAgenda();
     
     // Inicializar gráfico
     initCuposChart();
@@ -504,6 +504,99 @@ document.addEventListener('DOMContentLoaded', function() {
     // Cargar citas
     loadCitas();
 });
+
+// ✅ NUEVA FUNCIÓN: Cargar cupos reales usando el mismo método que en index
+async function cargarCuposRealesAgenda() {
+    try {
+        console.log('🔍 Cargando cupos reales para agenda:', agendaUuid);
+        
+        // ✅ USAR LA MISMA FUNCIÓN QUE EN EL INDEX Y CREATE
+        const horariosReales = await obtenerHorariosRealesAgenda(agendaUuid, agendaFecha);
+        
+        const cuposDisponibles = horariosReales.disponibles;
+        const cuposTotales = horariosReales.total;
+        const cuposOcupados = horariosReales.ocupados;
+        
+        console.log('✅ Cupos reales obtenidos:', {
+            disponibles: cuposDisponibles,
+            total: cuposTotales,
+            ocupados: cuposOcupados
+        });
+        
+        // ✅ CREAR OBJETO DE DATOS COMPATIBLE
+        const cuposData = {
+            total_cupos: cuposTotales,
+            citas_count: cuposOcupados,
+            cupos_disponibles: cuposDisponibles
+        };
+        
+        // Actualizar displays
+        updateCuposDisplay(cuposData);
+        updateCuposChart(cuposData);
+        
+    } catch (error) {
+        console.error('❌ Error cargando cupos reales:', error);
+        
+        // ✅ FALLBACK A DATOS DEL BACKEND COMO ANTES
+        const defaultData = {
+            citas_count: {{ $agenda['citas_count'] ?? 0 }},
+            total_cupos: {{ $agenda['total_cupos'] ?? 0 }},
+            cupos_disponibles: {{ $agenda['cupos_disponibles'] ?? 0 }}
+        };
+        
+        console.log('📊 Usando datos de fallback:', defaultData);
+        updateCuposDisplay(defaultData);
+        updateCuposChart(defaultData);
+        
+        if (defaultData.total_cupos > 0) {
+            console.log('✅ Usando datos locales válidos');
+        } else {
+            showAlert('warning', 'No se pudieron cargar los datos de cupos actualizados.', 'Advertencia');
+        }
+    }
+}
+
+// ✅ FUNCIÓN REUTILIZADA: Obtener horarios reales (misma que en index y create)
+async function obtenerHorariosRealesAgenda(agendaUuid, fecha) {
+    try {
+        console.log('🔍 Obteniendo horarios reales para agenda:', agendaUuid, 'fecha:', fecha);
+        
+        const response = await fetch(`/citas/agenda/${agendaUuid}/horarios?fecha=${fecha}`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const disponibles = data.data.filter(h => h.disponible).length;
+            const total = data.data.length;
+            
+            console.log('✅ Horarios reales obtenidos:', {
+                agenda_uuid: agendaUuid,
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            });
+            
+            return {
+                disponibles,
+                total,
+                ocupados: total - disponibles
+            };
+        }
+        
+        console.warn('⚠️ No se pudieron obtener horarios reales');
+        return { disponibles: 0, total: 0, ocupados: 0 };
+        
+    } catch (error) {
+        console.error('❌ Error obteniendo horarios reales:', error);
+        return { disponibles: 0, total: 0, ocupados: 0 };
+    }
+}
 
 // Formatear fecha de la agenda
 function formatearFechaAgenda() {
@@ -539,63 +632,17 @@ function formatearFechaAgenda() {
     }
 }
 
-async function loadAgendaData() {
-    try {
-        console.log('📊 Cargando datos de cupos para agenda:', agendaUuid);
-        
-        // ✅ USAR RUTA WEB EN LUGAR DE API
-        const response = await fetch(`/agendas/${agendaUuid}/citas/count`, {
-            method: 'GET',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            }
-        });
-        
-        console.log('📊 Respuesta de cupos - Status:', response.status);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log('📊 Datos de cupos recibidos:', data);
-        
-        if (data.success) {
-            updateCuposDisplay(data.data);
-            updateCuposChart(data.data);
-        } else {
-            throw new Error(data.message || 'Error desconocido en respuesta de cupos');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error cargando datos de cupos:', error);
-        
-        // ✅ USAR DATOS CALCULADOS DEL BACKEND COMO FALLBACK
-        const defaultData = {
-            citas_count: {{ $agenda['citas_count'] ?? 0 }},
-            total_cupos: {{ $agenda['total_cupos'] ?? 0 }},
-            cupos_disponibles: {{ $agenda['cupos_disponibles'] ?? 0 }}
-        };
-        
-        console.log('📊 Usando datos de fallback:', defaultData);
-        updateCuposDisplay(defaultData);
-        updateCuposChart(defaultData);
-        
-        // ✅ NO MOSTRAR ADVERTENCIA SI HAY DATOS LOCALES VÁLIDOS
-        if (defaultData.total_cupos > 0) {
-            console.log('✅ Usando datos locales válidos');
-        } else {
-            showAlert('warning', 'No se pudieron cargar los datos de cupos.', 'Advertencia');
-        }
-    }
-}
-// Actualizar display de cupos
+// ✅ FUNCIÓN MODIFICADA: Actualizar display de cupos con datos reales
 function updateCuposDisplay(data) {
     const totalCupos = data.total_cupos || 0;
     const cuposOcupados = data.citas_count || 0;
     const cuposDisponibles = data.cupos_disponibles || (totalCupos - cuposOcupados);
+    
+    console.log('📊 Actualizando display de cupos:', {
+        total: totalCupos,
+        ocupados: cuposOcupados,
+        disponibles: cuposDisponibles
+    });
     
     // Actualizar números
     document.getElementById('totalCupos').textContent = totalCupos;
@@ -614,7 +661,22 @@ function updateCuposDisplay(data) {
     document.getElementById('progressOcupados').style.width = porcentajeOcupacion + '%';
     document.getElementById('progressDisponibles').style.width = porcentajeDisponibilidad + '%';
     
-    console.log('✅ Cupos actualizados:', {
+    // ✅ ACTUALIZAR COLORES SEGÚN DISPONIBILIDAD
+    const cuposDisponiblesElement = document.getElementById('cuposDisponiblesNum');
+    const cuposLibresElement = document.getElementById('cuposLibres');
+    
+    if (cuposDisponibles <= 0) {
+        cuposDisponiblesElement.className = 'fw-bold fs-4 text-danger';
+        cuposLibresElement.className = 'fw-bold text-danger fs-5';
+    } else if (cuposDisponibles <= 3) {
+        cuposDisponiblesElement.className = 'fw-bold fs-4 text-warning';
+        cuposLibresElement.className = 'fw-bold text-warning fs-5';
+    } else {
+        cuposDisponiblesElement.className = 'fw-bold fs-4 text-success';
+        cuposLibresElement.className = 'fw-bold text-success fs-5';
+    }
+    
+    console.log('✅ Display de cupos actualizado:', {
         total: totalCupos,
         ocupados: cuposOcupados,
         disponibles: cuposDisponibles,
@@ -672,6 +734,11 @@ function updateCuposChart(data) {
     
     cuposChart.data.datasets[0].data = [porcentajeOcupacion, porcentajeDisponibilidad];
     cuposChart.update();
+    
+    console.log('📊 Gráfico actualizado:', {
+        ocupacion: porcentajeOcupacion + '%',
+        disponibilidad: porcentajeDisponibilidad + '%'
+    });
 }
 
 // Cargar citas de la agenda
@@ -688,7 +755,6 @@ async function loadCitas() {
         
         console.log('📋 Cargando citas para agenda:', agendaUuid);
         
-        // ✅ USAR RUTA WEB EN LUGAR DE API
         const response = await fetch(`/agendas/${agendaUuid}/citas`, {
             method: 'GET',
             headers: {
@@ -717,7 +783,6 @@ async function loadCitas() {
     } catch (error) {
         console.error('❌ Error cargando citas:', error);
         
-        // ✅ USAR CITAS DESDE DATOS LOCALES
         try {
             console.log('🔄 Usando citas desde datos locales...');
             
@@ -727,7 +792,6 @@ async function loadCitas() {
                 citasData = citasLocales;
                 displayCitas(citasData);
             @else
-                // No hay citas locales disponibles
                 console.log('📋 No hay citas locales, mostrando estado vacío');
                 showCitasEmpty();
             @endif
@@ -738,12 +802,22 @@ async function loadCitas() {
         }
         
     } finally {
-        // Ocultar loading
         if (loadingElement) loadingElement.style.display = 'none';
     }
 }
 
-// ✅ NUEVA FUNCIÓN: Mostrar estado vacío sin error
+// ✅ FUNCIÓN MODIFICADA: Actualizar datos con cupos reales
+function refreshCitas() {
+    console.log('🔄 Refrescando datos de agenda...');
+    
+    // ✅ RECARGAR CUPOS REALES
+    cargarCuposRealesAgenda();
+    
+    // Recargar citas
+    loadCitas();
+}
+
+// Mostrar estado vacío sin error
 function showCitasEmpty() {
     const container = document.getElementById('citasContainer');
     const vacio = document.getElementById('citasVacio');
@@ -751,7 +825,6 @@ function showCitasEmpty() {
     if (container) container.style.display = 'none';
     if (vacio) vacio.style.display = 'block';
 }
-
 
 // Mostrar citas en el contenedor
 function displayCitas(citas) {
@@ -918,12 +991,6 @@ function showCitasError(message) {
     vacio.style.display = 'none';
 }
 
-// Actualizar datos (botón refresh)
-function refreshCitas() {
-    loadCitas();
-    loadAgendaData();
-}
-
 // Acciones de citas
 function verCita(uuid) {
     window.location.href = `/citas/${uuid}`;
@@ -989,10 +1056,8 @@ function exportarAgenda() {
         denyButtonColor: '#6c757d'
     }).then((result) => {
         if (result.isConfirmed) {
-            // Exportar PDF
             window.open(`/agendas/${agendaUuid}/export/pdf`, '_blank');
         } else if (result.dismiss === Swal.DismissReason.cancel) {
-            // Exportar Excel
             window.open(`/agendas/${agendaUuid}/export/excel`, '_blank');
         }
     });
@@ -1015,6 +1080,25 @@ function showAlert(type, message, title = '') {
         showConfirmButton: type !== 'success'
     });
 }
+
+// ✅ FUNCIONES DE DEBUG PARA DESARROLLO
+window.debugAgenda = function() {
+    console.log('=== 🔍 DEBUG AGENDA SHOW ===');
+    console.log('Agenda UUID:', agendaUuid);
+    console.log('Agenda Fecha:', agendaFecha);
+    console.log('Citas cargadas:', citasData.length);
+    console.log('=== FIN DEBUG ===');
+};
+
+window.refreshCuposManual = function() {
+    console.log('🔄 Refresh manual de cupos...');
+    cargarCuposRealesAgenda();
+};
+
+console.log('✅ Dashboard de agenda inicializado');
+console.log('🔧 Funciones de debug disponibles:');
+console.log('  - debugAgenda() - Información general');
+console.log('  - refreshCuposManual() - Refrescar cupos manualmente');
 </script>
 @endpush
 @endsection
