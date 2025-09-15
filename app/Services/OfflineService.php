@@ -1963,13 +1963,12 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             $citaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
-        // ✅ CORREGIR FECHA ANTES DE GUARDAR - IGUAL QUE EN AGENDAS
+        // ✅ CORREGIR FECHA ANTES DE GUARDAR
         if (isset($citaData['fecha'])) {
             $fechaOriginal = $citaData['fecha'];
             
-            // Si la fecha viene con timestamp, extraer solo la fecha
             if (strpos($fechaOriginal, 'T') !== false) {
-                $fechaLimpia = explode('T', $fechaOriginal)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+                $fechaLimpia = explode('T', $fechaOriginal)[0];
                 $citaData['fecha'] = $fechaLimpia;
                 
                 Log::info('✅ Fecha de cita corregida al guardar offline', [
@@ -1980,15 +1979,14 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             }
         }
 
-        // ✅ TAMBIÉN CORREGIR fecha_inicio Y fecha_final SI VIENEN CON ZONA HORARIA
+        // ✅ CORREGIR fecha_inicio Y fecha_final
         if (isset($citaData['fecha_inicio'])) {
             $fechaInicio = $citaData['fecha_inicio'];
             if (strpos($fechaInicio, 'T') !== false) {
-                $fechaLimpia = explode('T', $fechaInicio)[0]; // "2025-09-12T09:00:00" -> "2025-09-12"
-                $horaLimpia = explode('T', $fechaInicio)[1]; // "2025-09-12T09:00:00" -> "09:00:00"
-                $horaLimpia = substr($horaLimpia, 0, 8); // "09:00:00.000Z" -> "09:00:00"
+                $fechaLimpia = explode('T', $fechaInicio)[0];
+                $horaLimpia = explode('T', $fechaInicio)[1];
+                $horaLimpia = substr($horaLimpia, 0, 8);
                 
-                // Reconstruir sin zona horaria
                 $citaData['fecha_inicio'] = $fechaLimpia . 'T' . $horaLimpia;
             }
         }
@@ -1996,11 +1994,10 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         if (isset($citaData['fecha_final'])) {
             $fechaFinal = $citaData['fecha_final'];
             if (strpos($fechaFinal, 'T') !== false) {
-                $fechaLimpia = explode('T', $fechaFinal)[0]; // "2025-09-12T09:15:00" -> "2025-09-12"
-                $horaLimpia = explode('T', $fechaFinal)[1]; // "2025-09-12T09:15:00" -> "09:15:00"
-                $horaLimpia = substr($horaLimpia, 0, 8); // "09:15:00.000Z" -> "09:15:00"
+                $fechaLimpia = explode('T', $fechaFinal)[0];
+                $horaLimpia = explode('T', $fechaFinal)[1];
+                $horaLimpia = substr($horaLimpia, 0, 8);
                 
-                // Reconstruir sin zona horaria
                 $citaData['fecha_final'] = $fechaLimpia . 'T' . $horaLimpia;
             }
         }
@@ -2023,7 +2020,7 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         $offlineData = [
             'uuid' => $citaData['uuid'],
             'sede_id' => (int) $citaData['sede_id'],
-            'fecha' => $citaData['fecha'], // ✅ YA ESTÁ CORREGIDA
+            'fecha' => $citaData['fecha'],
             'fecha_inicio' => $citaData['fecha_inicio'],
             'fecha_final' => $citaData['fecha_final'],
             'fecha_deseada' => $citaData['fecha_deseada'] ?? null,
@@ -2035,8 +2032,8 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             'paciente_uuid' => $citaData['paciente_uuid'] ?? null,
             'agenda_id' => null,
             'agenda_uuid' => $citaData['agenda_uuid'] ?? null,
-            'cups_contratado_id' => null, // ✅ SIEMPRE NULL
-            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? null, // ✅ ESTE ES EL IMPORTANTE
+            'cups_contratado_id' => null,
+            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? null,
             'usuario_creo_cita_id' => (int) ($citaData['usuario_creo_cita_id'] ?? 1),
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'created_at' => $citaData['created_at'] ?? now()->toISOString(),
@@ -2051,14 +2048,16 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
             );
         }
 
-        // También guardar en JSON como backup (con fecha corregida)
+        // ✅ GUARDAR EN JSON COMPLETO (CON DATOS ENRIQUECIDOS)
         $this->storeData('citas/' . $citaData['uuid'] . '.json', $citaData);
 
         Log::debug('✅ Cita almacenada offline con fecha corregida', [
             'uuid' => $citaData['uuid'],
-            'fecha_final' => $citaData['fecha'], // ✅ MOSTRAR FECHA CORREGIDA
+            'fecha_final' => $citaData['fecha'],
             'paciente_uuid' => $citaData['paciente_uuid'],
-            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? 'null'
+            'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? 'null',
+            'has_agenda_data' => isset($citaData['agenda']),
+            'agenda_etiqueta' => $citaData['agenda']['etiqueta'] ?? 'No disponible'
         ]);
 
     } catch (\Exception $e) {
@@ -2125,23 +2124,29 @@ public function getAgendasOffline(int $sedeId, array $filters = []): array
 public function getCitasOffline(int $sedeId, array $filters = []): array
 {
     try {
+        Log::info('🔍 getCitasOffline iniciado', [
+            'sede_id' => $sedeId,
+            'filters' => $filters
+        ]);
+
         $citas = [];
 
         if ($this->isSQLiteAvailable()) {
+            Log::info('💾 Usando SQLite para obtener citas');
+            
             $query = DB::connection('offline')->table('citas')
                 ->where('sede_id', $sedeId)
                 ->whereNull('deleted_at');
 
-            // ✅ SOLO APLICAR FILTRO DE FECHA SI VIENE EN LOS FILTROS
+            // ✅ APLICAR FILTROS CON LOGGING DETALLADO
             if (!empty($filters['fecha'])) {
-                // Limpiar fecha del filtro igual que en agendas
                 $fechaFiltro = $filters['fecha'];
                 if (strpos($fechaFiltro, 'T') !== false) {
-                    $fechaFiltro = explode('T', $fechaFiltro)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+                    $fechaFiltro = explode('T', $fechaFiltro)[0];
                 }
                 $query->where('fecha', $fechaFiltro);
                 
-                Log::info('🔍 Filtro de fecha aplicado en citas', [
+                Log::info('📅 Filtro de fecha aplicado', [
                     'fecha_original' => $filters['fecha'],
                     'fecha_limpia' => $fechaFiltro
                 ]);
@@ -2149,29 +2154,44 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
             
             if (!empty($filters['estado'])) {
                 $query->where('estado', $filters['estado']);
+                Log::info('🏷️ Filtro de estado aplicado', ['estado' => $filters['estado']]);
             }
-            if (!empty($filters['paciente_uuid'])) {
-                $query->where('paciente_uuid', $filters['paciente_uuid']);
-            }
+            
             if (!empty($filters['agenda_uuid'])) {
                 $query->where('agenda_uuid', $filters['agenda_uuid']);
+                Log::info('📋 Filtro de agenda aplicado', ['agenda_uuid' => $filters['agenda_uuid']]);
             }
 
-            $results = $query->orderBy('fecha_inicio', 'desc')->get();
+            // ✅ OBTENER RESULTADOS CON ORDEN
+            $results = $query->orderBy('fecha', 'desc')
+                ->orderBy('fecha_inicio', 'desc')
+                ->get();
             
-            // ✅ CONVERTIR OBJETOS stdClass A ARRAYS
+            Log::info('📊 Resultados SQLite obtenidos', [
+                'total_encontradas' => $results->count(),
+                'filtros_aplicados' => array_keys(array_filter($filters))
+            ]);
+
+            // ✅ CONVERTIR Y ENRIQUECER DATOS
             $citas = $results->map(function($cita) {
                 $citaArray = (array) $cita;
                 
-                // ✅ AGREGAR INFORMACIÓN DEL PACIENTE SI ESTÁ DISPONIBLE
+                // ✅ AGREGAR INFORMACIÓN DEL PACIENTE
                 if (!empty($citaArray['paciente_uuid'])) {
                     $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
                     if ($paciente) {
                         $citaArray['paciente'] = $paciente;
+                    } else {
+                        // Paciente por defecto si no se encuentra
+                        $citaArray['paciente'] = [
+                            'uuid' => $citaArray['paciente_uuid'],
+                            'nombre_completo' => 'Paciente no encontrado',
+                            'documento' => 'N/A'
+                        ];
                     }
                 }
                 
-                // ✅ AGREGAR INFORMACIÓN DE LA AGENDA SI ESTÁ DISPONIBLE
+                // ✅ AGREGAR INFORMACIÓN DE LA AGENDA
                 if (!empty($citaArray['agenda_uuid'])) {
                     $agenda = $this->getAgendaOffline($citaArray['agenda_uuid']);
                     if ($agenda) {
@@ -2182,60 +2202,75 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                 return $citaArray;
             })->toArray();
             
-            Log::info('✅ Citas obtenidas desde SQLite offline', [
-                'total_encontradas' => count($citas),
-                'filtros_aplicados' => $filters
-            ]);
-            
         } else {
-            // Fallback a JSON
+            Log::info('📁 Usando archivos JSON como fallback');
+            
+            // ✅ FALLBACK A JSON MEJORADO
             $citasPath = $this->getStoragePath() . '/citas';
             if (is_dir($citasPath)) {
                 $files = glob($citasPath . '/*.json');
+                Log::info('📂 Archivos de citas encontrados', ['count' => count($files)]);
+                
                 foreach ($files as $file) {
                     $data = json_decode(file_get_contents($file), true);
-                    if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
-                        
-                        // ✅ SOLO APLICAR FILTRO DE FECHA SI VIENE EN LOS FILTROS
-                        if (!empty($filters['fecha'])) {
-                            $fechaFiltro = $filters['fecha'];
-                            if (strpos($fechaFiltro, 'T') !== false) {
-                                $fechaFiltro = explode('T', $fechaFiltro)[0];
-                            }
-                            
-                            $fechaCita = $data['fecha'];
-                            if (strpos($fechaCita, 'T') !== false) {
-                                $fechaCita = explode('T', $fechaCita)[0];
-                            }
-                            
-                            if ($fechaCita !== $fechaFiltro) {
-                                continue; // Saltar esta cita si no coincide la fecha
-                            }
+                    if (!$data || $data['sede_id'] != $sedeId || $data['deleted_at']) {
+                        continue;
+                    }
+                    
+                    // ✅ APLICAR FILTROS EN JSON
+                    if (!empty($filters['fecha'])) {
+                        $fechaFiltro = $filters['fecha'];
+                        if (strpos($fechaFiltro, 'T') !== false) {
+                            $fechaFiltro = explode('T', $fechaFiltro)[0];
                         }
                         
-                        // Aplicar otros filtros
-                        if (!empty($filters['agenda_uuid']) && $data['agenda_uuid'] !== $filters['agenda_uuid']) {
+                        $fechaCita = $data['fecha'];
+                        if (strpos($fechaCita, 'T') !== false) {
+                            $fechaCita = explode('T', $fechaCita)[0];
+                        }
+                        
+                        if ($fechaCita !== $fechaFiltro) {
                             continue;
                         }
-                        
-                        $citas[] = $data;
                     }
+                    
+                    if (!empty($filters['agenda_uuid']) && $data['agenda_uuid'] !== $filters['agenda_uuid']) {
+                        continue;
+                    }
+                    
+                    if (!empty($filters['estado']) && $data['estado'] !== $filters['estado']) {
+                        continue;
+                    }
+                    
+                    $citas[] = $data;
                 }
+                
+                // Ordenar por fecha
+                usort($citas, function($a, $b) {
+                    return strtotime($b['fecha_inicio']) - strtotime($a['fecha_inicio']);
+                });
             }
-            
-            Log::info('✅ Citas obtenidas desde JSON offline', [
-                'total_encontradas' => count($citas),
-                'filtros_aplicados' => $filters
-            ]);
         }
+
+        Log::info('✅ getCitasOffline completado', [
+            'sede_id' => $sedeId,
+            'total_citas' => count($citas),
+            'filtros_aplicados' => $filters,
+            'primera_cita' => !empty($citas) ? [
+                'uuid' => $citas[0]['uuid'] ?? 'N/A',
+                'fecha' => $citas[0]['fecha'] ?? 'N/A',
+                'paciente' => $citas[0]['paciente']['nombre_completo'] ?? 'N/A'
+            ] : 'No hay citas'
+        ]);
 
         return $citas;
 
     } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo citas offline', [
+        Log::error('❌ Error en getCitasOffline', [
             'error' => $e->getMessage(),
             'sede_id' => $sedeId,
-            'filters' => $filters
+            'filters' => $filters,
+            'trace' => $e->getTraceAsString()
         ]);
         return [];
     }
@@ -2246,22 +2281,7 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
 public function getAgendaOffline(string $uuid): ?array
 {
     try {
-        // ✅ USAR $this->storagePath en lugar de $this->offlinePath
-        $path = $this->storagePath . "/agendas/{$uuid}.json";
-        
-        if (file_exists($path)) {
-            $content = file_get_contents($path);
-            $agenda = json_decode($content, true);
-            
-            Log::info('✅ OfflineService: Agenda encontrada en JSON', [
-                'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
-                'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA'
-            ]);
-            
-            return $agenda;
-        }
-
-        // ✅ TAMBIÉN BUSCAR EN SQLite
+        // ✅ BUSCAR EN SQLite PRIMERO
         if ($this->isSQLiteAvailable()) {
             $agenda = DB::connection('offline')->table('agendas')
                 ->where('uuid', $uuid)
@@ -2270,12 +2290,40 @@ public function getAgendaOffline(string $uuid): ?array
             
             if ($agenda) {
                 $agendaArray = (array) $agenda;
+                
+                // ✅ ASEGURAR QUE LA ETIQUETA ESTÉ DISPONIBLE
+                if (empty($agendaArray['etiqueta'])) {
+                    $agendaArray['etiqueta'] = 'Sin etiqueta';
+                }
+                
                 Log::info('✅ OfflineService: Agenda encontrada en SQLite', [
                     'agenda_uuid' => $agendaArray['uuid'],
-                    'agenda_fecha' => $agendaArray['fecha']
+                    'agenda_fecha' => $agendaArray['fecha'],
+                    'etiqueta' => $agendaArray['etiqueta'] // ✅ LOGGING DE ETIQUETA
                 ]);
                 return $agendaArray;
             }
+        }
+
+        // ✅ FALLBACK A JSON
+        $path = $this->storagePath . "/agendas/{$uuid}.json";
+        
+        if (file_exists($path)) {
+            $content = file_get_contents($path);
+            $agenda = json_decode($content, true);
+            
+            // ✅ ASEGURAR QUE LA ETIQUETA ESTÉ DISPONIBLE
+            if (empty($agenda['etiqueta'])) {
+                $agenda['etiqueta'] = 'Sin etiqueta';
+            }
+            
+            Log::info('✅ OfflineService: Agenda encontrada en JSON', [
+                'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
+                'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA',
+                'etiqueta' => $agenda['etiqueta'] // ✅ LOGGING DE ETIQUETA
+            ]);
+            
+            return $agenda;
         }
 
         Log::info('⚠️ OfflineService: Agenda no encontrada', ['uuid' => $uuid]);
@@ -2292,21 +2340,224 @@ public function getAgendaOffline(string $uuid): ?array
 public function getCitaOffline(string $uuid): ?array
 {
     try {
+        Log::info('🔍 Obteniendo cita offline con datos relacionados', [
+            'uuid' => $uuid
+        ]);
+
+        $cita = null;
+
+        // ✅ BUSCAR EN SQLite PRIMERO
         if ($this->isSQLiteAvailable()) {
-            $cita = DB::connection('offline')->table('citas')
+            $citaRaw = DB::connection('offline')->table('citas')
                 ->where('uuid', $uuid)
                 ->whereNull('deleted_at')
                 ->first();
             
-            return $cita ? (array) $cita : null;
+            if ($citaRaw) {
+                $cita = (array) $citaRaw;
+                Log::info('✅ Cita encontrada en SQLite', [
+                    'uuid' => $cita['uuid'],
+                    'paciente_uuid' => $cita['paciente_uuid'] ?? 'null',
+                    'agenda_uuid' => $cita['agenda_uuid'] ?? 'null'
+                ]);
+            }
         }
 
-        return $this->getData('citas/' . $uuid . '.json');
+        // ✅ FALLBACK A JSON SI NO SE ENCUENTRA EN SQLite
+        if (!$cita) {
+            $cita = $this->getData('citas/' . $uuid . '.json');
+            
+            if ($cita) {
+                Log::info('✅ Cita encontrada en JSON', [
+                    'uuid' => $cita['uuid']
+                ]);
+            }
+        }
+
+        if (!$cita) {
+            Log::warning('⚠️ Cita no encontrada offline', ['uuid' => $uuid]);
+            return null;
+        }
+
+        // ✅ ENRIQUECER CON DATOS DEL PACIENTE
+        if (!empty($cita['paciente_uuid'])) {
+            $paciente = $this->getPacienteOffline($cita['paciente_uuid']);
+            if ($paciente) {
+                $cita['paciente'] = $paciente;
+                Log::info('✅ Datos del paciente agregados', [
+                    'paciente_uuid' => $paciente['uuid'],
+                    'paciente_nombre' => $paciente['nombre_completo'] ?? 'N/A'
+                ]);
+            } else {
+                // ✅ PACIENTE POR DEFECTO SI NO SE ENCUENTRA
+                $cita['paciente'] = [
+                    'uuid' => $cita['paciente_uuid'],
+                    'nombre_completo' => 'Paciente no encontrado',
+                    'documento' => 'N/A',
+                    'telefono' => 'N/A'
+                ];
+                Log::warning('⚠️ Paciente no encontrado, usando datos por defecto', [
+                    'paciente_uuid' => $cita['paciente_uuid']
+                ]);
+            }
+        }
+
+        // ✅ ENRIQUECER CON DATOS DE LA AGENDA
+        if (!empty($cita['agenda_uuid'])) {
+            $agenda = $this->getAgendaOffline($cita['agenda_uuid']);
+            if ($agenda) {
+                $cita['agenda'] = $agenda;
+                Log::info('✅ Datos de la agenda agregados', [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'consultorio' => $agenda['consultorio'] ?? 'N/A',
+                    'modalidad' => $agenda['modalidad'] ?? 'N/A'
+                ]);
+            } else {
+                // ✅ AGENDA POR DEFECTO SI NO SE ENCUENTRA
+                $cita['agenda'] = [
+                    'uuid' => $cita['agenda_uuid'],
+                    'consultorio' => 'Consultorio no disponible',
+                    'modalidad' => 'No disponible',
+                    'etiqueta' => 'No disponible'
+                ];
+                Log::warning('⚠️ Agenda no encontrada, usando datos por defecto', [
+                    'agenda_uuid' => $cita['agenda_uuid']
+                ]);
+            }
+        }
+
+      if (!empty($cita['usuario_creo_cita_id'])) {
+    Log::info('🔍 Buscando usuario creador', [
+        'usuario_creo_cita_id' => $cita['usuario_creo_cita_id']
+    ]);
+    
+    // Buscar en usuarios offline
+    $usuario = $this->getUsuarioOffline($cita['usuario_creo_cita_id']);
+    if ($usuario) {
+        $cita['usuario_creador'] = [
+            'id' => $usuario['id'] ?? null,
+            'uuid' => $usuario['uuid'] ?? null,
+            'nombre_completo' => $usuario['nombre_completo'] ?? 'Usuario del sistema',
+            'documento' => $usuario['documento'] ?? null,
+            'especialidad' => [
+                'nombre' => $usuario['especialidad_nombre'] ?? 'Sin especialidad'
+            ]
+        ];
+        
+        Log::info('✅ Usuario creador encontrado', [
+            'nombre_completo' => $usuario['nombre_completo']
+        ]);
+    } else {
+        $cita['usuario_creador'] = [
+            'id' => $cita['usuario_creo_cita_id'],
+            'nombre_completo' => 'Usuario del sistema'
+        ];
+        
+        Log::warning('⚠️ Usuario creador no encontrado, usando por defecto');
+    }
+} else {
+    Log::info('ℹ️ No hay usuario_creo_cita_id en la cita');
+}
+
+        // ✅ ENRIQUECER CON DATOS DE LA SEDE
+        if (!empty($cita['sede_id'])) {
+            $cita['sede'] = [
+                'id' => $cita['sede_id'],
+                'nombre' => 'Sede principal' // Por defecto
+            ];
+        }
+
+        // ✅ AGREGAR ESTADO DE SINCRONIZACIÓN
+        $cita['offline'] = ($cita['sync_status'] ?? 'synced') === 'pending';
+
+        Log::info('✅ Cita offline enriquecida completamente', [
+            'uuid' => $cita['uuid'],
+            'has_paciente' => isset($cita['paciente']),
+            'has_agenda' => isset($cita['agenda']),
+            'has_usuario_creador' => isset($cita['usuario_creador']),
+            'sync_status' => $cita['sync_status'] ?? 'synced'
+        ]);
+
+        return $cita;
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo cita offline', [
+            'uuid' => $uuid,
             'error' => $e->getMessage(),
-            'uuid' => $uuid
+            'trace' => $e->getTraceAsString()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener usuario offline por ID
+ */
+private function getUsuarioOffline($usuarioId): ?array
+{
+    try {
+        Log::info('🔍 Buscando usuario offline', [
+            'usuario_id' => $usuarioId,
+            'tipo' => gettype($usuarioId)
+        ]);
+
+        if ($this->isSQLiteAvailable()) {
+            // ✅ BUSCAR POR ID PRIMERO
+            $usuario = DB::connection('offline')->table('usuarios')
+                ->where('id', $usuarioId)
+                ->first();
+            
+            if ($usuario) {
+                $usuarioArray = (array) $usuario;
+                Log::info('✅ Usuario encontrado en SQLite por ID', [
+                    'usuario_id' => $usuarioArray['id'],
+                    'nombre_completo' => $usuarioArray['nombre_completo']
+                ]);
+                return $usuarioArray;
+            }
+
+            // ✅ SI NO SE ENCUENTRA POR ID, BUSCAR POR UUID (FALLBACK)
+            $usuario = DB::connection('offline')->table('usuarios')
+                ->where('uuid', $usuarioId)
+                ->first();
+            
+            if ($usuario) {
+                $usuarioArray = (array) $usuario;
+                Log::info('✅ Usuario encontrado en SQLite por UUID', [
+                    'usuario_uuid' => $usuarioArray['uuid'],
+                    'nombre_completo' => $usuarioArray['nombre_completo']
+                ]);
+                return $usuarioArray;
+            }
+        }
+
+        // ✅ FALLBACK A DATOS MAESTROS JSON
+        $masterData = $this->getData('master_data.json', []);
+        if (isset($masterData['usuarios_con_especialidad'])) {
+            foreach ($masterData['usuarios_con_especialidad'] as $usuario) {
+                // Buscar por ID o UUID
+                if (($usuario['id'] ?? null) == $usuarioId || 
+                    ($usuario['uuid'] ?? null) === $usuarioId) {
+                    
+                    Log::info('✅ Usuario encontrado en JSON', [
+                        'usuario_id' => $usuario['id'] ?? 'N/A',
+                        'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
+                        'nombre_completo' => $usuario['nombre_completo']
+                    ]);
+                    return $usuario;
+                }
+            }
+        }
+
+        Log::warning('⚠️ Usuario no encontrado offline', [
+            'usuario_id' => $usuarioId
+        ]);
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo usuario offline', [
+            'usuario_id' => $usuarioId,
+            'error' => $e->getMessage()
         ]);
         return null;
     }

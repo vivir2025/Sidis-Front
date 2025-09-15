@@ -122,12 +122,33 @@ class CitaService
             }
         }
 
-        // ✅ MODO OFFLINE - INCLUIR sync_status Y FILTROS
-        $citas = $this->offlineService->getCitasOffline($sedeId, $filters);
+        $cleanFilters = $this->cleanFiltersForOffline($filters);
+
+         // ✅ MODO OFFLINE MEJORADO
+        Log::info('📱 Trabajando en modo offline', [
+            'sede_id' => $sedeId,
+            'filters_originales' => $filters,
+            'filters_limpios' => $cleanFilters
+        ]);
+
+        $citas = $this->offlineService->getCitasOffline($sedeId, $cleanFilters);
         
+        // ✅ APLICAR FILTROS ADICIONALES EN MEMORIA SI ES NECESARIO
+        if (!empty($filters['paciente_documento'])) {
+            $citas = array_filter($citas, function($cita) use ($filters) {
+                return isset($cita['paciente']['documento']) && 
+                       str_contains($cita['paciente']['documento'], $filters['paciente_documento']);
+            });
+        }
+
+        if (!empty($filters['estado'])) {
+            $citas = array_filter($citas, function($cita) use ($filters) {
+                return ($cita['estado'] ?? '') === $filters['estado'];
+            });
+        }
+
         // ✅ AGREGAR INFORMACIÓN DE SYNC STATUS
         $citas = array_map(function($cita) {
-            // Marcar como offline si tiene sync_status pending
             $cita['offline'] = ($cita['sync_status'] ?? 'synced') === 'pending';
             return $cita;
         }, $citas);
@@ -137,6 +158,12 @@ class CitaService
         $offset = ($page - 1) * $perPage;
         $paginatedData = array_slice($citas, $offset, $perPage);
 
+        Log::info('📊 Datos offline obtenidos', [
+            'total_encontradas' => $total,
+            'pagina_actual' => $page,
+            'datos_en_pagina' => count($paginatedData)
+        ]);
+
         return [
             'success' => true,
             'data' => $paginatedData,
@@ -145,17 +172,18 @@ class CitaService
                 'last_page' => ceil($total / $perPage),
                 'per_page' => $perPage,
                 'total' => $total,
-                'from' => $offset + 1,
+                'from' => $total > 0 ? $offset + 1 : 0,
                 'to' => min($offset + $perPage, $total)
             ],
-            'message' => '📱 Trabajando en modo offline - Datos locales',
+            'message' => "📱 Modo offline - {$total} citas encontradas",
             'offline' => true
         ];
 
     } catch (\Exception $e) {
         Log::error('💥 Error en CitaService::index', [
             'error' => $e->getMessage(),
-            'filters' => $filters
+            'filters' => $filters,
+            'trace' => $e->getTraceAsString()
         ]);
 
         return [
@@ -173,6 +201,34 @@ class CitaService
             'offline' => true
         ];
     }
+}
+
+// ✅ NUEVO MÉTODO PARA LIMPIAR FILTROS
+private function cleanFiltersForOffline(array $filters): array
+{
+    $cleanFilters = [];
+    
+    foreach ($filters as $key => $value) {
+        if (empty($value)) continue;
+        
+        // ✅ LIMPIAR FECHAS
+        if (in_array($key, ['fecha', 'fecha_inicio', 'fecha_fin'])) {
+            if (strpos($value, 'T') !== false) {
+                $cleanFilters[$key] = explode('T', $value)[0];
+            } else {
+                $cleanFilters[$key] = $value;
+            }
+        } else {
+            $cleanFilters[$key] = $value;
+        }
+    }
+    
+    Log::info('🧹 Filtros limpiados para offline', [
+        'originales' => $filters,
+        'limpios' => $cleanFilters
+    ]);
+    
+    return $cleanFilters;
 }
 
 
@@ -402,59 +458,122 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
 }
 
 
-    public function show(string $uuid): array
-    {
-        try {
-            if ($this->apiService->isOnline()) {
-                try {
-                    $endpoint = $this->buildApiUrl('show');
-                    $url = str_replace('{uuid}', $uuid, $endpoint);
-                    $response = $this->apiService->get($url);
+   public function show(string $uuid): array
+{
+    try {
+        Log::info('🔍 CitaService::show iniciado', [
+            'uuid' => $uuid,
+            'is_online' => $this->apiService->isOnline()
+        ]);
+
+        // ✅ INTENTAR OBTENER DESDE API PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                $endpoint = $this->buildApiUrl('show');
+                $url = str_replace('{uuid}', $uuid, $endpoint);
+                $response = $this->apiService->get($url);
+                
+                if ($response['success']) {
+                    $citaData = $response['data'];
                     
-                    if ($response['success']) {
-                        $citaData = $response['data'];
-                        $this->offlineService->storeCitaOffline($citaData, false);
-                        
-                        return [
-                            'success' => true,
-                            'data' => $citaData,
-                            'offline' => false
-                        ];
+                    // ✅ CORREGIR FECHAS ANTES DE GUARDAR OFFLINE
+                    if (isset($citaData['fecha'])) {
+                        $fechaOriginal = $citaData['fecha'];
+                        if (strpos($fechaOriginal, 'T') !== false) {
+                            $fechaCorregida = explode('T', $fechaOriginal)[0];
+                            $citaData['fecha'] = $fechaCorregida;
+                        }
                     }
-                } catch (\Exception $e) {
-                    Log::warning('Error obteniendo cita desde API', [
-                        'error' => $e->getMessage()
+                    
+                    // ✅ ENRIQUECER CON DATOS DE LA AGENDA DESDE OFFLINE
+                    if (!empty($citaData['agenda_uuid'])) {
+                        $agendaOffline = $this->offlineService->getAgendaOffline($citaData['agenda_uuid']);
+                        if ($agendaOffline) {
+                            $citaData['agenda'] = $agendaOffline;
+                            Log::info('✅ Agenda offline agregada a cita desde API', [
+                                'agenda_uuid' => $agendaOffline['uuid'],
+                                'etiqueta' => $agendaOffline['etiqueta'] ?? 'Sin etiqueta'
+                            ]);
+                        } else {
+                            Log::warning('⚠️ Agenda no encontrada offline para cita desde API', [
+                                'agenda_uuid' => $citaData['agenda_uuid']
+                            ]);
+                        }
+                    }
+                    
+                    // ✅ ENRIQUECER CON DATOS DEL PACIENTE DESDE OFFLINE
+                    if (!empty($citaData['paciente_uuid'])) {
+                        $pacienteOffline = $this->offlineService->getPacienteOffline($citaData['paciente_uuid']);
+                        if ($pacienteOffline) {
+                            $citaData['paciente'] = $pacienteOffline;
+                            Log::info('✅ Paciente offline agregado a cita desde API', [
+                                'paciente_uuid' => $pacienteOffline['uuid'],
+                                'nombre' => $pacienteOffline['nombre_completo'] ?? 'N/A'
+                            ]);
+                        }
+                    }
+                    
+                    // Guardar offline para futura referencia
+                    $this->offlineService->storeCitaOffline($citaData, false);
+                    
+                    Log::info('✅ Cita obtenida desde API y enriquecida con datos offline', [
+                        'uuid' => $uuid,
+                        'has_agenda' => isset($citaData['agenda']),
+                        'has_paciente' => isset($citaData['paciente']),
+                        'agenda_etiqueta' => $citaData['agenda']['etiqueta'] ?? 'No disponible'
                     ]);
+                    
+                    return [
+                        'success' => true,
+                        'data' => $citaData,
+                        'offline' => false
+                    ];
                 }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo cita desde API, usando offline', [
+                    'error' => $e->getMessage()
+                ]);
             }
+        }
 
-            $cita = $this->offlineService->getCitaOffline($uuid);
-            
-            if (!$cita) {
-                return [
-                    'success' => false,
-                    'error' => 'Cita no encontrada'
-                ];
-            }
-
-            return [
-                'success' => true,
-                'data' => $cita,
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo cita', [
-                'error' => $e->getMessage(),
-                'uuid' => $uuid
-            ]);
-            
+        // ✅ OBTENER DESDE OFFLINE CON DATOS ENRIQUECIDOS
+        Log::info('📱 Obteniendo cita desde offline');
+        $cita = $this->offlineService->getCitaOffline($uuid);
+        
+        if (!$cita) {
+            Log::warning('⚠️ Cita no encontrada offline', ['uuid' => $uuid]);
             return [
                 'success' => false,
-                'error' => 'Error interno'
+                'error' => 'Cita no encontrada'
             ];
         }
+
+        Log::info('✅ Cita obtenida desde offline', [
+            'uuid' => $uuid,
+            'has_paciente' => isset($cita['paciente']),
+            'has_agenda' => isset($cita['agenda']),
+            'agenda_etiqueta' => $cita['agenda']['etiqueta'] ?? 'No disponible'
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $cita,
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en CitaService::show', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid,
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno'
+        ];
     }
+}
 
 
 
