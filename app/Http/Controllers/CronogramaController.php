@@ -32,7 +32,7 @@ class CronogramaController extends Controller
     /**
      * ✅ MÉTODO PRINCIPAL (tu ruta existente mantenida)
      */
-    public function index(Request $request)
+   public function index(Request $request)
     {
         try {
             $fechaSeleccionada = $request->get('fecha', now()->format('Y-m-d'));
@@ -42,17 +42,19 @@ class CronogramaController extends Controller
             Log::info('🏥 Cronograma index', [
                 'fecha' => $fechaSeleccionada,
                 'usuario_id' => $usuario['id'] ?? null,
+                'is_offline' => $isOffline,
                 'is_ajax' => $request->ajax()
             ]);
 
-            // ✅ OBTENER DATOS COMPLETOS USANDO TUS SERVICIOS EXISTENTES
-            $cronogramaData = $this->obtenerDatosCronogramaIntegrado($fechaSeleccionada, $usuario);
+            // ✅ OBTENER DATOS CON FALLBACK OFFLINE
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaSeleccionada, $usuario, $isOffline);
 
             if ($request->ajax()) {
                 return response()->json([
                     'success' => true,
                     'data' => $cronogramaData,
-                    'offline' => $isOffline
+                    'offline' => $isOffline,
+                    'message' => $isOffline ? 'Datos cargados desde almacenamiento local' : 'Datos actualizados desde servidor'
                 ]);
             }
 
@@ -69,20 +71,111 @@ class CronogramaController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            // ✅ FALLBACK COMPLETO A DATOS OFFLINE
+            $cronogramaFallback = $this->obtenerCronogramaOfflineFallback($fechaSeleccionada, $usuario ?? []);
+
             if ($request->ajax()) {
                 return response()->json([
-                    'success' => false,
-                    'error' => 'Error interno del servidor'
+                    'success' => true,
+                    'data' => $cronogramaFallback,
+                    'offline' => true,
+                    'message' => 'Datos cargados desde almacenamiento local de emergencia'
                 ]);
             }
 
             return view('cronograma.index', [
                 'fechaSeleccionada' => $fechaSeleccionada,
                 'usuario' => $usuario ?? [],
-                'cronogramaData' => $this->getCronogramaVacio(),
+                'cronogramaData' => $cronogramaFallback,
                 'isOffline' => true,
-                'error' => 'Error cargando cronograma'
+                'error' => 'Trabajando en modo offline'
             ]);
+        }
+    }
+
+        /**
+     * ✅ NUEVO: Obtener datos con fallback offline
+     */
+    private function obtenerDatosCronogramaConFallback($fecha, $usuario, $isOffline)
+    {
+        // ✅ SI ESTÁ ONLINE, INTENTAR OBTENER DATOS FRESCOS
+        if (!$isOffline) {
+            try {
+                $cronogramaData = $this->obtenerDatosCronogramaIntegrado($fecha, $usuario);
+                
+                // ✅ GUARDAR EN OFFLINE PARA FUTURO USO
+                $this->guardarCronogramaOffline($fecha, $usuario, $cronogramaData);
+                
+                return $cronogramaData;
+                
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo datos online, fallback a offline', [
+                    'error' => $e->getMessage()
+                ]);
+                
+                // ✅ MARCAR COMO OFFLINE Y CONTINUAR
+                $isOffline = true;
+            }
+        }
+
+        // ✅ MODO OFFLINE: OBTENER DATOS LOCALES
+        return $this->obtenerCronogramaOffline($fecha, $usuario);
+    }
+
+    /**
+     * ✅ NUEVO: Obtener cronograma desde almacenamiento offline
+     */
+    private function obtenerCronogramaOffline($fecha, $usuario)
+    {
+        try {
+            Log::info('📱 Obteniendo cronograma offline', [
+                'fecha' => $fecha,
+                'usuario_id' => $usuario['id'] ?? null
+            ]);
+
+            $usuarioUuid = $usuario['uuid'] ?? $usuario['id'] ?? null;
+            
+            if (!$usuarioUuid) {
+                Log::warning('⚠️ No hay usuario para cronograma offline');
+                return $this->getCronogramaVacio();
+            }
+
+            // ✅ OBTENER AGENDAS OFFLINE
+            $agendasOffline = $this->offlineService->getAgendasDelDia($usuarioUuid, $fecha);
+            
+            if (empty($agendasOffline)) {
+                Log::info('📅 No hay agendas offline para la fecha', ['fecha' => $fecha]);
+                return $this->getCronogramaVacio();
+            }
+
+            // ✅ ENRIQUECER AGENDAS CON CITAS OFFLINE
+            $agendasEnriquecidas = [];
+            foreach ($agendasOffline as $agenda) {
+                $agendaEnriquecida = $this->enriquecerAgendaOffline($agenda, $fecha);
+                $agendasEnriquecidas[] = $agendaEnriquecida;
+            }
+
+            // ✅ CALCULAR ESTADÍSTICAS
+            $estadisticas = $this->calcularEstadisticasGlobales($agendasEnriquecidas);
+
+            return [
+                'agendas' => $agendasEnriquecidas,
+                'estadisticas' => $estadisticas,
+                'resumen_citas' => $this->calcularResumenOffline($agendasEnriquecidas),
+                'fecha' => $fecha,
+                'total_agendas' => count($agendasEnriquecidas),
+                'isOffline' => true,
+                'timestamp' => now()->toISOString(),
+                'source' => 'offline'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo cronograma offline', [
+                'error' => $e->getMessage(),
+                'fecha' => $fecha
+            ]);
+
+            return $this->getCronogramaVacio();
         }
     }
 
@@ -707,6 +800,252 @@ class CronogramaController extends Controller
                        return ($cita['estado'] ?? '') === $estado;
         }));
     }
+
+        /**
+     * ✅ MÉTODO FALTANTE: guardarCronogramaOffline
+     */
+    private function guardarCronogramaOffline($fecha, $usuario, $cronogramaData)
+    {
+        try {
+            Log::info('💾 Guardando cronograma offline', [
+                'fecha' => $fecha,
+                'usuario_id' => $usuario['id'] ?? null,
+                'total_agendas' => count($cronogramaData['agendas'] ?? [])
+            ]);
+
+            // Guardar en archivo JSON
+            $rutaArchivo = storage_path("app/offline/cronograma_{$fecha}.json");
+            
+            // Crear directorio si no existe
+            $directorio = dirname($rutaArchivo);
+            if (!is_dir($directorio)) {
+                mkdir($directorio, 0755, true);
+            }
+
+            // Preparar datos para guardar
+            $datosParaGuardar = [
+                'fecha' => $fecha,
+                'usuario_id' => $usuario['id'] ?? null,
+                'timestamp' => now()->toISOString(),
+                'data' => $cronogramaData
+            ];
+
+            // Guardar datos
+            file_put_contents($rutaArchivo, json_encode($datosParaGuardar, JSON_PRETTY_PRINT));
+
+            Log::info('✅ Cronograma guardado offline', [
+                'archivo' => $rutaArchivo,
+                'tamaño' => filesize($rutaArchivo)
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error guardando cronograma offline', [
+                'error' => $e->getMessage(),
+                'fecha' => $fecha
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * ✅ MÉTODO FALTANTE: enriquecerAgendaOffline
+     */
+    private function enriquecerAgendaOffline($agenda, $fecha)
+    {
+        try {
+            Log::info('🔍 Enriqueciendo agenda offline', [
+                'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
+                'fecha' => $fecha
+            ]);
+
+            // Obtener citas offline usando OfflineService
+            $citasOffline = $this->offlineService->getCitasByAgenda($agenda['uuid'], $fecha);
+            
+            // Enriquecer cada cita
+            $citasEnriquecidas = array_map(function($cita) {
+                return $this->enriquecerCitaParaCronograma($cita);
+            }, $citasOffline);
+
+            // Calcular cupos y estadísticas
+            $totalCupos = $this->calcularTotalCupos($agenda);
+            $citasActivas = array_filter($citasEnriquecidas, function($cita) {
+                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            });
+
+            // Agregar datos calculados
+            $agenda['citas'] = $citasEnriquecidas;
+            $agenda['total_citas'] = count($citasEnriquecidas);
+            $agenda['citas_activas'] = count($citasActivas);
+            $agenda['total_cupos'] = $totalCupos;
+            $agenda['cupos_disponibles'] = max(0, $totalCupos - count($citasActivas));
+            $agenda['porcentaje_ocupacion'] = $totalCupos > 0 ? 
+                round((count($citasActivas) / $totalCupos) * 100, 1) : 0;
+            $agenda['estadisticas'] = $this->calcularEstadisticasPorEstado($citasEnriquecidas);
+
+            Log::info('✅ Agenda offline enriquecida', [
+                'agenda_uuid' => $agenda['uuid'],
+                'total_citas' => count($citasEnriquecidas),
+                'cupos_disponibles' => $agenda['cupos_disponibles']
+            ]);
+
+            return $agenda;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error enriqueciendo agenda offline', [
+                'error' => $e->getMessage(),
+                'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+            ]);
+
+            // Valores por defecto en caso de error
+            $agenda['citas'] = [];
+            $agenda['total_citas'] = 0;
+            $agenda['citas_activas'] = 0;
+            $agenda['total_cupos'] = 0;
+            $agenda['cupos_disponibles'] = 0;
+            $agenda['porcentaje_ocupacion'] = 0;
+            $agenda['estadisticas'] = $this->getEstadisticasVacias();
+
+            return $agenda;
+        }
+    }
+
+    /**
+     * ✅ MÉTODO FALTANTE: calcularResumenOffline
+     */
+    private function calcularResumenOffline($agendas)
+    {
+        try {
+            $resumen = [
+                'total_citas' => 0,
+                'proximas' => 0,
+                'en_atencion' => 0,
+                'atendidas' => 0,
+                'canceladas' => 0,
+                'no_asistio' => 0
+            ];
+
+            $ahora = now();
+
+            foreach ($agendas as $agenda) {
+                $citas = $agenda['citas'] ?? [];
+                
+                foreach ($citas as $cita) {
+                    $resumen['total_citas']++;
+                    
+                    $estado = strtoupper($cita['estado'] ?? 'PROGRAMADA');
+                    
+                    switch ($estado) {
+                        case 'PROGRAMADA':
+                            // Verificar si es próxima (en el futuro)
+                            if (isset($cita['fecha_inicio'])) {
+                                $fechaCita = Carbon::parse($cita['fecha_inicio']);
+                                if ($fechaCita->gt($ahora)) {
+                                    $resumen['proximas']++;
+                                }
+                            } else {
+                                $resumen['proximas']++;
+                            }
+                            break;
+                        case 'EN_ATENCION':
+                            $resumen['en_atencion']++;
+                            break;
+                        case 'ATENDIDA':
+                            $resumen['atendidas']++;
+                            break;
+                        case 'CANCELADA':
+                            $resumen['canceladas']++;
+                            break;
+                        case 'NO_ASISTIO':
+                            $resumen['no_asistio']++;
+                            break;
+                    }
+                }
+            }
+
+            Log::info('📊 Resumen offline calculado', $resumen);
+
+            return $resumen;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error calculando resumen offline', [
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->getResumenVacio();
+        }
+    }
+
+    /**
+     * ✅ MÉTODO FALTANTE: obtenerCronogramaOfflineFallback
+     */
+    private function obtenerCronogramaOfflineFallback($fecha, $usuario)
+    {
+        try {
+            Log::info('🚨 Fallback de emergencia para cronograma', [
+                'fecha' => $fecha,
+                'usuario_id' => $usuario['id'] ?? null
+            ]);
+
+            // 1. Intentar cargar desde archivo JSON guardado
+            $rutaArchivo = storage_path("app/offline/cronograma_{$fecha}.json");
+            
+            if (file_exists($rutaArchivo)) {
+                $datosGuardados = json_decode(file_get_contents($rutaArchivo), true);
+                
+                if ($datosGuardados && isset($datosGuardados['data'])) {
+                    Log::info('✅ Cronograma cargado desde archivo de emergencia', [
+                        'archivo' => $rutaArchivo
+                    ]);
+                    
+                    $cronogramaData = $datosGuardados['data'];
+                    $cronogramaData['source'] = 'fallback_file';
+                    $cronogramaData['isOffline'] = true;
+                    
+                    return $cronogramaData;
+                }
+            }
+
+            // 2. Crear cronograma vacío con estructura mínima
+            Log::warning('⚠️ Creando cronograma vacío de emergencia');
+
+            return [
+                'agendas' => [],
+                'estadisticas' => [
+                    'total_agendas' => 0,
+                    'total_cupos' => 0,
+                    'total_citas' => 0,
+                    'citas_activas' => 0,
+                    'cupos_disponibles' => 0,
+                    'porcentaje_ocupacion_global' => 0,
+                    'por_estado' => [
+                        'PROGRAMADA' => 0,
+                        'EN_ATENCION' => 0,
+                        'ATENDIDA' => 0,
+                        'CANCELADA' => 0,
+                        'NO_ASISTIO' => 0
+                    ]
+                ],
+                'resumen_citas' => $this->getResumenVacio(),
+                'fecha' => $fecha,
+                'total_agendas' => 0,
+                'isOffline' => true,
+                'source' => 'fallback_empty',
+                'timestamp' => now()->toISOString(),
+                'message' => 'No hay datos disponibles offline para esta fecha'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error en fallback de emergencia', [
+                'error' => $e->getMessage(),
+                'fecha' => $fecha
+            ]);
+
+            return $this->getCronogramaVacio();
+        }
+    }
+
 }
 
 

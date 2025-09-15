@@ -4373,4 +4373,56 @@ public function syncCupsContratadosFromApi(): bool
     }
 }
 
+public function getAgendasDelDia($usuarioUuid, $fecha)
+{
+    try {
+        return DB::connection('offline')
+            ->table('agendas')
+            ->where('usuario_medico_uuid', $usuarioUuid)
+            ->where('fecha', $fecha)
+            ->where('estado', 'ACTIVO')
+            ->get()
+            ->toArray();
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo agendas offline', ['error' => $e->getMessage()]);
+        return [];
+    }
+}
+
+public function getCitasPorAgenda($agendaUuid, $fecha)
+{
+    try {
+        return DB::connection('offline')
+            ->table('citas')
+            ->leftJoin('pacientes', 'citas.paciente_uuid', '=', 'pacientes.uuid')
+            ->where('citas.agenda_uuid', $agendaUuid)
+            ->whereDate('citas.fecha_inicio', $fecha)
+            ->select('citas.*', 'pacientes.nombre_completo', 'pacientes.documento', 'pacientes.telefono')
+            ->get()
+            ->toArray();
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo citas offline', ['error' => $e->getMessage()]);
+        return [];
+    }
+}
+
+public function actualizarEstadoCita($uuid, $estado)
+{
+    try {
+        $affected = DB::connection('offline')
+            ->table('citas')
+            ->where('uuid', $uuid)
+            ->update([
+                'estado' => $estado,
+                'updated_at' => now()
+            ]);
+            
+        return $affected > 0;
+    } catch (\Exception $e) {
+        Log::error('Error actualizando estado cita offline', ['error' => $e->getMessage()]);
+        return false;
+    }
+}
+
+
 }
