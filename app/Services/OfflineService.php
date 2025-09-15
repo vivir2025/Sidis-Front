@@ -2132,7 +2132,7 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                 ->where('sede_id', $sedeId)
                 ->whereNull('deleted_at');
 
-            // ✅ APLICAR FILTROS CON FECHA LIMPIA - IGUAL QUE EN AGENDAS
+            // ✅ SOLO APLICAR FILTRO DE FECHA SI VIENE EN LOS FILTROS
             if (!empty($filters['fecha'])) {
                 // Limpiar fecha del filtro igual que en agendas
                 $fechaFiltro = $filters['fecha'];
@@ -2182,8 +2182,13 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                 return $citaArray;
             })->toArray();
             
+            Log::info('✅ Citas obtenidas desde SQLite offline', [
+                'total_encontradas' => count($citas),
+                'filtros_aplicados' => $filters
+            ]);
+            
         } else {
-            // Fallback a JSON con fecha limpia
+            // Fallback a JSON
             $citasPath = $this->getStoragePath() . '/citas';
             if (is_dir($citasPath)) {
                 $files = glob($citasPath . '/*.json');
@@ -2191,7 +2196,7 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                     $data = json_decode(file_get_contents($file), true);
                     if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
                         
-                        // ✅ APLICAR FILTRO DE FECHA LIMPIA
+                        // ✅ SOLO APLICAR FILTRO DE FECHA SI VIENE EN LOS FILTROS
                         if (!empty($filters['fecha'])) {
                             $fechaFiltro = $filters['fecha'];
                             if (strpos($fechaFiltro, 'T') !== false) {
@@ -2208,10 +2213,20 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
                             }
                         }
                         
+                        // Aplicar otros filtros
+                        if (!empty($filters['agenda_uuid']) && $data['agenda_uuid'] !== $filters['agenda_uuid']) {
+                            continue;
+                        }
+                        
                         $citas[] = $data;
                     }
                 }
             }
+            
+            Log::info('✅ Citas obtenidas desde JSON offline', [
+                'total_encontradas' => count($citas),
+                'filtros_aplicados' => $filters
+            ]);
         }
 
         return $citas;
@@ -2219,7 +2234,8 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo citas offline', [
             'error' => $e->getMessage(),
-            'sede_id' => $sedeId
+            'sede_id' => $sedeId,
+            'filters' => $filters
         ]);
         return [];
     }

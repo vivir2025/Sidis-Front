@@ -741,7 +741,6 @@ function updateCuposChart(data) {
     });
 }
 
-// Cargar citas de la agenda
 async function loadCitas() {
     const loadingElement = document.getElementById('loadingCitas');
     const containerElement = document.getElementById('citasContainer');
@@ -773,9 +772,18 @@ async function loadCitas() {
         const data = await response.json();
         console.log('📋 Datos de citas recibidos:', data);
         
+        // ✅ VERIFICAR ESTRUCTURA DE RESPUESTA CORRECTAMENTE
         if (data.success) {
             citasData = data.data || [];
-            displayCitas(citasData);
+            
+            // ✅ VERIFICAR SI HAY CITAS
+            if (Array.isArray(citasData) && citasData.length > 0) {
+                console.log('✅ Citas encontradas:', citasData.length);
+                displayCitas(citasData);
+            } else {
+                console.log('ℹ️ No hay citas para mostrar');
+                showCitasEmpty();
+            }
         } else {
             throw new Error(data.message || 'Error desconocido cargando citas');
         }
@@ -784,15 +792,21 @@ async function loadCitas() {
         console.error('❌ Error cargando citas:', error);
         
         try {
-            console.log('🔄 Usando citas desde datos locales...');
+            console.log('🔄 Intentando usar citas desde datos locales...');
             
             @if(isset($agenda['citas']) && is_array($agenda['citas']))
                 const citasLocales = @json($agenda['citas']);
                 console.log('📋 Usando citas locales:', citasLocales);
-                citasData = citasLocales;
-                displayCitas(citasData);
+                
+                if (Array.isArray(citasLocales) && citasLocales.length > 0) {
+                    citasData = citasLocales;
+                    displayCitas(citasData);
+                } else {
+                    console.log('📋 No hay citas locales');
+                    showCitasEmpty();
+                }
             @else
-                console.log('📋 No hay citas locales, mostrando estado vacío');
+                console.log('📋 No hay citas locales disponibles');
                 showCitasEmpty();
             @endif
             

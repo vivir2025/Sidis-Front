@@ -635,19 +635,30 @@ private function getPacienteDataOffline(string $pacienteUuid): ?array
 public function getCitas(string $uuid)
 {
     try {
+        Log::info('🔍 Obteniendo citas para agenda desde controlador', [
+            'agenda_uuid' => $uuid
+        ]);
+        
         $result = $this->agendaService->getCitasForAgenda($uuid);
+        
+        Log::info('📋 Resultado de obtener citas', [
+            'success' => $result['success'],
+            'citas_count' => isset($result['data']) ? count($result['data']) : 0,
+            'offline' => $result['offline'] ?? false
+        ]);
         
         return response()->json($result);
         
     } catch (\Exception $e) {
-        Log::error('Error obteniendo citas de agenda', [
+        Log::error('❌ Error obteniendo citas de agenda desde controlador', [
             'uuid' => $uuid,
             'error' => $e->getMessage()
         ]);
         
         return response()->json([
             'success' => false,
-            'error' => 'Error interno del servidor'
+            'error' => 'Error interno del servidor',
+            'data' => []
         ], 500);
     }
 }
