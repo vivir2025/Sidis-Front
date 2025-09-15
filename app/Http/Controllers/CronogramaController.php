@@ -391,60 +391,121 @@ class CronogramaController extends Controller
     /**
      * ✅ MÉTODO PRINCIPAL: Obtener datos integrados del cronograma
      */
-    private function obtenerDatosCronogramaIntegrado($fecha, $usuario)
-    {
-        try {
-            Log::info('📊 Obteniendo cronograma integrado', [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null
-            ]);
+   private function obtenerDatosCronogramaIntegrado($fecha, $usuario)
+{
+    try {
+        Log::info('📊 Obteniendo cronograma integrado', [
+            'fecha' => $fecha,
+            'usuario_id' => $usuario['id'] ?? null
+        ]);
 
-            // ✅ PASO 1: Obtener agendas del día usando TU AgendaService
-            $agendasResult = $this->agendaService->index([
-                'fecha_desde' => $fecha,
-                'fecha_hasta' => $fecha,
-                'estado' => 'ACTIVO'
-            ], 1, 50);
+        // ✅ PASO 1: Obtener agendas del día usando TU AgendaService
+        $agendasResult = $this->agendaService->index([
+            'fecha_desde' => $fecha,
+            'fecha_hasta' => $fecha,
+            'estado' => 'ACTIVO'
+        ], 1, 50);
 
-            $agendas = $agendasResult['success'] ? ($agendasResult['data'] ?? []) : [];
+        $agendas = $agendasResult['success'] ? ($agendasResult['data'] ?? []) : [];
 
-            Log::info('📋 Agendas obtenidas para cronograma', [
-                'total_agendas' => count($agendas),
-                'success' => $agendasResult['success']
-            ]);
+        Log::info('📋 Agendas obtenidas para cronograma', [
+            'total_agendas' => count($agendas),
+            'success' => $agendasResult['success']
+        ]);
 
-            // ✅ PASO 2: Enriquecer cada agenda con sus citas usando TU CitaService
-            $agendasEnriquecidas = [];
-            foreach ($agendas as $agenda) {
-                $agendaEnriquecida = $this->enriquecerAgendaConCitasIntegrada($agenda, $fecha);
-                $agendasEnriquecidas[] = $agendaEnriquecida;
-            }
-
-            // ✅ PASO 3: Calcular estadísticas globales
-            $estadisticas = $this->calcularEstadisticasGlobales($agendasEnriquecidas);
-
-            // ✅ PASO 4: Obtener resumen de citas del día usando TU CitaService
-            $resumenCitas = $this->obtenerResumenCitasDelDia($fecha);
-
-            return [
-                'agendas' => $agendasEnriquecidas,
-                'estadisticas' => $estadisticas,
-                'resumen_citas' => $resumenCitas,
-                'fecha' => $fecha,
-                'total_agendas' => count($agendasEnriquecidas),
-                'isOffline' => $this->authService->isOffline(),
-                'timestamp' => now()->toISOString()
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo cronograma integrado', [
-                'error' => $e->getMessage(),
-                'fecha' => $fecha
-            ]);
-
-            return $this->getCronogramaVacio();
+        // ✅ PASO 1.5: Si no hay agendas, intentar obtener desde citas existentes
+        if (empty($agendas)) {
+            Log::info('🔍 No hay agendas, obteniendo desde citas existentes');
+            $agendas = $this->obtenerAgendasDesdeCitas($fecha);
         }
+
+        // ✅ PASO 2: Enriquecer cada agenda con sus citas usando TU CitaService
+        $agendasEnriquecidas = [];
+        foreach ($agendas as $agenda) {
+            $agendaEnriquecida = $this->enriquecerAgendaConCitasIntegrada($agenda, $fecha);
+            $agendasEnriquecidas[] = $agendaEnriquecida;
+        }
+
+        // ✅ PASO 3: Calcular estadísticas globales
+        $estadisticas = $this->calcularEstadisticasGlobales($agendasEnriquecidas);
+
+        // ✅ PASO 4: Obtener resumen de citas del día usando TU CitaService
+        $resumenCitas = $this->obtenerResumenCitasDelDia($fecha);
+
+        return [
+            'agendas' => $agendasEnriquecidas,
+            'estadisticas' => $estadisticas,
+            'resumen_citas' => $resumenCitas,
+            'fecha' => $fecha,
+            'total_agendas' => count($agendasEnriquecidas),
+            'isOffline' => $this->authService->isOffline(),
+            'timestamp' => now()->toISOString()
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo cronograma integrado', [
+            'error' => $e->getMessage(),
+            'fecha' => $fecha
+        ]);
+
+        return $this->getCronogramaVacio();
     }
+}
+/**
+ * ✅ NUEVO: Obtener agendas desde citas existentes cuando no hay agendas
+ */
+private function obtenerAgendasDesdeCitas($fecha)
+{
+    try {
+        Log::info('🔍 Obteniendo agendas desde citas existentes', ['fecha' => $fecha]);
+
+        // Obtener citas del día
+        $citasResult = $this->citaService->citasDelDia($fecha);
+        
+        if (!$citasResult['success'] || empty($citasResult['data'])) {
+            return [];
+        }
+
+        $citas = $citasResult['data'];
+        $agendasUnicas = [];
+
+        // Extraer agendas únicas de las citas
+        foreach ($citas as $cita) {
+            $agendaUuid = $cita['agenda_uuid'] ?? null;
+            
+            if ($agendaUuid && !isset($agendasUnicas[$agendaUuid])) {
+                // Crear agenda básica desde la cita
+                $agendasUnicas[$agendaUuid] = [
+                    'uuid' => $agendaUuid,
+                    'fecha' => $fecha,
+                    'etiqueta' => $cita['agenda']['etiqueta'] ?? 'Agenda',
+                    'hora_inicio' => '08:00',
+                    'hora_fin' => '17:00',
+                    'intervalo' => 15,
+                    'estado' => 'ACTIVO',
+                    'especialidad' => $cita['agenda']['especialidad'] ?? null,
+                    'usuario_medico' => $cita['agenda']['usuario_medico'] ?? null,
+                    'created_from_citas' => true // Marcador para identificar origen
+                ];
+            }
+        }
+
+        Log::info('✅ Agendas extraídas desde citas', [
+            'total_agendas' => count($agendasUnicas),
+            'total_citas' => count($citas)
+        ]);
+
+        return array_values($agendasUnicas);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo agendas desde citas', [
+            'error' => $e->getMessage(),
+            'fecha' => $fecha
+        ]);
+
+        return [];
+    }
+}
 
     /**
      * ✅ ENRIQUECER AGENDA CON CITAS (usando tus servicios existentes)
@@ -515,61 +576,82 @@ class CronogramaController extends Controller
         }
     }
 
-    /**
-     * ✅ ENRIQUECER CITA PARA CRONOGRAMA
-     */
-    private function enriquecerCitaParaCronograma($cita)
-    {
-        try {
-            // ✅ FORMATEAR FECHAS Y HORAS
-            if (isset($cita['fecha_inicio'])) {
-                $cita['hora_inicio'] = date('H:i', strtotime($cita['fecha_inicio']));
-                $cita['fecha_formateada'] = date('d/m/Y', strtotime($cita['fecha_inicio']));
-            }
+   /**
+ * ✅ ENRIQUECER CITA PARA CRONOGRAMA (VERSIÓN MEJORADA)
+ */
+private function enriquecerCitaParaCronograma($cita)
+{
+    try {
+        // ✅ FORMATEAR FECHAS Y HORAS
+        if (isset($cita['fecha_inicio'])) {
+            $cita['hora_inicio'] = date('H:i', strtotime($cita['fecha_inicio']));
+            $cita['fecha_formateada'] = date('d/m/Y', strtotime($cita['fecha_inicio']));
+        }
 
-            if (isset($cita['fecha_final'])) {
-                $cita['hora_final'] = date('H:i', strtotime($cita['fecha_final']));
-            }
+        if (isset($cita['fecha_final'])) {
+            $cita['hora_final'] = date('H:i', strtotime($cita['fecha_final']));
+        }
 
-            // ✅ INFORMACIÓN DE ESTADO CON COLORES
-            $cita['estado_info'] = $this->getEstadoInfo($cita['estado'] ?? 'PROGRAMADA');
+        // ✅ INFORMACIÓN DE ESTADO CON COLORES
+        $cita['estado_info'] = $this->getEstadoInfo($cita['estado'] ?? 'PROGRAMADA');
 
-            // ✅ FORMATEAR INFORMACIÓN DEL PACIENTE
-            if (isset($cita['paciente'])) {
-                $cita['paciente_nombre'] = $cita['paciente']['nombre_completo'] ?? 'Sin nombre';
-                $cita['paciente_documento'] = $cita['paciente']['documento'] ?? 'Sin documento';
-                $cita['paciente_telefono'] = $cita['paciente']['telefono'] ?? '';
-            }
-
-            // ✅ TIEMPO TRANSCURRIDO/RESTANTE
-            if (isset($cita['fecha_inicio'])) {
-                $fechaCita = Carbon::parse($cita['fecha_inicio']);
-                $ahora = now();
-                
-                if ($fechaCita->isPast()) {
-                    $cita['tiempo_info'] = [
-                        'tipo' => 'pasado',
-                        'texto' => 'Hace ' . $fechaCita->diffForHumans($ahora, true)
-                    ];
-                } else {
-                    $cita['tiempo_info'] = [
-                        'tipo' => 'futuro',
-                        'texto' => 'En ' . $ahora->diffForHumans($fechaCita, true)
-                    ];
+        // ✅ FORMATEAR INFORMACIÓN DEL PACIENTE (MEJORADO)
+        if (isset($cita['paciente']) && is_array($cita['paciente'])) {
+            $cita['paciente_nombre'] = $cita['paciente']['nombre_completo'] ?? 
+                                     ($cita['paciente']['primer_nombre'] ?? '') . ' ' . 
+                                     ($cita['paciente']['primer_apellido'] ?? '');
+            $cita['paciente_documento'] = $cita['paciente']['documento'] ?? 
+                                        $cita['paciente']['numero_documento'] ?? 'Sin documento';
+            $cita['paciente_telefono'] = $cita['paciente']['telefono'] ?? '';
+        } else {
+            // ✅ FALLBACK PARA PACIENTES FALTANTES
+            $cita['paciente_nombre'] = 'Paciente no encontrado';
+            $cita['paciente_documento'] = 'Sin documento';
+            $cita['paciente_telefono'] = '';
+            
+            // Intentar obtener paciente desde OfflineService
+            if (isset($cita['paciente_uuid'])) {
+                $pacienteOffline = $this->offlineService->getPaciente($cita['paciente_uuid']);
+                if ($pacienteOffline) {
+                    $cita['paciente_nombre'] = $pacienteOffline['nombre_completo'] ?? 
+                                             ($pacienteOffline['primer_nombre'] ?? '') . ' ' . 
+                                             ($pacienteOffline['primer_apellido'] ?? '');
+                    $cita['paciente_documento'] = $pacienteOffline['numero_documento'] ?? 'Sin documento';
+                    $cita['paciente_telefono'] = $pacienteOffline['telefono'] ?? '';
                 }
             }
-
-            return $cita;
-
-        } catch (\Exception $e) {
-            Log::warning('⚠️ Error enriqueciendo cita para cronograma', [
-                'error' => $e->getMessage(),
-                'cita_uuid' => $cita['uuid'] ?? 'unknown'
-            ]);
-
-            return $cita;
         }
+
+        // ✅ TIEMPO TRANSCURRIDO/RESTANTE
+        if (isset($cita['fecha_inicio'])) {
+            $fechaCita = Carbon::parse($cita['fecha_inicio']);
+            $ahora = now();
+            
+            if ($fechaCita->isPast()) {
+                $cita['tiempo_info'] = [
+                    'tipo' => 'pasado',
+                    'texto' => 'Hace ' . $fechaCita->diffForHumans($ahora, true)
+                ];
+            } else {
+                $cita['tiempo_info'] = [
+                    'tipo' => 'futuro',
+                    'texto' => 'En ' . $ahora->diffForHumans($fechaCita, true)
+                ];
+            }
+        }
+
+        return $cita;
+
+    } catch (\Exception $e) {
+        Log::warning('⚠️ Error enriqueciendo cita para cronograma', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $cita['uuid'] ?? 'unknown'
+        ]);
+
+        return $cita;
     }
+}
+
 
     // ✅ MÉTODOS AUXILIARES (mantenidos de la implementación anterior)
     private function calcularTotalCupos($agenda)
