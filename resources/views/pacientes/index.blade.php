@@ -216,8 +216,6 @@ function loadPacientes(page = 1, filters = {}) {
         showLoading(false);
     });
 }
-
-// ✅ RENDERIZAR TABLA DE PACIENTES (ajustado a tu HTML)
 function renderPacientesTable(pacientes) {
     console.log('🎨 Renderizando pacientes:', pacientes.length);
     
@@ -255,6 +253,12 @@ function renderPacientesTable(pacientes) {
             ? '<span class="badge bg-success">Activo</span>'
             : '<span class="badge bg-danger">Inactivo</span>';
         
+       const sexoBadge = paciente.sexo === 'M' 
+    ? '<span class="badge bg-primary">Masculino</span>'
+    : paciente.sexo === 'F' 
+        ? '<span class="badge" style="background-color: #ff528cff; color: white;">Femenino</span>'
+        : '<span class="badge bg-secondary">No especificado</span>';
+        
         return `
             <tr data-uuid="${paciente.uuid}">
                 <td>
@@ -270,11 +274,7 @@ function renderPacientesTable(pacientes) {
                     </div>
                 </td>
                 <td>${fechaNacimiento}</td>
-                <td>
-                    <span class="badge ${paciente.sexo === 'M' ? 'bg-primary' : 'bg-pink'}">
-                        ${sexo}
-                    </span>
-                </td>
+                <td>${sexoBadge}</td>
                 <td>${telefono}</td>
                 <td>${estadoBadge}</td>
                 <td>

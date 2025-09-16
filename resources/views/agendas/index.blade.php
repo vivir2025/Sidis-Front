@@ -525,9 +525,7 @@ function createAgendaRow(agenda) {
                 <a href="/agendas/${agenda.uuid}" class="btn btn-outline-info" title="Ver detalles">
                     <i class="fas fa-eye"></i>
                 </a>
-                <a href="/agendas/${agenda.uuid}/edit" class="btn btn-outline-warning" title="Editar">
-                    <i class="fas fa-edit"></i>
-                </a>
+               
                 <button type="button" class="btn btn-outline-danger" onclick="eliminarAgenda('${agenda.uuid}', '${fecha} - ${consultorio}')" title="Eliminar">
                     <i class="fas fa-trash"></i>
                 </button>

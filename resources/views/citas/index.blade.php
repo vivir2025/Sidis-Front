@@ -278,9 +278,7 @@ function mostrarCitas(citas) {
                         <a href="/citas/${cita.uuid}" class="btn btn-outline-primary" title="Ver">
                             <i class="fas fa-eye"></i>
                         </a>
-                        <a href="/citas/${cita.uuid}/edit" class="btn btn-outline-warning" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </a>
+                       
                         <button type="button" class="btn btn-outline-danger" 
                                 onclick="eliminarCita('${cita.uuid}')" title="Eliminar">
                             <i class="fas fa-trash"></i>

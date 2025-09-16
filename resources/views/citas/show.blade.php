@@ -150,10 +150,7 @@
                                     </span>
                                 </p>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Creado por:</label>
-                                <p class="mb-1">{{ $cita['usuario_creador']['nombre_completo'] ?? 'Usuario del sistema' }}</p>
-                            </div>
+                          
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Sede:</label>
                                 <p class="mb-1">{{ $cita['sede']['nombre'] ?? 'Sede principal' }}</p>
@@ -180,49 +177,7 @@
 
         <!-- Panel de Acciones -->
         <div class="col-lg-4">
-            <!-- Cambiar Estado -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="fas fa-exchange-alt me-2"></i>Cambiar Estado
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        @if($cita['estado'] === 'PROGRAMADA')
-                            <button type="button" class="btn btn-info" onclick="cambiarEstado('EN_ATENCION')">
-                                <i class="fas fa-play"></i> Iniciar Atención
-                            </button>
-                            <button type="button" class="btn btn-success" onclick="cambiarEstado('ATENDIDA')">
-                                <i class="fas fa-check"></i> Marcar como Atendida
-                            </button>
-                            <button type="button" class="btn btn-warning" onclick="cambiarEstado('NO_ASISTIO')">
-                                <i class="fas fa-user-times"></i> No Asistió
-                            </button>
-                            <button type="button" class="btn btn-danger" onclick="cambiarEstado('CANCELADA')">
-                                <i class="fas fa-times"></i> Cancelar Cita
-                            </button>
-                        @elseif($cita['estado'] === 'EN_ATENCION')
-                            <button type="button" class="btn btn-success" onclick="cambiarEstado('ATENDIDA')">
-                                <i class="fas fa-check"></i> Finalizar Atención
-                            </button>
-                            <button type="button" class="btn btn-primary" onclick="cambiarEstado('PROGRAMADA')">
-                                <i class="fas fa-undo"></i> Volver a Programada
-                            </button>
-                        @elseif($cita['estado'] === 'ATENDIDA')
-                            <div class="alert alert-success mb-0">
-                                <i class="fas fa-check-circle me-2"></i>
-                                Cita completada exitosamente
-                            </div>
-                        @elseif($cita['estado'] === 'CANCELADA')
-                            <button type="button" class="btn btn-primary" onclick="cambiarEstado('PROGRAMADA')">
-                                <i class="fas fa-undo"></i> Reactivar Cita
-                            </button>
-                        @endif
-                    </div>
-                </div>
-            </div>
-
+          
             <!-- Información del Sistema -->
             <div class="card mb-4">
                 <div class="card-header">
@@ -261,15 +216,11 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <a href="{{ route('citas.edit', $cita['uuid']) }}" class="btn btn-warning">
-                            <i class="fas fa-edit"></i> Editar Cita
-                        </a>
+                    
                         <button type="button" class="btn btn-danger" onclick="eliminarCita()">
                             <i class="fas fa-trash"></i> Eliminar Cita
                         </button>
-                        <button type="button" class="btn btn-info" onclick="imprimirCita()">
-                            <i class="fas fa-print"></i> Imprimir
-                        </button>
+                   
                     </div>
                 </div>
             </div>
@@ -279,58 +230,7 @@
 
 @push('scripts')
 <script>
-// ✅ CAMBIAR ESTADO DE CITA
-async function cambiarEstado(nuevoEstado) {
-    try {
-        const result = await Swal.fire({
-            title: '¿Confirmar cambio de estado?',
-            text: `¿Está seguro de cambiar el estado a "${nuevoEstado.replace('_', ' ')}"?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Sí, cambiar',
-            cancelButtonText: 'Cancelar'
-        });
 
-        if (result.isConfirmed) {
-            const response = await fetch(`/citas/{{ $cita['uuid'] }}/estado`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    estado: nuevoEstado
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                Swal.fire({
-                    title: '¡Éxito!',
-                    text: data.message || 'Estado cambiado exitosamente',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
-                    location.reload();
-                });
-            } else {
-                throw new Error(data.error || 'Error desconocido');
-            }
-        }
-    } catch (error) {
-        console.error('Error cambiando estado:', error);
-        Swal.fire({
-            title: 'Error',
-            text: 'Error cambiando estado: ' + error.message,
-            icon: 'error'
-        });
-    }
-}
 
 // ✅ ELIMINAR CITA
 async function eliminarCita() {
