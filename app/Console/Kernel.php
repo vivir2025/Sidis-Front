@@ -12,7 +12,17 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+           // ✅ USAR COMANDOS DIRECTOS (SIN runInBackground para closures)
+        $schedule->command('cups:sync-contratados --direct')
+                 ->everyTwoHours()
+                 ->withoutOverlapping()
+                 ->appendOutputTo(storage_path('logs/scheduler.log'));
+                 
+        // ✅ SINCRONIZACIÓN COMPLETA DIARIA
+        $schedule->command('cups:sync-contratados --force --direct')
+                 ->dailyAt('02:00')
+                 ->withoutOverlapping()
+                 ->appendOutputTo(storage_path('logs/scheduler.log'));
     }
 
     /**

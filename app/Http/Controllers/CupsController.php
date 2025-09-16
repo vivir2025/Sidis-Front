@@ -122,31 +122,27 @@ class CupsController extends Controller
         }
     }
 
-    /**
- * ✅ OBTENER CUPS CONTRATADO POR CUPS UUID
- */
-public function getCupsContratadoPorCups(string $cupsUuid)
+   public function getCupsContratadoPorCups(string $cupsUuid)
 {
     try {
-        Log::info('🔍 Buscando CUPS contratado local', [
+        Log::info('🔍 Buscando CUPS contratado', [
             'cups_uuid' => $cupsUuid
         ]);
 
-        // ✅ INTENTAR ONLINE PRIMERO
+        // ✅ INTENTAR ONLINE PRIMERO (OPCIONAL)
         if ($this->authService->hasValidToken() && $this->apiService->isOnline()) {
             try {
                 $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
                 
                 if ($response['success']) {
-                    // ✅ ALMACENAR OFFLINE PARA FUTURO USO
+                    // Almacenar offline para futuro uso
                     $this->offlineService->storeCupsContratadoOffline($response['data']);
                     
-                    // ✅ TAMBIÉN ALMACENAR EL CUPS SI NO EXISTE
-                    if (isset($response['data']['cups'])) {
-                        $this->offlineService->storeCupsOffline($response['data']['cups']);
-                    }
-                    
-                    return response()->json($response);
+                    return response()->json([
+                        'success' => true,
+                        'data' => $response['data'],
+                        'source' => 'api'
+                    ]);
                 }
             } catch (\Exception $e) {
                 Log::warning('⚠️ Error API CUPS contratado, usando offline', [
@@ -155,8 +151,8 @@ public function getCupsContratadoPorCups(string $cupsUuid)
             }
         }
 
-        // ✅ USAR OFFLINE
-        $cupsContratado = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsUuid);
+        // ✅ USAR OFFLINE CON MÉTODO MEJORADO
+        $cupsContratado = $this->offlineService->getCupsContratadoVigenteOffline($cupsUuid);
         
         if ($cupsContratado) {
             return response()->json([
@@ -168,7 +164,8 @@ public function getCupsContratadoPorCups(string $cupsUuid)
 
         return response()->json([
             'success' => false,
-            'message' => 'No se encontró un contrato vigente para este CUPS'
+            'message' => 'No se encontró un contrato vigente para este CUPS',
+            'cups_uuid' => $cupsUuid
         ], 404);
 
     } catch (\Exception $e) {
@@ -204,6 +201,51 @@ public function sincronizarCupsContratados()
         return response()->json([
             'success' => false,
             'error' => 'Error interno: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * ✅ NUEVO: Invalidar cache de CUPS contratado
+ */
+public function invalidarCacheCupsContratado(string $cupsUuid)
+{
+    try {
+        Log::info('🗑️ Solicitud de invalidación de cache', [
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        // ✅ INVALIDAR CACHE
+        $invalidated = $this->offlineService->invalidateCupsContratadoCache($cupsUuid);
+
+        // ✅ FORZAR RECARGA
+        $contrato = $this->offlineService->forceReloadCupsContratado($cupsUuid);
+
+        if ($contrato) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Cache invalidado y datos recargados correctamente',
+                'data' => $contrato,
+                'cache_invalidated' => $invalidated
+            ]);
+        } else {
+            return response()->json([
+                'success' => true,
+                'message' => 'Cache invalidado, pero no se encontró contrato vigente',
+                'data' => null,
+                'cache_invalidated' => $invalidated
+            ]);
+        }
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error invalidando cache', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error invalidando cache: ' . $e->getMessage()
         ], 500);
     }
 }

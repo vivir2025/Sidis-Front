@@ -93,7 +93,8 @@ Route::get('/agendas/test-sync', [AgendaController::class, 'testSyncManual'])->n
          Route::delete('/{uuid}', [AgendaController::class, 'destroy'])->name('destroy');
        
     });
-
+Route::delete('/cups/{cupsUuid}/cache', [CupsController::class, 'invalidarCacheCupsContratado'])
+    ->name('cups.invalidar-cache');
     // routes/web.php - AGREGAR TEMPORALMENTE
 Route::get('/agendas/diagnostic', function() {
     $offlineService = app(\App\Services\OfflineService::class);

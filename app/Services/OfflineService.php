@@ -4203,9 +4203,6 @@ public function getCupsContratadoPorCupsUuid(string $cupsUuid): ?array
     }
 }
 
-/**
- * ✅ ALMACENAR CUPS CONTRATADO OFFLINE
- */
 public function storeCupsContratadoOffline(array $cupsContratadoData): void
 {
     try {
@@ -4214,26 +4211,56 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             return;
         }
 
-        // ✅ EXTRAER INFORMACIÓN ANIDADA CORRECTAMENTE
+        // ✅ VALIDAR ESTRUCTURA DE DATOS
+        if (!isset($cupsContratadoData['cups']) || !isset($cupsContratadoData['contrato'])) {
+            Log::warning('⚠️ CUPS contratado con estructura incompleta', [
+                'uuid' => $cupsContratadoData['uuid'],
+                'has_cups' => isset($cupsContratadoData['cups']),
+                'has_contrato' => isset($cupsContratadoData['contrato'])
+            ]);
+        }
+
+        // ✅ EXTRAER INFORMACIÓN CON VALIDACIÓN
+        $cups = $cupsContratadoData['cups'] ?? [];
+        $contrato = $cupsContratadoData['contrato'] ?? [];
+        $empresa = $contrato['empresa'] ?? [];
+
         $offlineData = [
             'uuid' => $cupsContratadoData['uuid'],
             'contrato_id' => $cupsContratadoData['contrato_id'] ?? null,
-            'contrato_uuid' => $cupsContratadoData['contrato']['uuid'] ?? null,
+            'contrato_uuid' => $contrato['uuid'] ?? null,
             'categoria_cups_id' => $cupsContratadoData['categoria_cups_id'] ?? null,
             'cups_id' => $cupsContratadoData['cups_id'] ?? null,
-            'cups_uuid' => $cupsContratadoData['cups']['uuid'] ?? null,
-            'cups_codigo' => $cupsContratadoData['cups']['codigo'] ?? null,
-            'cups_nombre' => $cupsContratadoData['cups']['nombre'] ?? null,
+            'cups_uuid' => $cups['uuid'] ?? null,
+            'cups_codigo' => $cups['codigo'] ?? null,
+            'cups_nombre' => $cups['nombre'] ?? null,
             'tarifa' => $cupsContratadoData['tarifa'] ?? '0',
             'estado' => $cupsContratadoData['estado'] ?? 'ACTIVO',
-            'contrato_fecha_inicio' => $cupsContratadoData['contrato']['fecha_inicio'] ?? null,
-            'contrato_fecha_fin' => $cupsContratadoData['contrato']['fecha_fin'] ?? null,
-            'contrato_estado' => $cupsContratadoData['contrato']['estado'] ?? null,
-            'empresa_nombre' => $cupsContratadoData['contrato']['empresa']['nombre'] ?? null,
+            'contrato_fecha_inicio' => $contrato['fecha_inicio'] ?? null,
+            'contrato_fecha_fin' => $contrato['fecha_fin'] ?? null,
+            'contrato_estado' => $contrato['estado'] ?? null,
+            'empresa_nombre' => $empresa['nombre'] ?? null,
             'created_at' => $cupsContratadoData['created_at'] ?? now()->toISOString(),
             'updated_at' => now()->toISOString()
         ];
 
+        // ✅ VALIDAR FECHAS ANTES DE GUARDAR
+        if ($offlineData['contrato_fecha_inicio'] && $offlineData['contrato_fecha_fin']) {
+            $fechaActual = now()->format('Y-m-d');
+            $esVigente = ($offlineData['contrato_fecha_inicio'] <= $fechaActual) && 
+                        ($offlineData['contrato_fecha_fin'] >= $fechaActual);
+            
+            Log::info($esVigente ? '✅ Guardando contrato vigente' : 'ℹ️ Guardando contrato no vigente', [
+                'cups_contratado_uuid' => $offlineData['uuid'],
+                'cups_codigo' => $offlineData['cups_codigo'],
+                'fecha_inicio' => $offlineData['contrato_fecha_inicio'],
+                'fecha_fin' => $offlineData['contrato_fecha_fin'],
+                'fecha_actual' => $fechaActual,
+                'es_vigente' => $esVigente
+            ]);
+        }
+
+        // ✅ GUARDAR EN SQLite
         if ($this->isSQLiteAvailable()) {
             DB::connection('offline')->table('cups_contratados')->updateOrInsert(
                 ['uuid' => $cupsContratadoData['uuid']],
@@ -4241,84 +4268,29 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             );
         }
 
-        // También guardar en JSON
+        // ✅ TAMBIÉN GUARDAR EN JSON
         $this->storeData('cups_contratados/' . $cupsContratadoData['uuid'] . '.json', $offlineData);
 
         Log::debug('✅ CUPS contratado almacenado offline', [
             'uuid' => $cupsContratadoData['uuid'],
             'cups_uuid' => $offlineData['cups_uuid'],
-            'cups_codigo' => $offlineData['cups_codigo']
+            'cups_codigo' => $offlineData['cups_codigo'],
+            'tarifa' => $offlineData['tarifa']
         ]);
 
     } catch (\Exception $e) {
         Log::error('❌ Error almacenando CUPS contratado offline', [
             'error' => $e->getMessage(),
-            'uuid' => $cupsContratadoData['uuid'] ?? 'sin-uuid'
+            'uuid' => $cupsContratadoData['uuid'] ?? 'sin-uuid',
+            'trace' => $e->getTraceAsString()
         ]);
     }
 }
 
-
-/**
- * ✅ BUSCAR CUPS CONTRATADO POR CUPS UUID OFFLINE
- */
 public function getCupsContratadoPorCupsUuidOffline(string $cupsUuid): ?array
 {
-    try {
-        Log::info('🔍 Buscando CUPS contratado offline', [
-            'cups_uuid' => $cupsUuid
-        ]);
-
-        if ($this->isSQLiteAvailable()) {
-            $cupsContratado = DB::connection('offline')->table('cups_contratados')
-                ->where('cups_uuid', $cupsUuid)
-                ->where('estado', 'ACTIVO')
-                ->where('contrato_estado', 'ACTIVO')
-                ->where('contrato_fecha_inicio', '<=', now()->format('Y-m-d'))
-                ->where('contrato_fecha_fin', '>=', now()->format('Y-m-d'))
-                ->first();
-            
-            if ($cupsContratado) {
-                $result = (array) $cupsContratado;
-                Log::info('✅ CUPS contratado encontrado en SQLite', [
-                    'cups_contratado_uuid' => $result['uuid'],
-                    'cups_codigo' => $result['cups_codigo'] ?? 'N/A'
-                ]);
-                return $result;
-            }
-        }
-
-        // Fallback a JSON
-        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
-        if (is_dir($cupsContratadosPath)) {
-            $files = glob($cupsContratadosPath . '/*.json');
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
-                if ($data && 
-                    $data['cups_uuid'] === $cupsUuid &&
-                    $data['estado'] === 'ACTIVO' &&
-                    $data['contrato_estado'] === 'ACTIVO' &&
-                    $data['contrato_fecha_inicio'] <= now()->format('Y-m-d') &&
-                    $data['contrato_fecha_fin'] >= now()->format('Y-m-d')) {
-                    
-                    Log::info('✅ CUPS contratado encontrado en JSON', [
-                        'cups_contratado_uuid' => $data['uuid']
-                    ]);
-                    return $data;
-                }
-            }
-        }
-
-        Log::info('⚠️ CUPS contratado no encontrado offline', ['cups_uuid' => $cupsUuid]);
-        return null;
-
-    } catch (\Exception $e) {
-        Log::error('❌ Error buscando CUPS contratado offline', [
-            'error' => $e->getMessage(),
-            'cups_uuid' => $cupsUuid
-        ]);
-        return null;
-    }
+    // ✅ USAR EL NUEVO MÉTODO MEJORADO
+    return $this->getCupsContratadoVigenteOffline($cupsUuid);
 }
 
 /**
@@ -4423,6 +4395,340 @@ public function actualizarEstadoCita($uuid, $estado)
         return false;
     }
 }
+public function getCupsContratadoVigenteOffline(string $cupsUuid): ?array
+{
+    try {
+        Log::info('🔍 Buscando CUPS contratado vigente offline', [
+            'cups_uuid' => $cupsUuid,
+            'fecha_actual' => now()->format('Y-m-d')
+        ]);
 
+        $fechaActual = now()->format('Y-m-d');
 
+        if ($this->isSQLiteAvailable()) {
+            $cupsContratado = DB::connection('offline')->table('cups_contratados')
+                ->where('cups_uuid', $cupsUuid)
+                ->where('estado', 'ACTIVO')
+                ->where('contrato_estado', 'ACTIVO')
+                ->where('contrato_fecha_inicio', '<=', $fechaActual)
+                ->where('contrato_fecha_fin', '>=', $fechaActual)
+                ->orderBy('contrato_fecha_fin', 'desc')
+                ->first();
+            
+            if ($cupsContratado) {
+                $result = (array) $cupsContratado;
+                
+                // ✅ VALIDACIÓN ADICIONAL DE FECHAS
+                if ($this->isContractExpired($result)) {
+                    Log::warning('⚠️ Contrato expirado encontrado en cache, eliminando', [
+                        'cups_uuid' => $cupsUuid,
+                        'fecha_fin' => $result['contrato_fecha_fin']
+                    ]);
+                    
+                    $this->invalidateCupsContratadoCache($cupsUuid);
+                    return null;
+                }
+                
+                return $result;
+            }
+        }
+
+        // ✅ FALLBACK A JSON CON VALIDACIÓN ESTRICTA
+        return $this->getValidContractFromJson($cupsUuid, $fechaActual);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando CUPS contratado vigente offline', [
+            'error' => $e->getMessage(),
+            'cups_uuid' => $cupsUuid
+        ]);
+        return null;
+    }
+}
+
+private function isContractExpired(array $contract): bool
+{
+    $fechaFin = $contract['contrato_fecha_fin'] ?? null;
+    if (!$fechaFin) return true;
+    
+    $fechaFinCarbon = \Carbon\Carbon::parse($fechaFin);
+    return $fechaFinCarbon->isPast();
+}
+/**
+ * ✅ NUEVO: Validar vigencia de contrato con logging detallado
+ */
+private function validarVigenciaContrato(array $contrato, string $fechaActual): bool
+{
+    try {
+        // ✅ VALIDAR CAMPOS REQUERIDOS
+        if (empty($contrato['estado']) || 
+            empty($contrato['contrato_estado']) ||
+            empty($contrato['contrato_fecha_inicio']) ||
+            empty($contrato['contrato_fecha_fin'])) {
+            
+            Log::warning('⚠️ Contrato con campos faltantes', [
+                'contrato_uuid' => $contrato['uuid'] ?? 'N/A',
+                'estado' => $contrato['estado'] ?? 'null',
+                'contrato_estado' => $contrato['contrato_estado'] ?? 'null',
+                'fecha_inicio' => $contrato['contrato_fecha_inicio'] ?? 'null',
+                'fecha_fin' => $contrato['contrato_fecha_fin'] ?? 'null'
+            ]);
+            return false;
+        }
+
+        // ✅ VALIDAR ESTADOS
+        if ($contrato['estado'] !== 'ACTIVO' || $contrato['contrato_estado'] !== 'ACTIVO') {
+            Log::info('ℹ️ Contrato con estado inactivo', [
+                'contrato_uuid' => $contrato['uuid'],
+                'estado' => $contrato['estado'],
+                'contrato_estado' => $contrato['contrato_estado']
+            ]);
+            return false;
+        }
+
+        // ✅ VALIDAR FECHAS CON LOGGING DETALLADO
+        $fechaInicio = $contrato['contrato_fecha_inicio'];
+        $fechaFin = $contrato['contrato_fecha_fin'];
+        
+        $esVigente = ($fechaInicio <= $fechaActual) && ($fechaFin >= $fechaActual);
+        
+        Log::info($esVigente ? '✅ Contrato vigente' : '⚠️ Contrato fuera de vigencia', [
+            'contrato_uuid' => $contrato['uuid'],
+            'fecha_actual' => $fechaActual,
+            'fecha_inicio' => $fechaInicio,
+            'fecha_fin' => $fechaFin,
+            'inicio_ok' => $fechaInicio <= $fechaActual,
+            'fin_ok' => $fechaFin >= $fechaActual,
+            'es_vigente' => $esVigente
+        ]);
+
+        return $esVigente;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error validando vigencia de contrato', [
+            'error' => $e->getMessage(),
+            'contrato_uuid' => $contrato['uuid'] ?? 'N/A'
+        ]);
+        return false;
+    }
+}
+/**
+ * ✅ NUEVO: Limpiar CUPS contratados existentes
+ */
+public function clearCupsContratados(): bool
+{
+    try {
+        Log::info('🗑️ Limpiando CUPS contratados offline');
+
+        // ✅ LIMPIAR SQLite
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('cups_contratados')->delete();
+            Log::info('✅ CUPS contratados eliminados de SQLite');
+        }
+
+        // ✅ LIMPIAR ARCHIVOS JSON
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        if (is_dir($cupsContratadosPath)) {
+            $files = glob($cupsContratadosPath . '/*.json');
+            foreach ($files as $file) {
+                unlink($file);
+            }
+            Log::info('✅ Archivos JSON de CUPS contratados eliminados', [
+                'files_deleted' => count($files)
+            ]);
+        }
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error limpiando CUPS contratados', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+/**
+ * ✅ NUEVO: Invalidar cache de CUPS contratado específico
+ */
+public function invalidateCupsContratadoCache(string $cupsUuid): bool
+{
+    try {
+        Log::info('🗑️ Invalidando cache de CUPS contratado', [
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        $invalidated = false;
+
+        // ✅ LIMPIAR SQLite
+        if ($this->isSQLiteAvailable()) {
+            $deleted = DB::connection('offline')->table('cups_contratados')
+                ->where('cups_uuid', $cupsUuid)
+                ->delete();
+            
+            if ($deleted > 0) {
+                Log::info('✅ Cache SQLite invalidado', [
+                    'cups_uuid' => $cupsUuid,
+                    'records_deleted' => $deleted
+                ]);
+                $invalidated = true;
+            }
+        }
+
+        // ✅ LIMPIAR ARCHIVOS JSON
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        if (is_dir($cupsContratadosPath)) {
+            $files = glob($cupsContratadosPath . '/*.json');
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && isset($data['cups_uuid']) && $data['cups_uuid'] === $cupsUuid) {
+                    unlink($file);
+                    Log::info('✅ Archivo JSON de cache eliminado', [
+                        'file' => basename($file),
+                        'cups_uuid' => $cupsUuid
+                    ]);
+                    $invalidated = true;
+                }
+            }
+        }
+
+        return $invalidated;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error invalidando cache de CUPS contratado', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ NUEVO: Forzar recarga de CUPS contratado desde API
+ */
+public function forceReloadCupsContratado(string $cupsUuid): ?array
+{
+    try {
+        Log::info('🔄 Forzando recarga de CUPS contratado', [
+            'cups_uuid' => $cupsUuid
+        ]);
+
+        // ✅ INVALIDAR CACHE PRIMERO
+        $this->invalidateCupsContratadoCache($cupsUuid);
+
+        // ✅ INTENTAR RECARGAR DESDE API
+        $apiService = app(ApiService::class);
+        $authService = app(AuthService::class);
+
+        if ($authService->hasValidToken() && $apiService->isOnline()) {
+            try {
+                $response = $apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+                
+                if ($response['success']) {
+                    $this->storeCupsContratadoOffline($response['data']);
+                    
+                    Log::info('✅ CUPS contratado recargado desde API', [
+                        'cups_uuid' => $cupsUuid,
+                        'contrato_uuid' => $response['data']['uuid']
+                    ]);
+                    
+                    return $response['data'];
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error recargando desde API', [
+                    'cups_uuid' => $cupsUuid,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error forzando recarga de CUPS contratado', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+private function getValidContractFromJson(string $cupsUuid, string $fechaActual): ?array
+{
+    try {
+        Log::info('📁 Buscando contrato válido en archivos JSON', [
+            'cups_uuid' => $cupsUuid,
+            'fecha_actual' => $fechaActual
+        ]);
+
+        $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+        
+        if (!is_dir($cupsContratadosPath)) {
+            Log::info('📂 Directorio de CUPS contratados no existe');
+            return null;
+        }
+
+        $files = glob($cupsContratadosPath . '/*.json');
+        $validContracts = [];
+
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            
+            if (!$data || !isset($data['cups_uuid']) || $data['cups_uuid'] !== $cupsUuid) {
+                continue;
+            }
+
+            // ✅ VALIDAR VIGENCIA CON EL MÉTODO EXISTENTE
+            if ($this->validarVigenciaContrato($data, $fechaActual)) {
+                $validContracts[] = $data;
+                
+                Log::info('✅ Contrato válido encontrado en JSON', [
+                    'contrato_uuid' => $data['uuid'],
+                    'cups_codigo' => $data['cups_codigo'] ?? 'N/A',
+                    'fecha_inicio' => $data['contrato_fecha_inicio'],
+                    'fecha_fin' => $data['contrato_fecha_fin']
+                ]);
+            } else {
+                Log::info('⚠️ Contrato no vigente encontrado en JSON', [
+                    'contrato_uuid' => $data['uuid'],
+                    'fecha_inicio' => $data['contrato_fecha_inicio'] ?? 'null',
+                    'fecha_fin' => $data['contrato_fecha_fin'] ?? 'null',
+                    'estado' => $data['estado'] ?? 'null'
+                ]);
+            }
+        }
+
+        if (empty($validContracts)) {
+            Log::info('⚠️ No se encontraron contratos válidos en JSON', [
+                'cups_uuid' => $cupsUuid,
+                'archivos_revisados' => count($files)
+            ]);
+            return null;
+        }
+
+        // ✅ DEVOLVER EL CONTRATO MÁS RECIENTE (POR FECHA DE FIN)
+        usort($validContracts, function($a, $b) {
+            $fechaFinA = $a['contrato_fecha_fin'] ?? '1900-01-01';
+            $fechaFinB = $b['contrato_fecha_fin'] ?? '1900-01-01';
+            return strcmp($fechaFinB, $fechaFinA); // Orden descendente
+        });
+
+        $selectedContract = $validContracts[0];
+        
+        Log::info('✅ Contrato seleccionado de JSON', [
+            'contrato_uuid' => $selectedContract['uuid'],
+            'cups_codigo' => $selectedContract['cups_codigo'] ?? 'N/A',
+            'fecha_fin' => $selectedContract['contrato_fecha_fin'],
+            'total_contratos_validos' => count($validContracts)
+        ]);
+
+        return $selectedContract;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando contrato válido en JSON', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return null;
+    }
+}
 }

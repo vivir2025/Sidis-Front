@@ -1,5 +1,5 @@
 <?php
-// app/Services/CupsService.php - VERSIÓN CORREGIDA
+// app/Services/CupsService.php - VERSIÓN COMPLETAMENTE CORREGIDA
 namespace App\Services;
 
 use App\Services\{ApiService, AuthService, OfflineService};
@@ -19,126 +19,211 @@ class CupsService
     }
 
     /**
-     * ✅ BUSCAR CUPS POR CÓDIGO O NOMBRE - CORREGIDO
+     * ✅ CORREGIDO: Buscar CUPS con validación correcta de contratos
      */
-  public function buscarCups(string $termino, int $limit = 10): array
-{
-    Log::info('🔍 CupsService@buscarCups iniciado', [
-        'termino' => $termino,
-        'limit' => $limit
-    ]);
+    public function buscarCups(string $termino, int $limit = 10): array
+    {
+        Log::info('🔍 CupsService@buscarCups iniciado', [
+            'termino' => $termino,
+            'limit' => $limit
+        ]);
 
+        try {
+            $hasValidToken = $this->authService->hasValidToken();
+            $isOnline = $this->apiService->isOnline();
+            
+            // ✅ INTENTAR API SOLO SI HAY TOKEN Y CONEXIÓN
+            if ($hasValidToken && $isOnline) {
+                try {
+                    $response = $this->apiService->post('/cups/buscar', [
+                        'q' => $termino
+                    ]);
+                    
+                    if ($response['success'] && !empty($response['data'])) {
+                        $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
+                        
+                        // ✅ ENRIQUECER CON CONTRATOS VIGENTES
+                        foreach ($cups as &$cupsItem) {
+                            $cupsItem = $this->enrichCupsWithContract($cupsItem);
+                        }
+                        
+                        return [
+                            'success' => true,
+                            'data' => $cups,
+                            'source' => 'api',
+                            'message' => 'Datos obtenidos del servidor',
+                            'total' => count($cups)
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error en API CUPS, usando offline', [
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            // ✅ USAR OFFLINE CON VALIDACIÓN MEJORADA
+            Log::info('💾 Usando búsqueda CUPS offline');
+            $cups = $this->offlineService->buscarCupsOffline($termino, $limit);
+            
+            // ✅ ENRIQUECER CON CONTRATOS OFFLINE
+            foreach ($cups as &$cupsItem) {
+                $cupsItem = $this->enrichCupsWithContract($cupsItem);
+            }
+            
+            return [
+                'success' => true,
+                'data' => $cups,
+                'source' => 'offline',
+                'message' => count($cups) > 0 ? 'Datos locales encontrados' : 'No se encontraron resultados',
+                'total' => count($cups)
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error en CupsService@buscarCups', [
+                'error' => $e->getMessage(),
+                'termino' => $termino
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Error buscando CUPS: ' . $e->getMessage(),
+                'data' => []
+            ];
+        }
+    }
+private function enrichCupsWithContract($cups)
+{
+    Log::info('🔍 Buscando CUPS contratado', ['cups_uuid' => $cups['uuid']]);
+    
+    // ✅ INTENTAR API PRIMERO
     try {
-        $hasValidToken = $this->authService->hasValidToken();
-        $isOnline = $this->apiService->isOnline();
+        $response = $this->apiService->get("/cups-contratados/por-cups/{$cups['uuid']}");
         
-        // ✅ INTENTAR API SOLO SI HAY TOKEN Y CONEXIÓN
-        if ($hasValidToken && $isOnline) {
-            try {
-                $response = $this->apiService->post('/cups/buscar', [
-                    'q' => $termino
+        if (isset($response['success']) && $response['success'] && isset($response['data'])) {
+            // ✅ ÉXITO: Actualizar cache offline
+            $this->offlineService->storeCupsContratadoOffline($response['data']);
+            $cups['contrato'] = $response['data'];
+            
+            Log::info('✅ CUPS contratado actualizado desde API', [
+                'cups_uuid' => $cups['uuid'],
+                'contrato_uuid' => $response['data']['uuid']
+            ]);
+            
+            return $cups;
+        }
+        
+        // ✅ ERROR 404 o NO ENCONTRADO: Limpiar cache obsoleto
+        if (isset($response['success']) && !$response['success']) {
+            $errorMessage = $response['message'] ?? $response['error'] ?? '';
+            
+            if (str_contains($errorMessage, 'No se encontró') ||
+                str_contains($errorMessage, 'contrato vigente') ||
+                str_contains($errorMessage, 'not found')) {
+                
+                Log::info('🗑️ Limpiando cache obsoleto por respuesta 404', [
+                    'cups_uuid' => $cups['uuid'],
+                    'error_message' => $errorMessage
                 ]);
                 
-                if ($response['success'] && !empty($response['data'])) {
-                    $cups = is_array($response['data']) ? $response['data'] : [$response['data']];
-                    
-                    // ✅ ENRIQUECER CON INFORMACIÓN DE CONTRATOS Y ALMACENAR OFFLINE
-                    foreach ($cups as &$cupsItem) {
-                        if (isset($cupsItem['uuid'])) {
-                            // ✅ BUSCAR Y ALMACENAR CONTRATO VIGENTE
-                            $this->sincronizarCupsContratadoPorCups($cupsItem['uuid']);
-                            
-                            // Buscar contrato vigente offline
-                            $contratoResponse = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsItem['uuid']);
-                            if ($contratoResponse) {
-                                $cupsItem['contrato_vigente'] = $contratoResponse;
-                                $cupsItem['tiene_contrato'] = true;
-                            } else {
-                                $cupsItem['tiene_contrato'] = false;
-                            }
-                            
-                            // Almacenar CUPS offline
-                            $this->offlineService->storeCupsOffline($cupsItem);
-                        }
-                    }
-                    
-                    return [
-                        'success' => true,
-                        'data' => $cups,
-                        'source' => 'api',
-                        'message' => 'Datos obtenidos del servidor',
-                        'total' => count($cups)
-                    ];
-                }
-            } catch (\Exception $e) {
-                Log::warning('⚠️ Error en API CUPS, usando offline', [
-                    'error' => $e->getMessage()
-                ]);
+                // ✅ LIMPIAR CACHE INMEDIATAMENTE
+                $this->offlineService->invalidateCupsContratadoCache($cups['uuid']);
+                
+                $cups['contrato'] = null;
+                return $cups;
             }
         }
-        
-        // ✅ FALLBACK A OFFLINE CON CONTRATOS
-        Log::info('💾 Usando búsqueda CUPS offline con contratos');
-        $cups = $this->offlineService->buscarCupsOffline($termino, $limit);
-        
-        // ✅ ENRIQUECER CON CONTRATOS OFFLINE
-        foreach ($cups as &$cupsItem) {
-            if (isset($cupsItem['uuid'])) {
-                $contrato = $this->offlineService->getCupsContratadoPorCupsUuidOffline($cupsItem['uuid']);
-                if ($contrato) {
-                    $cupsItem['contrato_vigente'] = $contrato;
-                    $cupsItem['tiene_contrato'] = true;
-                } else {
-                    $cupsItem['tiene_contrato'] = false;
-                }
-            }
-        }
-        
-        return [
-            'success' => true,
-            'data' => $cups,
-            'source' => 'offline',
-            'message' => count($cups) > 0 ? 'Datos locales encontrados' : 'No se encontraron resultados',
-            'total' => count($cups)
-        ];
         
     } catch (\Exception $e) {
-        Log::error('❌ Error en CupsService@buscarCups', [
+        Log::warning('⚠️ Error API, verificando cache offline', [
             'error' => $e->getMessage(),
-            'termino' => $termino
+            'cups_uuid' => $cups['uuid']
         ]);
-        
-        return [
-            'success' => false,
-            'error' => 'Error buscando CUPS: ' . $e->getMessage(),
-            'data' => []
-        ];
     }
+    
+    // ✅ SOLO USAR CACHE OFFLINE SI NO HUBO ERROR 404
+    return $this->searchContractOffline($cups);
 }
 
-/**
- * ✅ NUEVO: Sincronizar CUPS contratado específico
- */
-private function sincronizarCupsContratadoPorCups(string $cupsUuid): void
-{
-    try {
-        $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+
+    /**
+     * ✅ NUEVO: Maneja errores de API para contratos y limpia cache si es necesario
+     */
+    private function handleApiContractError($exception, $cupsUuid)
+    {
+        $errorMessage = $exception->getMessage();
+        Log::warning('⚠️ Error al obtener contrato de API', [
+            'cups_uuid' => $cupsUuid,
+            'error' => $errorMessage
+        ]);
         
-        if ($response['success']) {
-            $this->offlineService->storeCupsContratadoOffline($response['data']);
+        // Si es un 404, significa que no hay contrato vigente - limpiar cache
+        if (strpos($errorMessage, '404') !== false || 
+            strpos($errorMessage, 'No se encontró') !== false ||
+            strpos($errorMessage, 'contrato vigente') !== false) {
             
-            Log::info('✅ CUPS contratado sincronizado', [
+            Log::info('🗑️ API devolvió 404, limpiando cache offline', ['cups_uuid' => $cupsUuid]);
+            $this->offlineService->invalidateCupsContratadoCache($cupsUuid);
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Busca contrato en cache offline
+     */
+    private function searchContractOffline($cups)
+    {
+        Log::info('🔍 Buscando CUPS contratado vigente', [
+            'cups_uuid' => $cups['uuid'],
+            'fecha_actual' => now()->format('Y-m-d')
+        ]);
+        
+        $contratoVigente = $this->offlineService->getCupsContratadoVigenteOffline($cups['uuid']);
+        
+        if ($contratoVigente) {
+            Log::info('✅ CUPS contratado vigente encontrado en SQLite', [
+                'cups_contratado_uuid' => $contratoVigente['uuid'],
+                'cups_codigo' => $contratoVigente['cups_codigo'] ?? 'N/A',
+                'fecha_inicio' => $contratoVigente['fecha_inicio'] ?? 'N/A',
+                'fecha_fin' => $contratoVigente['fecha_fin'] ?? 'N/A',
+                'tarifa' => $contratoVigente['tarifa'] ?? 'N/A'
+            ]);
+            
+            $cups['contrato'] = $contratoVigente;
+        } else {
+            Log::warning('⚠️ No hay contrato vigente para este CUPS', [
+                'cups_uuid' => $cups['uuid']
+            ]);
+            
+            $cups['contrato'] = null;
+        }
+        
+        return $cups;
+    }
+
+    /**
+     * ✅ NUEVO: Sincronizar CUPS contratado específico
+     */
+    private function sincronizarCupsContratadoPorCups(string $cupsUuid): void
+    {
+        try {
+            $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+            
+            if ($response['success']) {
+                $this->offlineService->storeCupsContratadoOffline($response['data']);
+                
+                Log::info('✅ CUPS contratado sincronizado', [
+                    'cups_uuid' => $cupsUuid,
+                    'cups_contratado_uuid' => $response['data']['uuid'] ?? 'N/A'
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('⚠️ No se pudo sincronizar CUPS contratado', [
                 'cups_uuid' => $cupsUuid,
-                'cups_contratado_uuid' => $response['data']['uuid'] ?? 'N/A'
+                'error' => $e->getMessage()
             ]);
         }
-    } catch (\Exception $e) {
-        Log::warning('⚠️ No se pudo sincronizar CUPS contratado', [
-            'cups_uuid' => $cupsUuid,
-            'error' => $e->getMessage()
-        ]);
     }
-}
+
     /**
      * ✅ OBTENER CUPS POR CÓDIGO EXACTO - CORREGIDO
      */
@@ -338,6 +423,83 @@ private function sincronizarCupsContratadoPorCups(string $cupsUuid): void
                 'error' => 'Error interno',
                 'data' => []
             ];
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Invalidar cache de CUPS contratado cuando API devuelve 404
+     */
+    public function invalidarCacheContratoPorCups(string $cupsUuid): bool
+    {
+        try {
+            Log::info('🗑️ Invalidando cache de contrato CUPS', [
+                'cups_uuid' => $cupsUuid
+            ]);
+
+            return $this->offlineService->invalidateCupsContratadoCache($cupsUuid);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error invalidando cache de contrato CUPS', [
+                'cups_uuid' => $cupsUuid,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Obtener contrato vigente con limpieza automática de cache
+     */
+    public function obtenerContratoVigente(string $cupsUuid): ?array
+    {
+        try {
+            Log::info('🔍 Obteniendo contrato vigente para CUPS', [
+                'cups_uuid' => $cupsUuid
+            ]);
+
+            // ✅ INTENTAR API PRIMERO
+            if ($this->authService->hasValidToken() && $this->apiService->isOnline()) {
+                try {
+                    $response = $this->apiService->get("/cups-contratados/por-cups/{$cupsUuid}");
+                    
+                    if ($response['success']) {
+                        // Almacenar offline para futuro uso
+                        $this->offlineService->storeCupsContratadoOffline($response['data']);
+                        
+                        Log::info('✅ Contrato vigente obtenido de API', [
+                            'cups_uuid' => $cupsUuid,
+                            'contrato_uuid' => $response['data']['uuid'] ?? 'N/A'
+                        ]);
+                        
+                        return $response['data'];
+                    }
+                } catch (\Exception $e) {
+                    // ✅ SI LA API DEVUELVE 404, LIMPIAR CACHE
+                    if (str_contains($e->getMessage(), '404')) {
+                        Log::info('🗑️ API devolvió 404, limpiando cache offline', [
+                            'cups_uuid' => $cupsUuid
+                        ]);
+                        
+                        $this->offlineService->invalidateCupsContratadoCache($cupsUuid);
+                        
+                        return null; // No hay contrato vigente
+                    }
+                    
+                    Log::warning('⚠️ Error API contrato, usando offline', [
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // ✅ USAR OFFLINE SOLO SI NO HUBO ERROR 404
+            return $this->offlineService->getCupsContratadoVigenteOffline($cupsUuid);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo contrato vigente', [
+                'cups_uuid' => $cupsUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
         }
     }
 }

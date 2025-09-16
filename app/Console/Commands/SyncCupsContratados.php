@@ -4,23 +4,23 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Services\OfflineService;
+use App\Jobs\SyncCupsContratadosJob;
 
 class SyncCupsContratados extends Command
 {
-    protected $signature = 'cups:sync-contratados';
+    protected $signature = 'cups:sync-contratados {--force : Forzar sincronización completa}';
     protected $description = 'Sincronizar CUPS contratados desde la API';
 
-    public function handle(OfflineService $offlineService)
+    public function handle()
     {
         $this->info('🔄 Iniciando sincronización de CUPS contratados...');
         
-        $success = $offlineService->syncCupsContratadosFromApi();
+        SyncCupsContratadosJob::dispatch();
         
-        if ($success) {
-            $this->info('✅ CUPS contratados sincronizados exitosamente');
-        } else {
-            $this->error('❌ Error sincronizando CUPS contratados');
+        $this->info('✅ Trabajo de sincronización enviado a la cola');
+        
+        if ($this->option('force')) {
+            $this->info('🔧 Sincronización forzada activada');
         }
     }
 }
