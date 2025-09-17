@@ -18,9 +18,7 @@
                 </div>
                 
                 <div>
-                    <a href="{{ route('citas.edit', $cita['uuid']) }}" class="btn btn-warning me-2">
-                        <i class="fas fa-edit"></i> Editar
-                    </a>
+                   
                     <a href="{{ route('citas.index') }}" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left"></i> Volver
                     </a>
@@ -207,23 +205,7 @@
                 </div>
             </div>
 
-            <!-- Acciones Adicionales -->
-            <div class="card">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="fas fa-tools me-2"></i>Acciones
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                    
-                        <button type="button" class="btn btn-danger" onclick="eliminarCita()">
-                            <i class="fas fa-trash"></i> Eliminar Cita
-                        </button>
-                   
-                    </div>
-                </div>
-            </div>
+          
         </div>
     </div>
 </div>
@@ -232,59 +214,6 @@
 <script>
 
 
-// ✅ ELIMINAR CITA
-async function eliminarCita() {
-    try {
-        const result = await Swal.fire({
-            title: '¿Eliminar cita?',
-            text: 'Esta acción no se puede deshacer',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, eliminar',
-            cancelButtonText: 'Cancelar'
-        });
-
-        if (result.isConfirmed) {
-            const response = await fetch(`/citas/{{ $cita['uuid'] }}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                Swal.fire({
-                    title: '¡Eliminada!',
-                    text: data.message || 'Cita eliminada exitosamente',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                }).then(() => {
-                    window.location.href = '{{ route("citas.index") }}';
-                });
-            } else {
-                throw new Error(data.error || 'Error desconocido');
-            }
-        }
-    } catch (error) {
-        console.error('Error eliminando cita:', error);
-        Swal.fire({
-            title: 'Error',
-            text: 'Error eliminando cita: ' + error.message,
-            icon: 'error'
-        });
-    }
-}
-
-// ✅ IMPRIMIR CITA
-function imprimirCita() {
-    window.print();
-}
 </script>
 
 <style>

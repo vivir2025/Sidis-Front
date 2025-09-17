@@ -401,23 +401,27 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
             return;
         }
         
-        // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA - IGUAL QUE EN AGENDAS
+        // ✅ PRESERVAR EL ESTADO DE SINCRONIZACIÓN ORIGINAL
+        $originalSyncStatus = $agenda['sync_status'] ?? 'synced';
+        
+        // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA
         $fechaAgenda = $agenda['fecha'];
         if (strpos($fechaAgenda, 'T') !== false) {
-            $fechaAgenda = explode('T', $fechaAgenda)[0]; // "2025-09-12T00:00:00.000Z" -> "2025-09-12"
+            $fechaAgenda = explode('T', $fechaAgenda)[0];
         }
         
         Log::info('🔄 Actualizando agenda offline después de cita', [
             'agenda_uuid' => $agendaUuid,
             'fecha_agenda_original' => $agenda['fecha'],
-            'fecha_agenda_limpia' => $fechaAgenda
+            'fecha_agenda_limpia' => $fechaAgenda,
+            'sync_status_original' => $originalSyncStatus // ✅ LOGGING DEL ESTADO
         ]);
         
         // Recalcular cupos disponibles
         $user = $this->authService->usuario();
         $citasActivas = $this->offlineService->getCitasOffline($user['sede_id'], [
             'agenda_uuid' => $agendaUuid,
-            'fecha' => $fechaAgenda // ✅ USAR FECHA LIMPIA
+            'fecha' => $fechaAgenda
         ]);
         
         // Filtrar solo citas no canceladas
@@ -438,15 +442,19 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
         $agenda['citas_count'] = count($citasValidas);
         $agenda['total_cupos'] = $totalCupos;
         
-        // Guardar agenda actualizada
-        $this->offlineService->storeAgendaOffline($agenda, false);
+        // ✅ PRESERVAR EL ESTADO DE SINCRONIZACIÓN ORIGINAL
+        $needsSync = ($originalSyncStatus === 'pending');
+        
+        // Guardar agenda actualizada PRESERVANDO EL ESTADO DE SYNC
+        $this->offlineService->storeAgendaOffline($agenda, $needsSync);
         
         Log::info('✅ Agenda offline actualizada después de crear cita', [
             'agenda_uuid' => $agendaUuid,
             'fecha_agenda_limpia' => $fechaAgenda,
             'cupos_disponibles' => $agenda['cupos_disponibles'],
             'citas_count' => $agenda['citas_count'],
-            'total_cupos' => $totalCupos
+            'total_cupos' => $totalCupos,
+            'sync_status_preservado' => $needsSync ? 'pending' : 'synced' // ✅ CONFIRMAR PRESERVACIÓN
         ]);
         
     } catch (\Exception $e) {
@@ -456,7 +464,6 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
         ]);
     }
 }
-
 
    public function show(string $uuid): array
 {

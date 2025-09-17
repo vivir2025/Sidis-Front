@@ -2613,6 +2613,7 @@ public function syncPendingAgendas(): array
         foreach ($pendingAgendas as $agenda) {
             try {
                 $agendaArray = (array) $agenda;
+                $oldUuid = $agenda->uuid; // ✅ GUARDAR UUID ORIGINAL
                 
                 Log::info('📡 Procesando agenda para sincronización', [
                     'uuid' => $agenda->uuid,
@@ -2642,25 +2643,55 @@ public function syncPendingAgendas(): array
                 ]);
 
                 if (isset($response['success']) && $response['success'] === true) {
-                    // ✅ ÉXITO
+                    // ✅ ÉXITO - Actualizar con datos de la API
+                    $serverData = $response['data'] ?? [];
+                    $newUuid = $serverData['uuid'] ?? $oldUuid;
+                    
+                    // ✅ ACTUALIZAR AGENDA EN SQLite
+                    $updateData = [
+                        'sync_status' => 'synced',
+                        'synced_at' => now(),
+                        'error_message' => null
+                    ];
+                    
+                    // Si el servidor devolvió un ID, guardarlo
+                    if (isset($serverData['id'])) {
+                        $updateData['id'] = $serverData['id'];
+                    }
+                    
+                    // Si el servidor devolvió un UUID diferente, actualizarlo
+                    if (isset($serverData['uuid'])) {
+                        $updateData['uuid'] = $serverData['uuid'];
+                    }
+                    
                     DB::connection('offline')
                         ->table('agendas')
-                        ->where('uuid', $agenda->uuid)
-                        ->update([
-                            'sync_status' => 'synced',
-                            'synced_at' => now(),
-                            'error_message' => null
+                        ->where('uuid', $oldUuid)
+                        ->update($updateData);
+                    
+                    // ✅ NUEVO: ACTUALIZAR CITAS QUE USAN EL UUID VIEJO
+                    if ($oldUuid !== $newUuid) {
+                        Log::info('🔄 UUID de agenda cambió, actualizando citas relacionadas', [
+                            'old_uuid' => $oldUuid,
+                            'new_uuid' => $newUuid
                         ]);
+                        
+                        $this->updateCitasAgendaUuid($oldUuid, $newUuid);
+                    }
                     
                     $results['success']++;
                     $results['details'][] = [
-                        'uuid' => $agenda->uuid,
+                        'uuid' => $oldUuid,
+                        'new_uuid' => $newUuid,
                         'status' => 'success',
-                        'action' => 'created'
+                        'action' => 'created',
+                        'uuid_changed' => $oldUuid !== $newUuid
                     ];
                     
                     Log::info('✅ Agenda sincronizada exitosamente', [
-                        'uuid' => $agenda->uuid
+                        'old_uuid' => $oldUuid,
+                        'new_uuid' => $newUuid,
+                        'uuid_changed' => $oldUuid !== $newUuid
                     ]);
                     
                 } else {
@@ -2778,6 +2809,77 @@ public function syncPendingAgendas(): array
         ];
     }
 }
+
+/**
+ * ✅ NUEVO: Actualizar UUID de agenda en citas relacionadas
+ */
+private function updateCitasAgendaUuid(string $oldUuid, string $newUuid): void
+{
+    try {
+        Log::info('🔄 Actualizando citas con nuevo UUID de agenda', [
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+        
+        $updatedCount = 0;
+        
+        // ✅ ACTUALIZAR EN SQLite
+        if ($this->isSQLiteAvailable()) {
+            $updated = DB::connection('offline')
+                ->table('citas')
+                ->where('agenda_uuid', $oldUuid)
+                ->update(['agenda_uuid' => $newUuid]);
+            
+            $updatedCount += $updated;
+            
+            Log::info('✅ Citas actualizadas en SQLite', [
+                'updated_count' => $updated,
+                'old_uuid' => $oldUuid,
+                'new_uuid' => $newUuid
+            ]);
+        }
+        
+        // ✅ ACTUALIZAR ARCHIVOS JSON
+        $citasPath = $this->storagePath . '/citas';
+        if (is_dir($citasPath)) {
+            $files = glob($citasPath . '/*.json');
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                
+                if ($data && 
+                    isset($data['agenda_uuid']) && 
+                    $data['agenda_uuid'] === $oldUuid) {
+                    
+                    $data['agenda_uuid'] = $newUuid;
+                    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+                    $updatedCount++;
+                    
+                    Log::info('✅ Archivo JSON de cita actualizado', [
+                        'file' => basename($file),
+                        'cita_uuid' => $data['uuid'],
+                        'old_agenda_uuid' => $oldUuid,
+                        'new_agenda_uuid' => $newUuid
+                    ]);
+                }
+            }
+        }
+        
+        Log::info('✅ Actualización de UUIDs completada', [
+            'total_updated' => $updatedCount,
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando UUIDs de citas', [
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid,
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
 /**
  * ✅ NUEVO: Preparar datos para enviar a la API
  */

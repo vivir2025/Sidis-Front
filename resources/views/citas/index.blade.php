@@ -279,15 +279,9 @@ function mostrarCitas(citas) {
                             <i class="fas fa-eye"></i>
                         </a>
                        
-                        <button type="button" class="btn btn-outline-danger" 
-                                onclick="eliminarCita('${cita.uuid}')" title="Eliminar">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                       
                         <div class="btn-group">
-                            <button type="button" class="btn btn-outline-info btn-sm dropdown-toggle" 
-                                    data-bs-toggle="dropdown" title="Cambiar Estado">
-                                <i class="fas fa-exchange-alt"></i>
-                            </button>
+                           
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="#" onclick="cambiarEstado('${cita.uuid}', 'PROGRAMADA')">
                                     <i class="fas fa-calendar text-primary me-2"></i>Programada

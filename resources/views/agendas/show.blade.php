@@ -42,12 +42,7 @@
                     
                     <!-- Botones de Acción -->
                     <div class="btn-group">
-                        <button type="button" class="btn btn-danger btn-sm" onclick="eliminarAgenda('{{ $agenda['uuid'] }}', '{{ $agenda['fecha'] }} - {{ $agenda['consultorio'] }}')">
-                            <i class="fas fa-trash"></i> Eliminar
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">
-                            <i class="fas fa-print"></i> Imprimir
-                        </button>
+                       
                     </div>
                     
                     <a href="{{ route('agendas.index') }}" class="btn btn-outline-secondary btn-sm">
@@ -944,9 +939,6 @@ function createCitaElement(cita) {
                     <button type="button" class="btn btn-outline-info" onclick="verCita('${cita.uuid}')" title="Ver cita">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-warning" onclick="editarCita('${cita.uuid}')" title="Editar cita">
-                        <i class="fas fa-edit"></i>
-                    </button>
                 </div>
             </div>
         </div>
@@ -1014,46 +1006,6 @@ function editarCita(uuid) {
     window.location.href = `/citas/${uuid}/edit`;
 }
 
-// Acciones de agenda
-async function eliminarAgenda(uuid, descripcion) {
-    const result = await Swal.fire({
-        title: '¿Eliminar Agenda?',
-        html: `¿Está seguro que desea eliminar la agenda:<br><strong>${descripcion}</strong>?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#dc3545',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
-    });
-
-    if (result.isConfirmed) {
-        try {
-            const response = await fetch(`/agendas/${uuid}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json'
-                }
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                Swal.fire('¡Eliminado!', data.message, 'success').then(() => {
-                    window.location.href = '/agendas';
-                });
-            } else {
-                throw new Error(data.error);
-            }
-
-        } catch (error) {
-            console.error('Error eliminando agenda:', error);
-            Swal.fire('Error', 'Error eliminando agenda: ' + error.message, 'error');
-        }
-    }
-}
 
 function exportarAgenda() {
     Swal.fire({
