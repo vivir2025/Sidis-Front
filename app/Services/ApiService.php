@@ -187,6 +187,18 @@ class ApiService
      */
    protected function makeRequest(string $method, string $endpoint, array $data = []): array
 {
+
+     // ✅ AGREGAR DEBUG DEL TOKEN
+    $token = session('api_token');
+    
+    Log::info('🔐 ApiService - Token debug', [
+        'endpoint' => $endpoint,
+        'method' => $method,
+        'has_token' => !empty($token),
+        'token_length' => $token ? strlen($token) : 0,
+        'session_id' => session()->getId()
+    ]);
+    
     // ✅ VERIFICAR CONEXIÓN ANTES DE HACER LA PETICIÓN
     if (!$this->checkConnection()) {
         Log::warning('API request blocked - offline', [

@@ -71,6 +71,37 @@
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
+                            <!-- Registro -->
+                            <div class="col-md-6">
+                                <label for="registro" class="form-label">Registro</label>
+                                <input type="text" class="form-control @error('registro') is-invalid @enderror" 
+                                       id="registro" name="registro" 
+                                       value="{{ old('registro', $paciente['registro'] ?? '') }}">
+                                @error('registro')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Tipo de Documento -->
+                            <div class="col-md-6">
+                                <label for="tipo_documento_id" class="form-label">Tipo de Documento</label>
+                                <select class="form-select @error('tipo_documento_id') is-invalid @enderror" 
+                                        id="tipo_documento_id" name="tipo_documento_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['tipos_documento']))
+                                        @foreach($masterData['tipos_documento'] as $tipo)
+                                            <option value="{{ $tipo['uuid'] }}" 
+                                                {{ old('tipo_documento_id', $paciente['tipo_documento_id'] ?? '') == $tipo['uuid'] ? 'selected' : '' }}>
+                                                {{ $tipo['abreviacion'] }} - {{ $tipo['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('tipo_documento_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            
                             <!-- Nombres -->
                             <div class="col-md-6">
                                 <label for="primer_nombre" class="form-label">Primer Nombre <span class="text-danger">*</span></label>
@@ -86,7 +117,7 @@
                                 <label for="segundo_nombre" class="form-label">Segundo Nombre</label>
                                 <input type="text" class="form-control @error('segundo_nombre') is-invalid @enderror" 
                                        id="segundo_nombre" name="segundo_nombre" 
-                                       value="{{ old('segundo_nombre', $paciente['segundo_nombre']) }}">
+                                       value="{{ old('segundo_nombre', $paciente['segundo_nombre'] ?? '') }}">
                                 @error('segundo_nombre')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -107,7 +138,7 @@
                                 <label for="segundo_apellido" class="form-label">Segundo Apellido</label>
                                 <input type="text" class="form-control @error('segundo_apellido') is-invalid @enderror" 
                                        id="segundo_apellido" name="segundo_apellido" 
-                                       value="{{ old('segundo_apellido', $paciente['segundo_apellido']) }}">
+                                       value="{{ old('segundo_apellido', $paciente['segundo_apellido'] ?? '') }}">
                                 @error('segundo_apellido')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -135,7 +166,7 @@
                                 <label for="fecha_nacimiento" class="form-label">Fecha de Nacimiento <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control @error('fecha_nacimiento') is-invalid @enderror" 
                                        id="fecha_nacimiento" name="fecha_nacimiento" 
-                                       value="{{ old('fecha_nacimiento', \Carbon\Carbon::parse($paciente['fecha_nacimiento'])->format('Y-m-d')) }}" required>
+                                       value="{{ old('fecha_nacimiento', isset($paciente['fecha_nacimiento']) ? \Carbon\Carbon::parse($paciente['fecha_nacimiento'])->format('Y-m-d') : '') }}" required>
                                 @error('fecha_nacimiento')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -147,8 +178,8 @@
                                 <label for="sexo" class="form-label">Sexo <span class="text-danger">*</span></label>
                                 <select class="form-select @error('sexo') is-invalid @enderror" id="sexo" name="sexo" required>
                                     <option value="">Seleccione...</option>
-                                    <option value="M" {{ old('sexo', $paciente['sexo']) == 'M' ? 'selected' : '' }}>Masculino</option>
-                                    <option value="F" {{ old('sexo', $paciente['sexo']) == 'F' ? 'selected' : '' }}>Femenino</option>
+                                    <option value="M" {{ old('sexo', $paciente['sexo'] ?? '') == 'M' ? 'selected' : '' }}>Masculino</option>
+                                    <option value="F" {{ old('sexo', $paciente['sexo'] ?? '') == 'F' ? 'selected' : '' }}>Femenino</option>
                                 </select>
                                 @error('sexo')
                                     <div class="invalid-feedback">{{ $message }}</div>
@@ -160,13 +191,25 @@
                                 <label for="estado_civil" class="form-label">Estado Civil</label>
                                 <select class="form-select @error('estado_civil') is-invalid @enderror" id="estado_civil" name="estado_civil">
                                     <option value="">Seleccione...</option>
-                                    <option value="SOLTERO" {{ old('estado_civil', $paciente['estado_civil']) == 'SOLTERO' ? 'selected' : '' }}>Soltero(a)</option>
-                                    <option value="CASADO" {{ old('estado_civil', $paciente['estado_civil']) == 'CASADO' ? 'selected' : '' }}>Casado(a)</option>
-                                    <option value="UNION_LIBRE" {{ old('estado_civil', $paciente['estado_civil']) == 'UNION_LIBRE' ? 'selected' : '' }}>Unión Libre</option>
-                                    <option value="DIVORCIADO" {{ old('estado_civil', $paciente['estado_civil']) == 'DIVORCIADO' ? 'selected' : '' }}>Divorciado(a)</option>
-                                    <option value="VIUDO" {{ old('estado_civil', $paciente['estado_civil']) == 'VIUDO' ? 'selected' : '' }}>Viudo(a)</option>
+                                    <option value="SOLTERO" {{ old('estado_civil', $paciente['estado_civil'] ?? '') == 'SOLTERO' ? 'selected' : '' }}>Soltero(a)</option>
+                                    <option value="CASADO" {{ old('estado_civil', $paciente['estado_civil'] ?? '') == 'CASADO' ? 'selected' : '' }}>Casado(a)</option>
+                                    <option value="UNION_LIBRE" {{ old('estado_civil', $paciente['estado_civil'] ?? '') == 'UNION_LIBRE' ? 'selected' : '' }}>Unión Libre</option>
+                                    <option value="DIVORCIADO" {{ old('estado_civil', $paciente['estado_civil'] ?? '') == 'DIVORCIADO' ? 'selected' : '' }}>Divorciado(a)</option>
+                                    <option value="VIUDO" {{ old('estado_civil', $paciente['estado_civil'] ?? '') == 'VIUDO' ? 'selected' : '' }}>Viudo(a)</option>
                                 </select>
                                 @error('estado_civil')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Estado -->
+                            <div class="col-md-6">
+                                <label for="estado" class="form-label">Estado</label>
+                                <select class="form-select @error('estado') is-invalid @enderror" id="estado" name="estado">
+                                    <option value="ACTIVO" {{ old('estado', $paciente['estado'] ?? 'ACTIVO') == 'ACTIVO' ? 'selected' : '' }}>Activo</option>
+                                    <option value="INACTIVO" {{ old('estado', $paciente['estado'] ?? 'ACTIVO') == 'INACTIVO' ? 'selected' : '' }}>Inactivo</option>
+                                </select>
+                                @error('estado')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -187,7 +230,7 @@
                                 <label for="direccion" class="form-label">Dirección</label>
                                 <input type="text" class="form-control @error('direccion') is-invalid @enderror" 
                                        id="direccion" name="direccion" 
-                                       value="{{ old('direccion', $paciente['direccion']) }}">
+                                       value="{{ old('direccion', $paciente['direccion'] ?? '') }}">
                                 @error('direccion')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -197,7 +240,7 @@
                                 <label for="telefono" class="form-label">Teléfono</label>
                                 <input type="text" class="form-control @error('telefono') is-invalid @enderror" 
                                        id="telefono" name="telefono" 
-                                       value="{{ old('telefono', $paciente['telefono']) }}">
+                                       value="{{ old('telefono', $paciente['telefono'] ?? '') }}">
                                 @error('telefono')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -207,8 +250,412 @@
                                 <label for="correo" class="form-label">Correo Electrónico</label>
                                 <input type="email" class="form-control @error('correo') is-invalid @enderror" 
                                        id="correo" name="correo" 
-                                       value="{{ old('correo', $paciente['correo']) }}">
+                                       value="{{ old('correo', $paciente['correo'] ?? '') }}">
                                 @error('correo')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información de Afiliación -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-id-card me-2"></i>Información de Afiliación
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <!-- Empresa -->
+                            <div class="col-md-6">
+                                <label for="empresa_id" class="form-label">Empresa/EPS</label>
+                                <select class="form-select @error('empresa_id') is-invalid @enderror" 
+                                        id="empresa_id" name="empresa_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['empresas']))
+                                        @foreach($masterData['empresas'] as $empresa)
+                                            <option value="{{ $empresa['uuid'] }}" 
+                                                {{ old('empresa_id', $paciente['empresa_id'] ?? '') == $empresa['uuid'] ? 'selected' : '' }}>
+                                                {{ $empresa['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('empresa_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Régimen -->
+                            <div class="col-md-6">
+                                <label for="regimen_id" class="form-label">Régimen</label>
+                                <select class="form-select @error('regimen_id') is-invalid @enderror" 
+                                        id="regimen_id" name="regimen_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['regimenes']))
+                                        @foreach($masterData['regimenes'] as $regimen)
+                                            <option value="{{ $regimen['uuid'] }}" 
+                                                {{ old('regimen_id', $paciente['regimen_id'] ?? '') == $regimen['uuid'] ? 'selected' : '' }}>
+                                                {{ $regimen['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('regimen_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Tipo de Afiliación -->
+                            <div class="col-md-6">
+                                <label for="tipo_afiliacion_id" class="form-label">Tipo de Afiliación</label>
+                                <select class="form-select @error('tipo_afiliacion_id') is-invalid @enderror" 
+                                        id="tipo_afiliacion_id" name="tipo_afiliacion_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['tipos_afiliacion']))
+                                        @foreach($masterData['tipos_afiliacion'] as $tipo)
+                                            <option value="{{ $tipo['uuid'] }}" 
+                                                {{ old('tipo_afiliacion_id', $paciente['tipo_afiliacion_id'] ?? '') == $tipo['uuid'] ? 'selected' : '' }}>
+                                                {{ $tipo['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('tipo_afiliacion_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Parentesco -->
+                            <div class="col-md-6">
+                                <label for="parentesco_id" class="form-label">Parentesco</label>
+                                <select class="form-select @error('parentesco_id') is-invalid @enderror" 
+                                        id="parentesco_id" name="parentesco_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['tipos_parentesco']))
+                                        @foreach($masterData['tipos_parentesco'] as $parentesco)
+                                            <option value="{{ $parentesco['uuid'] }}" 
+                                                {{ old('parentesco_id', $paciente['parentesco_id'] ?? '') == $parentesco['uuid'] ? 'selected' : '' }}>
+                                                {{ $parentesco['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('parentesco_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información Geográfica -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-map-marker-alt me-2"></i>Información Geográfica
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <!-- Departamento de Nacimiento -->
+                            <div class="col-md-6">
+                                <label for="depto_nacimiento_id" class="form-label">Departamento de Nacimiento</label>
+                                <select class="form-select @error('depto_nacimiento_id') is-invalid @enderror" 
+                                        id="depto_nacimiento_id" name="depto_nacimiento_id" onchange="loadMunicipiosNacimiento()">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['departamentos']))
+                                        @foreach($masterData['departamentos'] as $depto)
+                                            <option value="{{ $depto['uuid'] }}" 
+                                                {{ old('depto_nacimiento_id', $paciente['depto_nacimiento_id'] ?? '') == $depto['uuid'] ? 'selected' : '' }}>
+                                                {{ $depto['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('depto_nacimiento_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Municipio de Nacimiento -->
+                            <div class="col-md-6">
+                                <label for="municipio_nacimiento_id" class="form-label">Municipio de Nacimiento</label>
+                                <select class="form-select @error('municipio_nacimiento_id') is-invalid @enderror" 
+                                        id="municipio_nacimiento_id" name="municipio_nacimiento_id">
+                                    <option value="">Seleccione departamento primero...</option>
+                                </select>
+                                @error('municipio_nacimiento_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Departamento de Residencia -->
+                            <div class="col-md-6">
+                                <label for="depto_residencia_id" class="form-label">Departamento de Residencia</label>
+                                <select class="form-select @error('depto_residencia_id') is-invalid @enderror" 
+                                        id="depto_residencia_id" name="depto_residencia_id" onchange="loadMunicipiosResidencia()">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['departamentos']))
+                                        @foreach($masterData['departamentos'] as $depto)
+                                            <option value="{{ $depto['uuid'] }}" 
+                                                {{ old('depto_residencia_id', $paciente['depto_residencia_id'] ?? '') == $depto['uuid'] ? 'selected' : '' }}>
+                                                {{ $depto['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('depto_residencia_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Municipio de Residencia -->
+                            <div class="col-md-6">
+                                <label for="municipio_residencia_id" class="form-label">Municipio de Residencia</label>
+                                <select class="form-select @error('municipio_residencia_id') is-invalid @enderror" 
+                                        id="municipio_residencia_id" name="municipio_residencia_id">
+                                    <option value="">Seleccione departamento primero...</option>
+                                </select>
+                                @error('municipio_residencia_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Zona de Residencia -->
+                            <div class="col-md-6">
+                                <label for="zona_residencia_id" class="form-label">Zona de Residencia</label>
+                                <select class="form-select @error('zona_residencia_id') is-invalid @enderror" 
+                                        id="zona_residencia_id" name="zona_residencia_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['zonas_residenciales']))
+                                        @foreach($masterData['zonas_residenciales'] as $zona)
+                                            <option value="{{ $zona['uuid'] }}" 
+                                                {{ old('zona_residencia_id', $paciente['zona_residencia_id'] ?? '') == $zona['uuid'] ? 'selected' : '' }}>
+                                                {{ $zona['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('zona_residencia_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información Adicional -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info me-2"></i>Información Adicional
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <!-- Raza -->
+                            <div class="col-md-6">
+                                <label for="raza_id" class="form-label">Raza/Etnia</label>
+                                <select class="form-select @error('raza_id') is-invalid @enderror" 
+                                        id="raza_id" name="raza_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['razas']))
+                                        @foreach($masterData['razas'] as $raza)
+                                            <option value="{{ $raza['uuid'] }}" 
+                                                {{ old('raza_id', $paciente['raza_id'] ?? '') == $raza['uuid'] ? 'selected' : '' }}>
+                                                {{ $raza['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('raza_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Escolaridad -->
+                            <div class="col-md-6">
+                                <label for="escolaridad_id" class="form-label">Escolaridad</label>
+                                <select class="form-select @error('escolaridad_id') is-invalid @enderror" 
+                                        id="escolaridad_id" name="escolaridad_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['escolaridades']))
+                                        @foreach($masterData['escolaridades'] as $escolaridad)
+                                            <option value="{{ $escolaridad['uuid'] }}" 
+                                                {{ old('escolaridad_id', $paciente['escolaridad_id'] ?? '') == $escolaridad['uuid'] ? 'selected' : '' }}>
+                                                {{ $escolaridad['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('escolaridad_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Ocupación -->
+                            <div class="col-md-6">
+                                <label for="ocupacion_id" class="form-label">Ocupación</label>
+                                <select class="form-select @error('ocupacion_id') is-invalid @enderror" 
+                                        id="ocupacion_id" name="ocupacion_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['ocupaciones']))
+                                        @foreach($masterData['ocupaciones'] as $ocupacion)
+                                            <option value="{{ $ocupacion['uuid'] }}" 
+                                                {{ old('ocupacion_id', $paciente['ocupacion_id'] ?? '') == $ocupacion['uuid'] ? 'selected' : '' }}>
+                                                {{ $ocupacion['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('ocupacion_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Novedad -->
+                            <div class="col-md-6">
+                                <label for="novedad_id" class="form-label">Novedad</label>
+                                <select class="form-select @error('novedad_id') is-invalid @enderror" 
+                                        id="novedad_id" name="novedad_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['novedades']))
+                                        @foreach($masterData['novedades'] as $novedad)
+                                            <option value="{{ $novedad['uuid'] }}" 
+                                                {{ old('novedad_id', $paciente['novedad_id'] ?? '') == $novedad['uuid'] ? 'selected' : '' }}>
+                                                {{ $novedad['tipo_novedad'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('novedad_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Auxiliar -->
+                            <div class="col-md-6">
+                                <label for="auxiliar_id" class="form-label">Auxiliar</label>
+                                <select class="form-select @error('auxiliar_id') is-invalid @enderror" 
+                                        id="auxiliar_id" name="auxiliar_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['auxiliares']))
+                                        @foreach($masterData['auxiliares'] as $auxiliar)
+                                            <option value="{{ $auxiliar['uuid'] }}" 
+                                                {{ old('auxiliar_id', $paciente['auxiliar_id'] ?? '') == $auxiliar['uuid'] ? 'selected' : '' }}>
+                                                                                               {{ $auxiliar['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('auxiliar_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <!-- Brigada -->
+                            <div class="col-md-6">
+                                <label for="brigada_id" class="form-label">Brigada</label>
+                                <select class="form-select @error('brigada_id') is-invalid @enderror" 
+                                        id="brigada_id" name="brigada_id">
+                                    <option value="">Seleccione...</option>
+                                    @if(isset($masterData['brigadas']))
+                                        @foreach($masterData['brigadas'] as $brigada)
+                                            <option value="{{ $brigada['uuid'] }}" 
+                                                {{ old('brigada_id', $paciente['brigada_id'] ?? '') == $brigada['uuid'] ? 'selected' : '' }}>
+                                                {{ $brigada['nombre'] }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                                @error('brigada_id')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información del Acudiente -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-user-friends me-2"></i>Información del Acudiente
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="nombre_acudiente" class="form-label">Nombre del Acudiente</label>
+                                <input type="text" class="form-control @error('nombre_acudiente') is-invalid @enderror" 
+                                       id="nombre_acudiente" name="nombre_acudiente" 
+                                       value="{{ old('nombre_acudiente', $paciente['nombre_acudiente'] ?? '') }}">
+                                @error('nombre_acudiente')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="parentesco_acudiente" class="form-label">Parentesco del Acudiente</label>
+                                <input type="text" class="form-control @error('parentesco_acudiente') is-invalid @enderror" 
+                                       id="parentesco_acudiente" name="parentesco_acudiente" 
+                                       value="{{ old('parentesco_acudiente', $paciente['parentesco_acudiente'] ?? '') }}">
+                                @error('parentesco_acudiente')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="telefono_acudiente" class="form-label">Teléfono del Acudiente</label>
+                                <input type="text" class="form-control @error('telefono_acudiente') is-invalid @enderror" 
+                                       id="telefono_acudiente" name="telefono_acudiente" 
+                                       value="{{ old('telefono_acudiente', $paciente['telefono_acudiente'] ?? '') }}">
+                                @error('telefono_acudiente')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="direccion_acudiente" class="form-label">Dirección del Acudiente</label>
+                                <input type="text" class="form-control @error('direccion_acudiente') is-invalid @enderror" 
+                                       id="direccion_acudiente" name="direccion_acudiente" 
+                                       value="{{ old('direccion_acudiente', $paciente['direccion_acudiente'] ?? '') }}">
+                                @error('direccion_acudiente')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información del Acompañante -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-user-plus me-2"></i>Información del Acompañante
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="acompanante_nombre" class="form-label">Nombre del Acompañante</label>
+                                <input type="text" class="form-control @error('acompanante_nombre') is-invalid @enderror" 
+                                       id="acompanante_nombre" name="acompanante_nombre" 
+                                       value="{{ old('acompanante_nombre', $paciente['acompanante_nombre'] ?? '') }}">
+                                @error('acompanante_nombre')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="acompanante_telefono" class="form-label">Teléfono del Acompañante</label>
+                                <input type="text" class="form-control @error('acompanante_telefono') is-invalid @enderror" 
+                                       id="acompanante_telefono" name="acompanante_telefono" 
+                                       value="{{ old('acompanante_telefono', $paciente['acompanante_telefono'] ?? '') }}">
+                                @error('acompanante_telefono')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -227,7 +674,7 @@
                         <div class="mb-3">
                             <label for="observacion" class="form-label">Observaciones Generales</label>
                             <textarea class="form-control @error('observacion') is-invalid @enderror" 
-                                      id="observacion" name="observacion" rows="3">{{ old('observacion', $paciente['observacion']) }}</textarea>
+                                      id="observacion" name="observacion" rows="3">{{ old('observacion', $paciente['observacion'] ?? '') }}</textarea>
                             @error('observacion')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
@@ -259,10 +706,10 @@
                         <div class="mb-3">
                             <label class="form-label">Fecha de Registro</label>
                             <input type="text" class="form-control" 
-                                   value="{{ \Carbon\Carbon::parse($paciente['fecha_registro'])->format('d/m/Y') }}" readonly>
+                                   value="{{ isset($paciente['fecha_registro']) ? \Carbon\Carbon::parse($paciente['fecha_registro'])->format('d/m/Y') : 'No disponible' }}" readonly>
                         </div>
                         
-                        @if($paciente['fecha_actualizacion'])
+                        @if(isset($paciente['fecha_actualizacion']) && $paciente['fecha_actualizacion'])
                         <div class="mb-3">
                             <label class="form-label">Última Actualización</label>
                             <input type="text" class="form-control" 
@@ -273,11 +720,22 @@
                         <div class="mb-3">
                             <label class="form-label">Estado Actual</label>
                             <div>
-                                <span class="badge bg-{{ $paciente['estado'] === 'ACTIVO' ? 'success' : 'danger' }} fs-6">
-                                    {{ $paciente['estado'] }}
+                                <span class="badge bg-{{ ($paciente['estado'] ?? 'ACTIVO') === 'ACTIVO' ? 'success' : 'danger' }} fs-6">
+                                    {{ $paciente['estado'] ?? 'ACTIVO' }}
                                 </span>
                             </div>
                         </div>
+
+                        @if(isset($paciente['sync_status']) && $paciente['sync_status'] === 'pending')
+                        <div class="mb-3">
+                            <label class="form-label">Estado de Sincronización</label>
+                            <div>
+                                <span class="badge bg-warning fs-6">
+                                    <i class="fas fa-sync-alt me-1"></i>Pendiente
+                                </span>
+                            </div>
+                        </div>
+                        @endif
                         
                         @if($isOffline)
                             <div class="alert alert-warning">
@@ -341,9 +799,100 @@
 
 @push('scripts')
 <script>
-// Variables originales para detectar cambios
+// Variables globales
+const masterData = @json($masterData ?? []);
 const originalData = @json($paciente);
 let hasChanges = false;
+
+// Inicialización cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar municipios iniciales si hay departamentos seleccionados
+    loadInitialMunicipios();
+    
+    // Configurar detectores de cambios
+    setupChangeDetectors();
+    
+    // Calcular edad inicial
+    calculateAge();
+});
+
+// Cargar municipios iniciales
+function loadInitialMunicipios() {
+    const deptoNacimientoId = document.getElementById('depto_nacimiento_id').value;
+    const deptoResidenciaId = document.getElementById('depto_residencia_id').value;
+    
+    if (deptoNacimientoId) {
+        loadMunicipiosNacimiento();
+    }
+    
+    if (deptoResidenciaId) {
+        loadMunicipiosResidencia();
+    }
+}
+
+// Cargar municipios de nacimiento
+function loadMunicipiosNacimiento() {
+    const deptoId = document.getElementById('depto_nacimiento_id').value;
+    const municipioSelect = document.getElementById('municipio_nacimiento_id');
+    const selectedMunicipio = originalData.municipio_nacimiento_id || '';
+    
+    municipioSelect.innerHTML = '<option value="">Seleccione...</option>';
+    
+    if (deptoId && masterData.departamentos) {
+        const departamento = masterData.departamentos.find(d => d.uuid === deptoId);
+        if (departamento && departamento.municipios) {
+            departamento.municipios.forEach(municipio => {
+                const option = document.createElement('option');
+                option.value = municipio.uuid;
+                option.textContent = municipio.nombre;
+                if (municipio.uuid === selectedMunicipio) {
+                    option.selected = true;
+                }
+                municipioSelect.appendChild(option);
+            });
+        }
+    }
+}
+
+// Cargar municipios de residencia
+function loadMunicipiosResidencia() {
+    const deptoId = document.getElementById('depto_residencia_id').value;
+    const municipioSelect = document.getElementById('municipio_residencia_id');
+    const selectedMunicipio = originalData.municipio_residencia_id || '';
+    
+    municipioSelect.innerHTML = '<option value="">Seleccione...</option>';
+    
+    if (deptoId && masterData.departamentos) {
+        const departamento = masterData.departamentos.find(d => d.uuid === deptoId);
+        if (departamento && departamento.municipios) {
+            departamento.municipios.forEach(municipio => {
+                const option = document.createElement('option');
+                option.value = municipio.uuid;
+                option.textContent = municipio.nombre;
+                if (municipio.uuid === selectedMunicipio) {
+                    option.selected = true;
+                }
+                municipioSelect.appendChild(option);
+            });
+        }
+    }
+}
+
+// Configurar detectores de cambios
+function setupChangeDetectors() {
+    const form = document.getElementById('pacienteEditForm');
+    const inputs = form.querySelectorAll('input, select, textarea');
+    
+    inputs.forEach(input => {
+        input.addEventListener('change', function() {
+            detectChanges();
+        });
+        
+        input.addEventListener('input', function() {
+            detectChanges();
+        });
+    });
+}
 
 // Manejar envío del formulario
 document.getElementById('pacienteEditForm').addEventListener('submit', function(e) {
@@ -387,21 +936,12 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
         } else {
             showAlert('error', data.error || 'Error al actualizar paciente');
             
+            // Limpiar errores previos
+            clearValidationErrors();
+            
             // Mostrar errores de validación si existen
             if (data.errors) {
-                Object.keys(data.errors).forEach(field => {
-                    const input = document.getElementById(field);
-                    if (input) {
-                        input.classList.add('is-invalid');
-                        const feedback = input.parentNode.querySelector('.invalid-feedback') || 
-                                       document.createElement('div');
-                        feedback.className = 'invalid-feedback';
-                        feedback.textContent = data.errors[field][0];
-                        if (!input.parentNode.querySelector('.invalid-feedback')) {
-                            input.parentNode.appendChild(feedback);
-                        }
-                    }
-                });
+                showValidationErrors(data.errors);
             }
         }
     })
@@ -416,24 +956,30 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
     });
 });
 
-// Detectar cambios en el formulario
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('pacienteEditForm');
-    const inputs = form.querySelectorAll('input, select, textarea');
-    
-    inputs.forEach(input => {
-        input.addEventListener('change', function() {
-            detectChanges();
-        });
-        
-        input.addEventListener('input', function() {
-            detectChanges();
-        });
+// Limpiar errores de validación
+function clearValidationErrors() {
+    document.querySelectorAll('.is-invalid').forEach(element => {
+        element.classList.remove('is-invalid');
     });
     
-    // Calcular edad inicial
-    calculateAge();
-});
+    document.querySelectorAll('.invalid-feedback').forEach(element => {
+        element.remove();
+    });
+}
+
+// Mostrar errores de validación
+function showValidationErrors(errors) {
+    Object.keys(errors).forEach(field => {
+        const input = document.getElementById(field);
+        if (input) {
+            input.classList.add('is-invalid');
+            const feedback = document.createElement('div');
+            feedback.className = 'invalid-feedback';
+            feedback.textContent = errors[field][0];
+            input.parentNode.appendChild(feedback);
+        }
+    });
+}
 
 // Detectar cambios en el formulario
 function detectChanges() {
@@ -447,7 +993,9 @@ function detectChanges() {
     
     // Comparar con datos originales
     const changed = Object.keys(currentData).some(key => {
-        return currentData[key] !== (originalData[key] || '');
+        const originalValue = originalData[key] || '';
+        const currentValue = currentData[key] || '';
+        return currentValue !== originalValue;
     });
     
     hasChanges = changed;
@@ -550,18 +1098,7 @@ function resetForm() {
         }).then((result) => {
             if (result.isConfirmed) {
                 // Restaurar valores originales
-                Object.keys(originalData).forEach(key => {
-                    const input = document.getElementById(key);
-                    if (input) {
-                        input.value = originalData[key] || '';
-                        input.classList.remove('is-invalid');
-                    }
-                });
-                
-                // Limpiar errores de validación
-                document.querySelectorAll('.invalid-feedback').forEach(element => {
-                    element.remove();
-                });
+                restoreOriginalValues();
                 
                 hasChanges = false;
                 detectChanges();
@@ -573,6 +1110,23 @@ function resetForm() {
     } else {
         showAlert('info', 'No hay cambios para deshacer');
     }
+}
+
+// Restaurar valores originales
+function restoreOriginalValues() {
+    Object.keys(originalData).forEach(key => {
+        const input = document.getElementById(key);
+        if (input) {
+            input.value = originalData[key] || '';
+            input.classList.remove('is-invalid');
+        }
+    });
+    
+    // Limpiar errores de validación
+    clearValidationErrors();
+    
+    // Recargar municipios
+    loadInitialMunicipios();
 }
 
 // Agregar al historial de cambios
@@ -621,14 +1175,18 @@ window.addEventListener('beforeunload', function(e) {
     }
 });
 
-// Formatear teléfono
-document.getElementById('telefono').addEventListener('input', function() {
+// Formatear teléfonos
+document.getElementById('telefono').addEventListener('input', formatPhone);
+document.getElementById('telefono_acudiente').addEventListener('input', formatPhone);
+document.getElementById('acompanante_telefono').addEventListener('input', formatPhone);
+
+function formatPhone() {
     let value = this.value.replace(/\D/g, '');
     if (value.length > 10) {
         value = value.substring(0, 10);
     }
     this.value = value;
-});
+}
 
 // Validar correo en tiempo real
 document.getElementById('correo').addEventListener('blur', function() {

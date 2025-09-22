@@ -533,14 +533,13 @@ class PacienteController extends Controller
         }
     }
 
-    /**
-     * ✅ DATOS MAESTROS CON UUIDs CONSISTENTES
-     */
-   private function getMasterData(): array
+  // En PacienteController.php - REEMPLAZAR el método getMasterData()
+private function getMasterData(): array
 {
     try {
         Log::info('🔍 Obteniendo datos maestros para formulario');
         
+        // ✅ INTENTAR API PRIMERO (IGUAL QUE EN CREATE)
         if ($this->apiService->isOnline()) {
             try {
                 $response = $this->apiService->get('/master-data/all');
@@ -552,16 +551,15 @@ class PacienteController extends Controller
                 ]);
                 
                 if ($response['success'] && isset($response['data'])) {
-                    // ✅ SINCRONIZAR DATOS OFFLINE AUTOMÁTICAMENTE (ESTO FALTABA)
+                    // ✅ SINCRONIZAR AUTOMÁTICAMENTE (COMO EN INDEX)
                     $syncSuccess = $this->offlineService->syncMasterDataFromApi($response['data']);
                     
                     if ($syncSuccess) {
-                        Log::info('✅ Datos maestros sincronizados offline exitosamente');
-                    } else {
-                        Log::warning('⚠️ Error sincronizando datos maestros offline');
+                        Log::info('✅ Datos maestros sincronizados desde API en edit');
                     }
                     
-                    Log::info('✅ Datos maestros obtenidos desde API');
+                    // ✅ RETORNAR DATOS DE LA API DIRECTAMENTE (SIN VALIDACIÓN ESTRICTA)
+                    Log::info('✅ Retornando datos maestros desde API');
                     return $response['data'];
                 }
             } catch (\Exception $e) {
@@ -571,13 +569,22 @@ class PacienteController extends Controller
             }
         }
         
-        // ✅ USAR DATOS OFFLINE DE SQLITE/JSON
+        // ✅ USAR DATOS OFFLINE SIN VALIDACIÓN ESTRICTA
         if ($this->offlineService->hasMasterDataOffline()) {
             Log::info('📱 Usando datos maestros desde almacenamiento offline');
-            return $this->offlineService->getMasterDataOffline();
+            $offlineData = $this->offlineService->getMasterDataOffline();
+            
+            // ✅ VERIFICACIÓN BÁSICA (NO ESTRICTA)
+            if (!empty($offlineData['empresas']) && !empty($offlineData['tipos_documento'])) {
+                Log::info('✅ Datos maestros offline básicos disponibles', [
+                    'empresas' => count($offlineData['empresas'] ?? []),
+                    'tipos_documento' => count($offlineData['tipos_documento'] ?? [])
+                ]);
+                return $offlineData;
+            }
         }
         
-        Log::info('📱 Usando datos maestros por defecto (primera vez)');
+        Log::info('📱 Usando datos maestros por defecto');
         return $this->getDefaultMasterData();
         
     } catch (\Exception $e) {
@@ -591,52 +598,123 @@ class PacienteController extends Controller
     }
 }
 
+// En PacienteController.php - REEMPLAZAR getDefaultMasterData() COMPLETO
 private function getDefaultMasterData(): array
 {
-    // ✅ DATOS MÍNIMOS POR DEFECTO (IGUAL QUE ANTES)
     return [
+        // ✅ DEPARTAMENTOS Y MUNICIPIOS
         'departamentos' => [
-            ['uuid' => 'dept-cauca', 'codigo' => '19', 'nombre' => 'Cauca', 'municipios' => [
-                ['uuid' => 'mun-popayan', 'codigo' => '19001', 'nombre' => 'Popayán']
-            ]]
+            ['uuid' => 'dept-cauca', 'codigo' => '19', 'nombre' => 'Cauca'],
+            ['uuid' => 'dept-antioquia', 'codigo' => '05', 'nombre' => 'Antioquia'],
+            ['uuid' => 'dept-cundinamarca', 'codigo' => '25', 'nombre' => 'Cundinamarca']
         ],
-        'empresas' => [
-            ['uuid' => 'emp-nueva-eps', 'nombre' => 'NUEVA EPS', 'nit' => '900156264-1', 'codigo_eapb' => 'EPS037']
-        ],
-        'regimenes' => [
-            ['uuid' => 'reg-contributivo', 'nombre' => 'Contributivo']
-        ],
-        'tipos_afiliacion' => [
-            ['uuid' => 'taf-cotizante', 'nombre' => 'Cotizante']
-        ],
-        'zonas_residenciales' => [
-            ['uuid' => 'zr-urbana', 'nombre' => 'Urbana', 'abreviacion' => 'U']
-        ],
-        'razas' => [
-            ['uuid' => 'rz-mestizo', 'nombre' => 'Mestizo']
-        ],
-        'escolaridades' => [
-            ['uuid' => 'esc-primaria-com', 'nombre' => 'Primaria Completa']
-        ],
-        'tipos_parentesco' => [
-            ['uuid' => 'tp-titular', 'nombre' => 'Titular']
-        ],
-        'tipos_documento' => [
-            ['uuid' => 'td-cc', 'abreviacion' => 'CC', 'nombre' => 'Cédula de Ciudadanía']
-        ],
-        'ocupaciones' => [
-            ['uuid' => 'oc-empleado', 'codigo' => '5000', 'nombre' => 'Empleado']
-        ],
-        'novedades' => [
-            ['uuid' => 'nov-ingreso', 'tipo_novedad' => 'Ingreso']
-        ],
-        'auxiliares' => [
-            ['uuid' => 'aux-general', 'nombre' => 'Auxiliar General']
-        ],
-        'brigadas' => [
-            ['uuid' => 'bri-general', 'nombre' => 'Brigada General']
+        'municipios' => [
+            ['uuid' => 'mun-popayan', 'codigo' => '19001', 'nombre' => 'Popayán', 'departamento_uuid' => 'dept-cauca'],
+            ['uuid' => 'mun-medellin', 'codigo' => '05001', 'nombre' => 'Medellín', 'departamento_uuid' => 'dept-antioquia'],
+            ['uuid' => 'mun-bogota', 'codigo' => '25001', 'nombre' => 'Bogotá', 'departamento_uuid' => 'dept-cundinamarca']
         ],
         
+        // ✅ EMPRESAS
+        'empresas' => [
+            ['uuid' => 'emp-nueva-eps', 'nombre' => 'NUEVA EPS', 'nit' => '900156264-1', 'codigo_eapb' => 'EPS037'],
+            ['uuid' => 'emp-sura', 'nombre' => 'SURA EPS', 'nit' => '800088702-4', 'codigo_eapb' => 'EPS001'],
+            ['uuid' => 'emp-salud-total', 'nombre' => 'SALUD TOTAL EPS', 'nit' => '860002503-4', 'codigo_eapb' => 'EPS016']
+        ],
+        
+        // ✅ REGÍMENES
+        'regimenes' => [
+            ['uuid' => 'reg-contributivo', 'nombre' => 'Contributivo', 'codigo' => 'CON'],
+            ['uuid' => 'reg-subsidiado', 'nombre' => 'Subsidiado', 'codigo' => 'SUB']
+        ],
+        
+        // ✅ TIPOS DE AFILIACIÓN
+        'tipos_afiliacion' => [
+            ['uuid' => 'taf-cotizante', 'nombre' => 'Cotizante', 'codigo' => 'COT'],
+            ['uuid' => 'taf-beneficiario', 'nombre' => 'Beneficiario', 'codigo' => 'BEN'],
+            ['uuid' => 'taf-adicional', 'nombre' => 'Adicional', 'codigo' => 'ADI']
+        ],
+        
+        // ✅ PARENTESCOS (CLAVE CORRECTA)
+        'parentescos' => [
+            ['uuid' => 'par-titular', 'nombre' => 'Titular', 'codigo' => 'TIT'],
+            ['uuid' => 'par-conyuge', 'nombre' => 'Cónyuge', 'codigo' => 'CON'],
+            ['uuid' => 'par-hijo', 'nombre' => 'Hijo(a)', 'codigo' => 'HIJ'],
+            ['uuid' => 'par-padre', 'nombre' => 'Padre/Madre', 'codigo' => 'PAD'],
+            ['uuid' => 'par-hermano', 'nombre' => 'Hermano(a)', 'codigo' => 'HER']
+        ],
+        
+        // ✅ TIPOS PARENTESCO (MANTENER POR COMPATIBILIDAD)
+        'tipos_parentesco' => [
+            ['uuid' => 'tp-titular', 'nombre' => 'Titular', 'codigo' => 'TIT'],
+            ['uuid' => 'tp-conyuge', 'nombre' => 'Cónyuge', 'codigo' => 'CON'],
+            ['uuid' => 'tp-hijo', 'nombre' => 'Hijo(a)', 'codigo' => 'HIJ']
+        ],
+        
+        // ✅ ZONAS RESIDENCIALES
+        'zonas_residenciales' => [
+            ['uuid' => 'zr-urbana', 'nombre' => 'Urbana', 'abreviacion' => 'U'],
+            ['uuid' => 'zr-rural', 'nombre' => 'Rural', 'abreviacion' => 'R']
+        ],
+        
+        // ✅ RAZAS
+        'razas' => [
+            ['uuid' => 'rz-mestizo', 'nombre' => 'Mestizo', 'codigo' => 'MES'],
+            ['uuid' => 'rz-indigena', 'nombre' => 'Indígena', 'codigo' => 'IND'],
+            ['uuid' => 'rz-afro', 'nombre' => 'Afrodescendiente', 'codigo' => 'AFR'],
+            ['uuid' => 'rz-blanco', 'nombre' => 'Blanco', 'codigo' => 'BLA']
+        ],
+        
+        // ✅ ESCOLARIDADES
+        'escolaridades' => [
+            ['uuid' => 'esc-ninguna', 'nombre' => 'Ninguna', 'codigo' => 'NIN'],
+            ['uuid' => 'esc-primaria-inc', 'nombre' => 'Primaria Incompleta', 'codigo' => 'PRI_INC'],
+            ['uuid' => 'esc-primaria-com', 'nombre' => 'Primaria Completa', 'codigo' => 'PRI_COM'],
+            ['uuid' => 'esc-secundaria-inc', 'nombre' => 'Secundaria Incompleta', 'codigo' => 'SEC_INC'],
+            ['uuid' => 'esc-secundaria-com', 'nombre' => 'Secundaria Completa', 'codigo' => 'SEC_COM'],
+            ['uuid' => 'esc-tecnico', 'nombre' => 'Técnico', 'codigo' => 'TEC'],
+            ['uuid' => 'esc-universitario', 'nombre' => 'Universitario', 'codigo' => 'UNI']
+        ],
+        
+        // ✅ TIPOS DOCUMENTO
+        'tipos_documento' => [
+            ['uuid' => 'td-cc', 'abreviacion' => 'CC', 'nombre' => 'Cédula de Ciudadanía', 'codigo' => 'CC'],
+            ['uuid' => 'td-ti', 'abreviacion' => 'TI', 'nombre' => 'Tarjeta de Identidad', 'codigo' => 'TI'],
+            ['uuid' => 'td-rc', 'abreviacion' => 'RC', 'nombre' => 'Registro Civil', 'codigo' => 'RC'],
+            ['uuid' => 'td-ce', 'abreviacion' => 'CE', 'nombre' => 'Cédula de Extranjería', 'codigo' => 'CE']
+        ],
+        
+        // ✅ OCUPACIONES
+        'ocupaciones' => [
+            ['uuid' => 'oc-estudiante', 'codigo' => '1000', 'nombre' => 'Estudiante'],
+            ['uuid' => 'oc-empleado', 'codigo' => '5000', 'nombre' => 'Empleado'],
+            ['uuid' => 'oc-independiente', 'codigo' => '6000', 'nombre' => 'Trabajador Independiente'],
+            ['uuid' => 'oc-pensionado', 'codigo' => '7000', 'nombre' => 'Pensionado'],
+            ['uuid' => 'oc-hogar', 'codigo' => '8000', 'nombre' => 'Hogar']
+        ],
+        
+        // ✅ NOVEDADES
+        'novedades' => [
+            ['uuid' => 'nov-ninguna', 'tipo_novedad' => 'Ninguna', 'codigo' => 'NIN'],
+            ['uuid' => 'nov-ingreso', 'tipo_novedad' => 'Ingreso', 'codigo' => 'ING'],
+            ['uuid' => 'nov-cambio-eps', 'tipo_novedad' => 'Cambio de EPS', 'codigo' => 'CEP'],
+            ['uuid' => 'nov-actualizacion', 'tipo_novedad' => 'Actualización de Datos', 'codigo' => 'ACT']
+        ],
+        
+        // ✅ AUXILIARES
+        'auxiliares' => [
+            ['uuid' => 'aux-general', 'nombre' => 'Auxiliar General', 'codigo' => 'AUX001'],
+            ['uuid' => 'aux-enfermeria', 'nombre' => 'Auxiliar de Enfermería', 'codigo' => 'AUX002'],
+            ['uuid' => 'aux-administrativo', 'nombre' => 'Auxiliar Administrativo', 'codigo' => 'AUX003']
+        ],
+        
+        // ✅ BRIGADAS
+        'brigadas' => [
+            ['uuid' => 'bri-general', 'nombre' => 'Brigada General', 'codigo' => 'BRIG001'],
+            ['uuid' => 'bri-medica', 'nombre' => 'Brigada Médica', 'codigo' => 'BRIG002'],
+            ['uuid' => 'bri-odontologica', 'nombre' => 'Brigada Odontológica', 'codigo' => 'BRIG003']
+        ],
+        
+        // ✅ ESTADOS CIVILES
         'estados_civiles' => [
             'SOLTERO' => 'Soltero(a)',
             'CASADO' => 'Casado(a)',
@@ -644,16 +722,21 @@ private function getDefaultMasterData(): array
             'DIVORCIADO' => 'Divorciado(a)',
             'VIUDO' => 'Viudo(a)'
         ],
+        
+        // ✅ SEXOS
         'sexos' => [
             'M' => 'Masculino',
             'F' => 'Femenino'
         ],
+        
+        // ✅ ESTADOS
         'estados' => [
             'ACTIVO' => 'Activo',
             'INACTIVO' => 'Inactivo'
         ]
     ];
 }
+
 
 public function testSyncManual(Request $request)
 {

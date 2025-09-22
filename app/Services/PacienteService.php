@@ -374,88 +374,136 @@ private function enrichPacientesDataFromApi(array $pacientes, int $sedeId): arra
         }
     }
 
-    /**
-     * Mostrar paciente
-     */
-    public function show(string $uuid): array
-    {
-        try {
-            // Intentar obtener online primero
-            if ($this->apiService->isOnline()) {
-                try {
-                    $response = $this->apiService->get(
-                        $this->getEndpoint('show', ['uuid' => $uuid])
-                    );
+   public function show(string $uuid): array
+{
+    try {
+        Log::info('🔍 PacienteService::show - Iniciando', [
+            'uuid' => $uuid,
+            'api_online' => $this->apiService->isOnline()
+        ]);
+
+        // ✅ INTENTAR OBTENER ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get(
+                    $this->getEndpoint('show', ['uuid' => $uuid])
+                );
+                
+                Log::info('📥 Respuesta API para show', [
+                    'uuid' => $uuid,
+                    'success' => $response['success'] ?? false,
+                    'error' => $response['error'] ?? null
+                ]);
+                
+                if ($response['success']) {
+                    // ✅ ÉXITO - Actualizar datos locales
+                    $apiData = $response['data'];
+                    $this->storePacienteOffline($apiData, false);
                     
-                    if ($response['success']) {
-                        // Actualizar datos locales
-                        $apiData = $response['data'];
-                        $this->storePacienteOffline($apiData, false);
-                        
-                        return [
-                            'success' => true,
-                            'data' => $apiData,
-                            'offline' => false
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Error obteniendo paciente desde API', ['error' => $e->getMessage()]);
+                    return [
+                        'success' => true,
+                        'data' => $apiData,
+                        'offline' => false
+                    ];
                 }
+                
+                // ✅ SI NO SE ENCUENTRA ONLINE, BUSCAR OFFLINE
+                Log::info('ℹ️ Paciente no encontrado online, buscando offline', [
+                    'uuid' => $uuid
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo paciente desde API', [
+                    'uuid' => $uuid,
+                    'error' => $e->getMessage()
+                ]);
             }
+        }
 
-            // Buscar localmente
-            $paciente = $this->getPacienteOffline($uuid);
-            
-            if (!$paciente) {
-                return [
-                    'success' => false,
-                    'error' => 'Paciente no encontrado'
-                ];
-            }
-
-            return [
-                'success' => true,
-                'data' => $paciente,
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo paciente', ['error' => $e->getMessage(), 'uuid' => $uuid]);
+        // ✅ BUSCAR LOCALMENTE
+        $paciente = $this->getPacienteOffline($uuid);
+        
+        if (!$paciente) {
             return [
                 'success' => false,
-                'error' => 'Error interno'
+                'error' => 'Paciente no encontrado'
             ];
         }
+
+        Log::info('✅ Paciente encontrado offline', [
+            'uuid' => $uuid,
+            'documento' => $paciente['documento'] ?? 'sin-documento',
+            'sync_status' => $paciente['sync_status'] ?? 'unknown'
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $paciente,
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error obteniendo paciente', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno'
+        ];
     }
-
-    /**
-     * Actualizar paciente
-     */
+}
     public function update(string $uuid, array $data): array
-    {
-        try {
-            $paciente = $this->getPacienteOffline($uuid);
-            
-            if (!$paciente) {
-                return [
-                    'success' => false,
-                    'error' => 'Paciente no encontrado'
-                ];
-            }
+{
+    try {
+        Log::info('🔄 PacienteService::update - Iniciando', [
+            'uuid' => $uuid,
+            'data_keys' => array_keys($data),
+            'api_online' => $this->apiService->isOnline()
+        ]);
 
-            $data['fecha_actualizacion'] = now()->format('Y-m-d H:i:s');
+        // ✅ BUSCAR PACIENTE LOCALMENTE PRIMERO
+        $paciente = $this->getPacienteOffline($uuid);
+        
+        if (!$paciente) {
+            Log::warning('⚠️ Paciente no encontrado localmente', ['uuid' => $uuid]);
+            return [
+                'success' => false,
+                'error' => 'Paciente no encontrado'
+            ];
+        }
 
-            // Intentar actualizar online
-            if ($this->apiService->isOnline()) {
+        $data['fecha_actualizacion'] = now()->format('Y-m-d H:i:s');
+
+        // ✅ INTENTAR ACTUALIZAR ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                Log::info('📡 Intentando actualizar paciente online', [
+                    'uuid' => $uuid,
+                    'endpoint' => $this->getEndpoint('update', ['uuid' => $uuid])
+                ]);
+
                 $response = $this->apiService->put(
                     $this->getEndpoint('update', ['uuid' => $uuid]), 
                     $data
                 );
                 
+                Log::info('📥 Respuesta de API para actualización', [
+                    'uuid' => $uuid,
+                    'success' => $response['success'] ?? false,
+                    'error' => $response['error'] ?? null
+                ]);
+
                 if ($response['success']) {
-                    // Actualizar datos locales
-                    $apiData = $response['data'];
-                    $this->storePacienteOffline($apiData, false);
+                    // ✅ ÉXITO ONLINE - Actualizar datos locales con respuesta de API
+                    $apiData = $response['data'] ?? array_merge($paciente, $data);
+                    $this->storePacienteOffline($apiData, false); // synced = true
+                    
+                    Log::info('✅ Paciente actualizado online exitosamente', [
+                        'uuid' => $uuid,
+                        'sync_status' => 'synced'
+                    ]);
                     
                     return [
                         'success' => true,
@@ -463,37 +511,95 @@ private function enrichPacientesDataFromApi(array $pacientes, int $sedeId): arra
                         'message' => 'Paciente actualizado exitosamente',
                         'offline' => false
                     ];
+                } else {
+                    // ✅ ERROR DE API - Verificar si es 404 (paciente no existe online)
+                    $errorMessage = $response['error'] ?? 'Error desconocido';
+                    
+                    if (strpos(strtolower($errorMessage), 'no encontrado') !== false || 
+                        strpos(strtolower($errorMessage), 'not found') !== false) {
+                        
+                        Log::info('ℹ️ Paciente no existe online, creando nuevo registro', [
+                            'uuid' => $uuid
+                        ]);
+                        
+                        // ✅ INTENTAR CREAR EN LUGAR DE ACTUALIZAR
+                        $createResponse = $this->apiService->post(
+                            $this->getEndpoint('store'), 
+                            array_merge($paciente, $data)
+                        );
+                        
+                        if ($createResponse['success']) {
+                            $apiData = $createResponse['data'] ?? array_merge($paciente, $data);
+                            $this->storePacienteOffline($apiData, false);
+                            
+                            Log::info('✅ Paciente creado online (era update)', [
+                                'uuid' => $uuid
+                            ]);
+                            
+                            return [
+                                'success' => true,
+                                'data' => $apiData,
+                                'message' => 'Paciente actualizado exitosamente (sincronizado con servidor)',
+                                'offline' => false
+                            ];
+                        }
+                    }
+                    
+                    // ✅ ERROR REAL DE API - Continuar con actualización offline
+                    Log::warning('⚠️ Error de API, continuando offline', [
+                        'uuid' => $uuid,
+                        'error' => $errorMessage
+                    ]);
                 }
                 
-                return [
-                    'success' => false,
-                    'error' => $response['error'] ?? 'Error actualizando paciente'
-                ];
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Excepción conectando con API, usando modo offline', [
+                    'uuid' => $uuid,
+                    'error' => $e->getMessage()
+                ]);
             }
-
-            // Actualizar offline
-            $updatedData = array_merge($paciente, $data);
-            $updatedData['sync_status'] = 'pending';
-            $this->storePacienteOffline($updatedData, true);
-
-            // Marcar para sincronización
-            $this->offlineService->storePendingChange('put', $this->getEndpoint('update', ['uuid' => $uuid]), $data);
-
-            return [
-                'success' => true,
-                'data' => $updatedData,
-                'message' => 'Paciente actualizado (se sincronizará cuando vuelva la conexión)',
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error actualizando paciente', ['error' => $e->getMessage(), 'uuid' => $uuid]);
-            return [
-                'success' => false,
-                'error' => 'Error interno'
-            ];
+        } else {
+            Log::info('🌐 API offline, actualizando localmente', ['uuid' => $uuid]);
         }
+
+        // ✅ ACTUALIZAR OFFLINE (si API falló o está offline)
+        $updatedData = array_merge($paciente, $data);
+        $updatedData['sync_status'] = 'pending';
+        $this->storePacienteOffline($updatedData, true); // needsSync = true
+
+        // ✅ MARCAR PARA SINCRONIZACIÓN
+        $this->offlineService->storePendingChange(
+            'put', 
+            $this->getEndpoint('update', ['uuid' => $uuid]), 
+            $data
+        );
+
+        Log::info('✅ Paciente actualizado offline', [
+            'uuid' => $uuid,
+            'sync_status' => 'pending'
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $updatedData,
+            'message' => 'Paciente actualizado (se sincronizará cuando vuelva la conexión)',
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error actualizando paciente', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage()
+        ];
     }
+}
 
     /**
      * Eliminar paciente
