@@ -514,6 +514,7 @@ private function createCupsTable(): void
         CREATE INDEX IF NOT EXISTS idx_cups_estado ON cups(estado)
     ');
 }
+// En OfflineService.php - REEMPLAZAR createPacientesTable
 private function createPacientesTable(): void
 {
     DB::connection('offline')->statement('
@@ -521,6 +522,8 @@ private function createPacientesTable(): void
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT UNIQUE NOT NULL,
             sede_id INTEGER NOT NULL,
+            
+            -- Datos básicos
             primer_nombre TEXT NOT NULL,
             segundo_nombre TEXT,
             primer_apellido TEXT NOT NULL,
@@ -532,7 +535,64 @@ private function createPacientesTable(): void
             telefono TEXT,
             direccion TEXT,
             correo TEXT,
+            estado_civil TEXT,
+            observacion TEXT,
+            registro TEXT,
             estado TEXT DEFAULT "ACTIVO",
+            
+            -- IDs de relaciones
+            tipo_documento_id TEXT,
+            empresa_id TEXT,
+            regimen_id TEXT,
+            tipo_afiliacion_id TEXT,
+            zona_residencia_id TEXT,
+            depto_nacimiento_id TEXT,
+            depto_residencia_id TEXT,
+            municipio_nacimiento_id TEXT,
+            municipio_residencia_id TEXT,
+            raza_id TEXT,
+            escolaridad_id TEXT,
+            parentesco_id TEXT,
+            ocupacion_id TEXT,
+            novedad_id TEXT,
+            auxiliar_id TEXT,
+            brigada_id TEXT,
+            
+            -- Nombres de relaciones para mostrar
+            tipo_documento_nombre TEXT,
+            tipo_documento_abreviacion TEXT,
+            empresa_nombre TEXT,
+            empresa_codigo_eapb TEXT,
+            regimen_nombre TEXT,
+            tipo_afiliacion_nombre TEXT,
+            zona_residencia_nombre TEXT,
+            zona_residencia_abreviacion TEXT,
+            depto_nacimiento_nombre TEXT,
+            depto_residencia_nombre TEXT,
+            municipio_nacimiento_nombre TEXT,
+            municipio_residencia_nombre TEXT,
+            raza_nombre TEXT,
+            escolaridad_nombre TEXT,
+            parentesco_nombre TEXT,
+            ocupacion_nombre TEXT,
+            ocupacion_codigo TEXT,
+            novedad_tipo TEXT,
+            auxiliar_nombre TEXT,
+            brigada_nombre TEXT,
+            
+            -- Datos de acudiente
+            nombre_acudiente TEXT,
+            parentesco_acudiente TEXT,
+            telefono_acudiente TEXT,
+            direccion_acudiente TEXT,
+            
+            -- Datos de acompañante
+            acompanante_nombre TEXT,
+            acompanante_telefono TEXT,
+            
+            -- Control
+            fecha_registro DATE,
+            fecha_actualizacion DATETIME,
             sync_status TEXT DEFAULT "synced",
             stored_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -549,7 +609,12 @@ private function createPacientesTable(): void
     DB::connection('offline')->statement('
         CREATE INDEX IF NOT EXISTS idx_pacientes_sede ON pacientes(sede_id)
     ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_pacientes_uuid ON pacientes(uuid)
+    ');
 }
+
 
 private function createCupsContratadosTable(): void
 {
@@ -4017,60 +4082,52 @@ public function recreateAgendasTable(): bool
     }
 }
 
-// En OfflineService.php - AGREGAR ESTOS MÉTODOS AL FINAL
-
-/**
- * ✅ OBTENER PACIENTE OFFLINE POR UUID
- */
+// En OfflineService.php - REEMPLAZAR getPacienteOffline
 public function getPacienteOffline(string $uuid): ?array
 {
     try {
-        // ✅ USAR $this->storagePath en lugar de $this->offlinePath
-        $path = $this->storagePath . "/pacientes/{$uuid}.json";
+        $paciente = null;
         
-        if (file_exists($path)) {
-            $content = file_get_contents($path);
-            $paciente = json_decode($content, true);
-            
-            Log::info('✅ OfflineService: Paciente encontrado en JSON', [
-                'paciente_uuid' => $paciente['uuid'] ?? 'NO_UUID',
-                'paciente_nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
-            ]);
-            
-            return $paciente;
-        }
-
-        // ✅ TAMBIÉN BUSCAR EN SQLite
+        // ✅ BUSCAR EN SQLite PRIMERO
         if ($this->isSQLiteAvailable()) {
-            $paciente = DB::connection('offline')->table('pacientes')
+            $pacienteRaw = DB::connection('offline')->table('pacientes')
                 ->where('uuid', $uuid)
                 ->whereNull('deleted_at')
                 ->first();
             
-            if ($paciente) {
-                $pacienteArray = (array) $paciente;
-                Log::info('✅ OfflineService: Paciente encontrado en SQLite', [
-                    'paciente_uuid' => $pacienteArray['uuid'],
-                    'paciente_nombre' => $pacienteArray['nombre_completo']
+            if ($pacienteRaw) {
+                $paciente = (array) $pacienteRaw;
+                Log::info('✅ Paciente encontrado en SQLite offline', [
+                    'uuid' => $paciente['uuid'],
+                    'nombre' => $paciente['nombre_completo']
                 ]);
-                return $pacienteArray;
+            }
+        }
+        
+        // ✅ FALLBACK A JSON
+        if (!$paciente) {
+            $path = $this->storagePath . "/pacientes/{$uuid}.json";
+            
+            if (file_exists($path)) {
+                $content = file_get_contents($path);
+                $paciente = json_decode($content, true);
+                
+                Log::info('✅ Paciente encontrado en JSON offline', [
+                    'uuid' => $paciente['uuid'] ?? 'NO_UUID',
+                    'nombre' => $paciente['nombre_completo'] ?? 'NO_NOMBRE'
+                ]);
             }
         }
 
-        // Buscar en índice por documento
-        $indexPath = $this->storagePath . "/pacientes_by_document";
-        if (is_dir($indexPath)) {
-            $files = glob($indexPath . "/*.json");
-            foreach ($files as $file) {
-                $content = json_decode(file_get_contents($file), true);
-                if (isset($content['uuid']) && $content['uuid'] === $uuid) {
-                    return $this->getPacienteOffline($content['uuid']);
-                }
-            }
+        if (!$paciente) {
+            Log::info('⚠️ Paciente no encontrado offline', ['uuid' => $uuid]);
+            return null;
         }
 
-        Log::info('⚠️ OfflineService: Paciente no encontrado', ['uuid' => $uuid]);
-        return null;
+        // ✅ ENRIQUECER CON OBJETOS DE RELACIONES PARA COMPATIBILIDAD CON LA VISTA
+        $paciente = $this->enrichPacienteRelations($paciente);
+
+        return $paciente;
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo paciente offline', [
@@ -4080,6 +4137,168 @@ public function getPacienteOffline(string $uuid): ?array
         return null;
     }
 }
+
+/**
+ * ✅ NUEVO: Enriquecer paciente con objetos de relaciones
+ */
+private function enrichPacienteRelations(array $paciente): array
+{
+    try {
+        // ✅ CONSTRUIR OBJETOS DE RELACIONES PARA COMPATIBILIDAD
+        
+        // Tipo de documento
+        if (!empty($paciente['tipo_documento_nombre'])) {
+            $paciente['tipo_documento'] = [
+                'nombre' => $paciente['tipo_documento_nombre'],
+                'abreviacion' => $paciente['tipo_documento_abreviacion'] ?? null
+            ];
+        }
+        
+        // Empresa
+        if (!empty($paciente['empresa_nombre'])) {
+            $paciente['empresa'] = [
+                'nombre' => $paciente['empresa_nombre'],
+                'codigo_eapb' => $paciente['empresa_codigo_eapb'] ?? null
+            ];
+        }
+        
+        // Régimen
+        if (!empty($paciente['regimen_nombre'])) {
+            $paciente['regimen'] = [
+                'nombre' => $paciente['regimen_nombre']
+            ];
+        }
+        
+        // Tipo de afiliación
+        if (!empty($paciente['tipo_afiliacion_nombre'])) {
+            $paciente['tipo_afiliacion'] = [
+                'nombre' => $paciente['tipo_afiliacion_nombre']
+            ];
+        }
+        
+        // Zona de residencia
+        if (!empty($paciente['zona_residencia_nombre'])) {
+            $paciente['zona_residencia'] = [
+                'nombre' => $paciente['zona_residencia_nombre'],
+                'abreviacion' => $paciente['zona_residencia_abreviacion'] ?? null
+            ];
+        }
+        
+        // Departamentos
+        if (!empty($paciente['depto_nacimiento_nombre'])) {
+            $paciente['departamento_nacimiento'] = [
+                'nombre' => $paciente['depto_nacimiento_nombre']
+            ];
+        }
+        
+        if (!empty($paciente['depto_residencia_nombre'])) {
+            $paciente['departamento_residencia'] = [
+                'nombre' => $paciente['depto_residencia_nombre']
+            ];
+        }
+        
+        // Municipios
+        if (!empty($paciente['municipio_nacimiento_nombre'])) {
+            $paciente['municipio_nacimiento'] = [
+                'nombre' => $paciente['municipio_nacimiento_nombre']
+            ];
+        }
+        
+        if (!empty($paciente['municipio_residencia_nombre'])) {
+            $paciente['municipio_residencia'] = [
+                'nombre' => $paciente['municipio_residencia_nombre']
+            ];
+        }
+        
+        // Raza
+        if (!empty($paciente['raza_nombre'])) {
+            $paciente['raza'] = [
+                'nombre' => $paciente['raza_nombre']
+            ];
+        }
+        
+        // Escolaridad
+        if (!empty($paciente['escolaridad_nombre'])) {
+            $paciente['escolaridad'] = [
+                'nombre' => $paciente['escolaridad_nombre']
+            ];
+        }
+        
+        // Parentesco
+        if (!empty($paciente['parentesco_nombre'])) {
+            $paciente['parentesco'] = [
+                'nombre' => $paciente['parentesco_nombre']
+            ];
+        }
+        
+        // Ocupación
+        if (!empty($paciente['ocupacion_nombre'])) {
+            $paciente['ocupacion'] = [
+                'nombre' => $paciente['ocupacion_nombre'],
+                'codigo' => $paciente['ocupacion_codigo'] ?? null
+            ];
+        }
+        
+        // ✅ NOVEDAD (IMPORTANTE)
+        if (!empty($paciente['novedad_tipo'])) {
+            $paciente['novedad'] = [
+                'tipo_novedad' => $paciente['novedad_tipo']
+            ];
+        }
+        
+        // ✅ AUXILIAR (IMPORTANTE)
+        if (!empty($paciente['auxiliar_nombre'])) {
+            $paciente['auxiliar'] = [
+                'nombre' => $paciente['auxiliar_nombre']
+            ];
+        }
+        
+        // ✅ BRIGADA (IMPORTANTE)
+        if (!empty($paciente['brigada_nombre'])) {
+            $paciente['brigada'] = [
+                'nombre' => $paciente['brigada_nombre']
+            ];
+        }
+        
+        // ✅ ACUDIENTE
+        if (!empty($paciente['nombre_acudiente'])) {
+            $paciente['acudiente'] = [
+                'nombre' => $paciente['nombre_acudiente'],
+                'parentesco' => $paciente['parentesco_acudiente'] ?? null,
+                'telefono' => $paciente['telefono_acudiente'] ?? null,
+                'direccion' => $paciente['direccion_acudiente'] ?? null
+            ];
+        }
+        
+        // ✅ ACOMPAÑANTE
+        if (!empty($paciente['acompanante_nombre'])) {
+            $paciente['acompanante'] = [
+                'nombre' => $paciente['acompanante_nombre'],
+                'telefono' => $paciente['acompanante_telefono'] ?? null
+            ];
+        }
+        
+        Log::debug('✅ Paciente enriquecido con relaciones', [
+            'uuid' => $paciente['uuid'],
+            'has_empresa' => isset($paciente['empresa']),
+            'has_novedad' => isset($paciente['novedad']),
+            'has_auxiliar' => isset($paciente['auxiliar']),
+            'has_brigada' => isset($paciente['brigada']),
+            'has_acudiente' => isset($paciente['acudiente']),
+            'has_acompanante' => isset($paciente['acompanante'])
+        ]);
+        
+        return $paciente;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error enriqueciendo relaciones del paciente', [
+            'uuid' => $paciente['uuid'] ?? 'sin-uuid',
+            'error' => $e->getMessage()
+        ]);
+        return $paciente;
+    }
+}
+
 
 
 /**
@@ -4210,10 +4429,6 @@ public function getFromSQLite(string $table): array
         return [];
     }
 }
-
-/**
- * ✅ ALMACENAR PACIENTE OFFLINE
- */
 public function storePacienteOffline(array $pacienteData, bool $needsSync = false): void
 {
     try {
@@ -4228,10 +4443,13 @@ public function storePacienteOffline(array $pacienteData, bool $needsSync = fals
             $pacienteData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
+        // ✅ EXTRAER Y ALMACENAR TODAS LAS RELACIONES
         $offlineData = [
             'id' => $pacienteData['id'] ?? null,
             'uuid' => $pacienteData['uuid'],
             'sede_id' => $pacienteData['sede_id'],
+            
+            // ✅ DATOS BÁSICOS
             'primer_nombre' => $pacienteData['primer_nombre'] ?? '',
             'segundo_nombre' => $pacienteData['segundo_nombre'] ?? null,
             'primer_apellido' => $pacienteData['primer_apellido'] ?? '',
@@ -4245,13 +4463,100 @@ public function storePacienteOffline(array $pacienteData, bool $needsSync = fals
             'telefono' => $pacienteData['telefono'] ?? null,
             'direccion' => $pacienteData['direccion'] ?? null,
             'correo' => $pacienteData['correo'] ?? null,
+            'estado_civil' => $pacienteData['estado_civil'] ?? null,
+            'observacion' => $pacienteData['observacion'] ?? null,
+            'registro' => $pacienteData['registro'] ?? null,
             'estado' => $pacienteData['estado'] ?? 'ACTIVO',
+            
+            // ✅ IDs DE RELACIONES (pueden ser UUIDs o números)
+            'tipo_documento_id' => $pacienteData['tipo_documento_id'] ?? null,
+            'empresa_id' => $pacienteData['empresa_id'] ?? null,
+            'regimen_id' => $pacienteData['regimen_id'] ?? null,
+            'tipo_afiliacion_id' => $pacienteData['tipo_afiliacion_id'] ?? null,
+            'zona_residencia_id' => $pacienteData['zona_residencia_id'] ?? null,
+            'depto_nacimiento_id' => $pacienteData['depto_nacimiento_id'] ?? null,
+            'depto_residencia_id' => $pacienteData['depto_residencia_id'] ?? null,
+            'municipio_nacimiento_id' => $pacienteData['municipio_nacimiento_id'] ?? null,
+            'municipio_residencia_id' => $pacienteData['municipio_residencia_id'] ?? null,
+            'raza_id' => $pacienteData['raza_id'] ?? null,
+            'escolaridad_id' => $pacienteData['escolaridad_id'] ?? null,
+            'parentesco_id' => $pacienteData['parentesco_id'] ?? null,
+            'ocupacion_id' => $pacienteData['ocupacion_id'] ?? null,
+            'novedad_id' => $pacienteData['novedad_id'] ?? null,
+            'auxiliar_id' => $pacienteData['auxiliar_id'] ?? null,
+            'brigada_id' => $pacienteData['brigada_id'] ?? null,
+            
+            // ✅ NOMBRES DE RELACIONES PARA MOSTRAR (extraer de objetos anidados)
+            'tipo_documento_nombre' => $this->extractRelationName($pacienteData, 'tipo_documento', 'nombre'),
+            'tipo_documento_abreviacion' => $this->extractRelationName($pacienteData, 'tipo_documento', 'abreviacion'),
+            'empresa_nombre' => $this->extractRelationName($pacienteData, 'empresa', 'nombre'),
+            'empresa_codigo_eapb' => $this->extractRelationName($pacienteData, 'empresa', 'codigo_eapb'),
+            'regimen_nombre' => $this->extractRelationName($pacienteData, 'regimen', 'nombre'),
+            'tipo_afiliacion_nombre' => $this->extractRelationName($pacienteData, 'tipo_afiliacion', 'nombre'),
+            'zona_residencia_nombre' => $this->extractRelationName($pacienteData, 'zona_residencia', 'nombre'),
+            'zona_residencia_abreviacion' => $this->extractRelationName($pacienteData, 'zona_residencia', 'abreviacion'),
+            'depto_nacimiento_nombre' => $this->extractRelationName($pacienteData, 'departamento_nacimiento', 'nombre'),
+            'depto_residencia_nombre' => $this->extractRelationName($pacienteData, 'departamento_residencia', 'nombre'),
+            'municipio_nacimiento_nombre' => $this->extractRelationName($pacienteData, 'municipio_nacimiento', 'nombre'),
+            'municipio_residencia_nombre' => $this->extractRelationName($pacienteData, 'municipio_residencia', 'nombre'),
+            'raza_nombre' => $this->extractRelationName($pacienteData, 'raza', 'nombre'),
+            'escolaridad_nombre' => $this->extractRelationName($pacienteData, 'escolaridad', 'nombre'),
+            'parentesco_nombre' => $this->extractRelationName($pacienteData, 'parentesco', 'nombre'),
+            'ocupacion_nombre' => $this->extractRelationName($pacienteData, 'ocupacion', 'nombre'),
+            'ocupacion_codigo' => $this->extractRelationName($pacienteData, 'ocupacion', 'codigo'),
+            'novedad_tipo' => $this->extractRelationName($pacienteData, 'novedad', 'tipo_novedad'),
+            'auxiliar_nombre' => $this->extractRelationName($pacienteData, 'auxiliar', 'nombre'),
+            'brigada_nombre' => $this->extractRelationName($pacienteData, 'brigada', 'nombre'),
+            
+            // ✅ DATOS DE ACUDIENTE
+            'nombre_acudiente' => $pacienteData['nombre_acudiente'] ?? 
+                                 $this->extractRelationName($pacienteData, 'acudiente', 'nombre'),
+            'parentesco_acudiente' => $pacienteData['parentesco_acudiente'] ?? 
+                                     $this->extractRelationName($pacienteData, 'acudiente', 'parentesco'),
+            'telefono_acudiente' => $pacienteData['telefono_acudiente'] ?? 
+                                   $this->extractRelationName($pacienteData, 'acudiente', 'telefono'),
+            'direccion_acudiente' => $pacienteData['direccion_acudiente'] ?? 
+                                    $this->extractRelationName($pacienteData, 'acudiente', 'direccion'),
+            
+            // ✅ DATOS DE ACOMPAÑANTE
+            'acompanante_nombre' => $pacienteData['acompanante_nombre'] ?? 
+                                   $this->extractRelationName($pacienteData, 'acompanante', 'nombre'),
+            'acompanante_telefono' => $pacienteData['acompanante_telefono'] ?? 
+                                     $this->extractRelationName($pacienteData, 'acompanante', 'telefono'),
+            
+            // ✅ FECHAS Y CONTROL
+            'fecha_registro' => $pacienteData['fecha_registro'] ?? now()->format('Y-m-d'),
+            'fecha_actualizacion' => $pacienteData['fecha_actualizacion'] ?? null,
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'stored_at' => now()->toISOString(),
             'deleted_at' => $pacienteData['deleted_at'] ?? null
         ];
 
-        // Guardar en JSON
+        // ✅ GUARDAR EN SQLite SI ESTÁ DISPONIBLE
+        if ($this->isSQLiteAvailable()) {
+            try {
+                // Asegurar que la tabla pacientes existe
+                $this->createPacientesTable();
+                
+                DB::connection('offline')->table('pacientes')->updateOrInsert(
+                    ['uuid' => $pacienteData['uuid']],
+                    array_merge($offlineData, [
+                        'created_at' => $offlineData['fecha_registro'] ?? now()->toISOString(),
+                        'updated_at' => now()->toISOString()
+                    ])
+                );
+                
+                Log::debug('✅ Paciente guardado en SQLite', [
+                    'uuid' => $pacienteData['uuid']
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error guardando en SQLite, usando JSON', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ SIEMPRE GUARDAR EN JSON COMO BACKUP
         $this->storeData('pacientes/' . $pacienteData['uuid'] . '.json', $offlineData);
         
         // También indexar por documento
@@ -4262,20 +4567,53 @@ public function storePacienteOffline(array $pacienteData, bool $needsSync = fals
             ]);
         }
 
-        Log::debug('✅ Paciente almacenado offline', [
+        Log::debug('✅ Paciente almacenado offline completo', [
             'uuid' => $pacienteData['uuid'],
             'documento' => $pacienteData['documento'] ?? 'sin-documento',
-            'sync_status' => $offlineData['sync_status']
+            'sync_status' => $offlineData['sync_status'],
+            'has_empresa' => !empty($offlineData['empresa_nombre']),
+            'has_novedad' => !empty($offlineData['novedad_tipo']),
+            'has_auxiliar' => !empty($offlineData['auxiliar_nombre']),
+            'has_brigada' => !empty($offlineData['brigada_nombre'])
         ]);
 
     } catch (\Exception $e) {
         Log::error('❌ Error almacenando paciente offline', [
             'error' => $e->getMessage(),
-            'uuid' => $pacienteData['uuid'] ?? 'sin-uuid'
+            'uuid' => $pacienteData['uuid'] ?? 'sin-uuid',
+            'trace' => $e->getTraceAsString()
         ]);
     }
 }
 
+/**
+ * ✅ NUEVO: Método auxiliar para extraer nombres de relaciones
+ */
+private function extractRelationName(array $data, string $relationKey, string $field): ?string
+{
+    try {
+        // Si ya existe el campo directo, usarlo
+        $directField = $relationKey . '_' . $field;
+        if (isset($data[$directField])) {
+            return $data[$directField];
+        }
+        
+        // Si existe la relación anidada, extraer el campo
+        if (isset($data[$relationKey]) && is_array($data[$relationKey])) {
+            return $data[$relationKey][$field] ?? null;
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::debug('⚠️ Error extrayendo relación', [
+            'relation' => $relationKey,
+            'field' => $field,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
 public function getCupsContratadoPorCupsUuid(string $cupsUuid): ?array
 {
     try {
