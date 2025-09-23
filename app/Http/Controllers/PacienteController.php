@@ -290,25 +290,23 @@ class PacienteController extends Controller
         }
     }
 
-    /**
-     * ✅ UPDATE CORREGIDO - Acepta UUIDs y strings
-     */
-    public function update(Request $request, string $uuid)
-    {
-        try {
-            Log::info('PacienteController@update', [
-                'uuid' => $uuid,
-                'data' => $request->all()
-            ]);
 
-            // ✅ MISMA VALIDACIÓN CORREGIDA QUE EN STORE
-            $validatedData = $request->validate([
-                // ✅ CAMPOS OBLIGATORIOS
-                'primer_nombre' => 'required|string|max:50',
-                'primer_apellido' => 'required|string|max:50',
-                'documento' => 'required|string|max:20',
-                'fecha_nacimiento' => 'required|date|before:today',
-                'sexo' => 'required|in:M,F',
+public function update(Request $request, string $uuid)
+{
+    try {
+        Log::info('PacienteController@update', [
+            'uuid' => $uuid,
+            'data' => $request->all(),
+            'is_offline' => $this->authService->isOffline()
+        ]);
+
+        // ✅ VALIDACIÓN (mantener tu validación actual)
+        $validatedData = $request->validate([
+            'primer_nombre' => 'required|string|max:50',
+            'primer_apellido' => 'required|string|max:50',
+            'documento' => 'required|string|max:20',
+            'fecha_nacimiento' => 'required|date|before:today',
+            'sexo' => 'required|in:M,F',
                 
                 // ✅ CAMPOS OPCIONALES BÁSICOS
                 'segundo_nombre' => 'nullable|string|max:50',
@@ -351,63 +349,59 @@ class PacienteController extends Controller
             ]);
 
             // ✅ LIMPIAR CAMPOS VACÍOS
-            foreach ($validatedData as $key => $value) {
-                if (is_string($value) && trim($value) === '') {
-                    $validatedData[$key] = null;
-                }
+        foreach ($validatedData as $key => $value) {
+            if (is_string($value) && trim($value) === '') {
+                $validatedData[$key] = null;
             }
+        }
 
-            $result = $this->pacienteService->update($uuid, $validatedData);
+        $result = $this->pacienteService->update($uuid, $validatedData);
 
-            if ($request->ajax()) {
-                return response()->json($result);
+        if ($request->ajax()) {
+            // ✅ AGREGAR INFORMACIÓN DE MODO OFFLINE
+            $response = $result;
+            if ($result['success'] && !$result['offline']) {
+                $response['redirect_url'] = route('pacientes.show', $uuid);
             }
+            return response()->json($response);
+        }
 
-            if ($result['success']) {
+        if ($result['success']) {
+            if ($result['offline']) {
+                // ✅ MODO OFFLINE - No redirigir, mantener en la página
+                return back()
+                    ->with('success', $result['message'])
+                    ->with('offline_update', true);
+            } else {
+                // ✅ MODO ONLINE - Redirigir normalmente
                 return redirect()->route('pacientes.show', $uuid)
                     ->with('success', $result['message'] ?? 'Paciente actualizado exitosamente');
             }
-
-            return back()
-                ->withErrors(['error' => $result['error']])
-                ->withInput();
-                
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('Errores de validación en PacienteController@update', [
-                'uuid' => $uuid,
-                'errors' => $e->errors()
-            ]);
-
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Datos inválidos',
-                    'errors' => $e->errors()
-                ], 422);
-            }
-
-            return back()->withErrors($e->errors())->withInput();
-            
-        } catch (\Exception $e) {
-            Log::error('Error en PacienteController@update', [
-                'uuid' => $uuid,
-                'error' => $e->getMessage(),
-                'data' => $request->all()
-            ]);
-
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Error interno del servidor'
-                ], 500);
-            }
-
-            return back()
-                ->with('error', 'Error interno del servidor')
-                ->withInput();
         }
-    }
 
+        return back()
+            ->withErrors(['error' => $result['error']])
+            ->withInput();
+            
+    } catch (\Exception $e) {
+        Log::error('Error en PacienteController@update', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage(),
+            'data' => $request->all()
+        ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+
+        return back()
+            ->with('error', 'Error interno del servidor')
+            ->withInput();
+    }
+}
     public function destroy(string $uuid)
     {
         try {
@@ -820,5 +814,138 @@ public function testSyncManual(Request $request)
             ], 500);
         }
     }
+
+    /**
+ * ✅ NUEVO: Sincronizar TODOS los cambios pendientes (creates + updates + deletes)
+ */
+public function syncAllPendingChanges(Request $request)
+{
+    try {
+        Log::info('🔄 PacienteController@syncAllPendingChanges - Iniciando sincronización completa');
+
+        if (!$this->apiService->isOnline()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sin conexión al servidor'
+            ]);
+        }
+
+        // ✅ SINCRONIZAR PACIENTES PENDIENTES (creates, updates, deletes)
+        $pacientesResult = $this->pacienteService->syncPendingPacientes();
+        
+        // ✅ SINCRONIZAR OTROS CAMBIOS PENDIENTES (si los hay)
+        $otherChangesResult = $this->offlineService->syncPendingChanges();
+
+        // ✅ CONSOLIDAR RESULTADOS
+        $totalCreated = 0;
+        $totalUpdated = 0;
+        $totalDeleted = 0;
+        $totalFailed = 0;
+        $allDetails = [];
+
+        // Procesar resultados de pacientes
+        if ($pacientesResult['success']) {
+            $results = $pacientesResult['results'] ?? [];
+            
+            foreach ($results['synced'] ?? [] as $syncedUuid) {
+                $totalCreated++; // Asumimos que los pendientes son principalmente creates
+            }
+            
+            foreach ($results['failed'] ?? [] as $failed) {
+                $totalFailed++;
+                $allDetails[] = [
+                    'type' => 'paciente',
+                    'uuid' => $failed['uuid'] ?? 'unknown',
+                    'error' => $failed['error'] ?? 'Error desconocido'
+                ];
+            }
+        }
+
+        // Procesar otros cambios
+        foreach ($otherChangesResult as $change) {
+            if ($change['status'] === 'success') {
+                $totalUpdated++;
+            } else {
+                $totalFailed++;
+                $allDetails[] = [
+                    'type' => 'other',
+                    'id' => $change['id'] ?? 'unknown',
+                    'error' => $change['error'] ?? 'Error desconocido'
+                ];
+            }
+        }
+
+        Log::info('✅ Sincronización completa finalizada', [
+            'created' => $totalCreated,
+            'updated' => $totalUpdated,
+            'deleted' => $totalDeleted,
+            'failed' => $totalFailed
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sincronización completa finalizada',
+            'created_count' => $totalCreated,
+            'updated_count' => $totalUpdated,
+            'deleted_count' => $totalDeleted,
+            'failed_count' => $totalFailed,
+            'total_synced' => $totalCreated + $totalUpdated + $totalDeleted,
+            'details' => $allDetails
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error en sincronización completa', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno en sincronización: ' . $e->getMessage(),
+            'created_count' => 0,
+            'updated_count' => 0,
+            'failed_count' => 0
+        ], 500);
+    }
+}
+
+/**
+ * ✅ NUEVO: Obtener conteo de cambios pendientes
+ */
+public function getPendingCount(Request $request)
+{
+    try {
+        $user = $this->authService->usuario();
+        $sedeId = $user['sede_id'];
+        
+        // Obtener conteo de pacientes pendientes
+        $pacientesData = $this->pacienteService->getTestSyncData($sedeId);
+        $pacientesPendientes = $pacientesData['pending_count'] ?? 0;
+        
+        // Obtener otros cambios pendientes
+        $otrosCambios = count($this->offlineService->getPendingChanges());
+        
+        $total = $pacientesPendientes + $otrosCambios;
+        
+        return response()->json([
+            'success' => true,
+            'total' => $total,
+            'pacientes' => $pacientesPendientes,
+            'otros' => $otrosCambios
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo conteo pendiente', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'total' => 0,
+            'pacientes' => 0,
+            'otros' => 0
+        ]);
+    }
+}
 }
 

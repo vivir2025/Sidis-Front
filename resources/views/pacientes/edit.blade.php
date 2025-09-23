@@ -797,6 +797,97 @@
     </form>
 </div>
 
+@push('styles')
+<style>
+.sync-pending-badge {
+    animation: pulse 2s infinite;
+    border-left: 4px solid #ffc107 !important;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.8; }
+    100% { opacity: 1; }
+}
+
+.btn-warning.sync-btn {
+    animation: glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+    from { box-shadow: 0 0 5px rgba(255, 193, 7, 0.5); }
+    to { box-shadow: 0 0 15px rgba(255, 193, 7, 0.8); }
+}
+
+.offline-indicator {
+    position: relative;
+}
+
+.offline-indicator::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    background-color: #ffc107;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.historial-entry {
+    transition: all 0.3s ease;
+}
+
+.historial-entry:hover {
+    background-color: rgba(0,123,255,0.05);
+    border-radius: 5px;
+    padding: 8px;
+    margin: -8px;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+.card-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #dee2e6;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    border: none;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
+    border: none;
+}
+
+.alert-warning {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border-left: 4px solid #ffc107;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+    border-left: 4px solid #17a2b8;
+}
+
+.alert-success {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-left: 4px solid #28a745;
+}
+</style>
+@endpush
+
 @push('scripts')
 <script>
 // Variables globales
@@ -806,14 +897,10 @@ let hasChanges = false;
 
 // Inicialización cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', function() {
-    // Cargar municipios iniciales si hay departamentos seleccionados
     loadInitialMunicipios();
-    
-    // Configurar detectores de cambios
     setupChangeDetectors();
-    
-    // Calcular edad inicial
     calculateAge();
+    checkConnectionStatus();
 });
 
 // Cargar municipios iniciales
@@ -894,16 +981,22 @@ function setupChangeDetectors() {
     });
 }
 
-// Manejar envío del formulario
+// ✅ MANEJAR ENVÍO DEL FORMULARIO - VERSIÓN MEJORADA PARA OFFLINE
 document.getElementById('pacienteEditForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const submitBtn = document.getElementById('submitBtn');
     const originalText = submitBtn.innerHTML;
+    const isOffline = {{ $isOffline ? 'true' : 'false' }};
     
     // Deshabilitar botón y mostrar loading
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando...';
+    
+    if (isOffline) {
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando Offline...';
+    } else {
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando...';
+    }
     
     // Obtener datos del formulario
     const formData = new FormData(this);
@@ -917,22 +1010,42 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
-            showAlert('success', data.message || 'Paciente actualizado exitosamente');
-            
             if (data.offline) {
-                showAlert('info', 'Cambios guardados localmente. Se sincronizarán cuando vuelva la conexión.', 'Modo Offline');
+                // ✅ MODO OFFLINE - Cambios guardados localmente
+                showAlert('success', 'Paciente actualizado y guardado localmente', 'Guardado Offline');
+                showAlert('info', 'Los cambios se sincronizarán automáticamente cuando vuelva la conexión.', 'Sincronización Pendiente');
+                
+                // Actualizar el botón para mostrar estado offline
+                updateOfflineButton(submitBtn);
+                
+                // Actualizar historial
+                addToHistorial('Información actualizada (offline)', 'warning');
+                
+                // Mostrar badge de sincronización pendiente
+                showSyncPendingBadge();
+                
+            } else {
+                // ✅ MODO ONLINE - Cambios guardados en servidor
+                showAlert('success', data.message || 'Paciente actualizado exitosamente');
+                addToHistorial('Información actualizada y sincronizada', 'success');
+                
+                // Redirigir después de 2 segundos
+                setTimeout(() => {
+                    window.location.href = `/pacientes/{{ $paciente['uuid'] }}`;
+                }, 2000);
             }
             
-            // Actualizar historial de cambios
-            addToHistorial('Información actualizada', 'success');
+            // Marcar que no hay cambios pendientes
+            hasChanges = false;
             
-            // Redirigir después de 2 segundos
-            setTimeout(() => {
-                window.location.href = `/pacientes/{{ $paciente['uuid'] }}`;
-            }, 2000);
         } else {
             showAlert('error', data.error || 'Error al actualizar paciente');
             
@@ -947,14 +1060,211 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
     })
     .catch(error => {
         console.error('Error:', error);
-        showAlert('error', 'Error de conexión al actualizar paciente');
+        
+        if (isOffline) {
+            // En modo offline, el error es esperado, mostrar mensaje apropiado
+            showAlert('warning', 'Sin conexión - Los cambios se guardarán cuando vuelva el internet', 'Modo Offline');
+            addToHistorial('Cambios guardados localmente (sin conexión)', 'warning');
+            updateOfflineButton(submitBtn);
+            showSyncPendingBadge();
+        } else {
+            showAlert('error', 'Error de conexión al actualizar paciente');
+        }
     })
     .finally(() => {
-        // Restaurar botón
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
+        // Restaurar botón si no está en modo offline
+        if (!isOffline || !submitBtn.classList.contains('btn-warning')) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
     });
 });
+
+// ✅ NUEVA FUNCIÓN: Actualizar botón para modo offline
+function updateOfflineButton(submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('btn-primary');
+    submitBtn.classList.add('btn-warning');
+    submitBtn.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Sincronizar Cambios';
+    
+    // Agregar evento para sincronización manual
+    submitBtn.onclick = function() {
+        syncPendingChanges();
+    };
+}
+
+// ✅ NUEVA FUNCIÓN: Mostrar badge de sincronización pendiente
+function showSyncPendingBadge() {
+    // Buscar si ya existe el badge
+    let existingBadge = document.querySelector('.sync-pending-badge');
+    
+    if (!existingBadge) {
+        // ✅ OBTENER CONTEO DE CAMBIOS PENDIENTES
+        getPendingChangesCount().then(count => {
+            const badge = document.createElement('div');
+            badge.className = 'alert alert-warning sync-pending-badge mt-3';
+            badge.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <div class="flex-grow-1">
+                        <strong>Cambios Pendientes de Sincronización</strong>
+                        <p class="mb-0">
+                            Tienes <span class="badge bg-warning text-dark">${count.total}</span> cambios pendientes:
+                            ${count.pacientes > 0 ? `${count.pacientes} pacientes` : ''}
+                            ${count.otros > 0 ? `${count.otros} otros cambios` : ''}
+                        </p>
+                        <small class="text-muted">Se sincronizarán automáticamente cuando vuelva la conexión.</small>
+                    </div>
+                    <button type="button" class="btn btn-warning ms-2" onclick="syncPendingChanges()">
+                        <i class="fas fa-sync-alt me-1"></i>Sincronizar Todo (${count.total})
+                    </button>
+                </div>
+            `;
+            
+            // Insertar después del header
+            const container = document.querySelector('.container-fluid');
+            const header = container.querySelector('.row.mb-4');
+            header.insertAdjacentElement('afterend', badge);
+        });
+    }
+}
+
+// ✅ NUEVA FUNCIÓN: Obtener conteo de cambios pendientes
+function getPendingChangesCount() {
+    return fetch('{{ route("pacientes.pending.count") }}', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        return {
+            total: data.total || 0,
+            pacientes: data.pacientes || 0,
+            otros: data.otros || 0
+        };
+    })
+    .catch(error => {
+        console.error('Error obteniendo conteo:', error);
+        return { total: 0, pacientes: 0, otros: 0 };
+    });
+}
+
+// ✅ FUNCIÓN MEJORADA: Sincronizar TODOS los cambios pendientes (creates + updates)
+function syncPendingChanges() {
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    
+    // Mostrar loading
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando...';
+    
+    // ✅ LLAMAR AL ENDPOINT GENERAL DE SINCRONIZACIÓN
+    fetch('{{ route("pacientes.sync.all") }}', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // ✅ MOSTRAR RESULTADOS DETALLADOS
+            let message = 'Sincronización completada:\n';
+            
+            if (data.created_count > 0) {
+                message += `• ${data.created_count} pacientes nuevos sincronizados\n`;
+            }
+            
+            if (data.updated_count > 0) {
+                message += `• ${data.updated_count} pacientes editados sincronizados\n`;
+            }
+            
+            if (data.failed_count > 0) {
+                message += `• ${data.failed_count} errores encontrados`;
+                showAlert('warning', message, 'Sincronización Parcial');
+            } else {
+                showAlert('success', message, 'Sincronización Exitosa');
+            }
+            
+            // ✅ SI HAY SINCRONIZACIONES EXITOSAS
+            if ((data.created_count + data.updated_count) > 0) {
+                // Remover badge de pendiente
+                const badge = document.querySelector('.sync-pending-badge');
+                if (badge) badge.remove();
+                
+                // Restaurar botón normal
+                submitBtn.classList.remove('btn-warning');
+                submitBtn.classList.add('btn-primary');
+                submitBtn.innerHTML = '<i class="fas fa-save me-2"></i>Guardar Cambios';
+                submitBtn.onclick = null;
+                
+                // Actualizar historial
+                addToHistorial('Todos los cambios sincronizados con el servidor', 'success');
+                
+                // ✅ REDIRIGIR SOLO SI ESTAMOS EN EDIT Y NO HAY ERRORES
+                if (window.location.pathname.includes('/edit') && data.failed_count === 0) {
+                    setTimeout(() => {
+                        window.location.href = `/pacientes/{{ $paciente['uuid'] }}`;
+                    }, 2000);
+                }
+            }
+            
+        } else {
+            showAlert('error', data.error || 'Error en sincronización');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('error', 'Error de conexión durante la sincronización');
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        if (submitBtn.innerHTML.includes('Sincronizando')) {
+            submitBtn.innerHTML = originalText;
+        }
+    });
+}
+
+// ✅ NUEVA FUNCIÓN: Verificar estado de conexión periódicamente
+function checkConnectionStatus() {
+    const isOffline = {{ $isOffline ? 'true' : 'false' }};
+    
+    if (isOffline) {
+        // Verificar cada 30 segundos si volvió la conexión
+        setInterval(() => {
+            fetch('/api/health-check', { 
+                method: 'GET',
+                cache: 'no-cache'
+            })
+            .then(response => {
+                if (response.ok) {
+                    // ✅ Conexión restaurada
+                    showAlert('success', 'Conexión restaurada. Puede sincronizar sus cambios.', 'Conexión Restablecida');
+                    
+                    // Actualizar badge si existe
+                    const badge = document.querySelector('.sync-pending-badge');
+                    if (badge) {
+                        const button = badge.querySelector('button');
+                        if (button) {
+                            button.classList.remove('btn-outline-warning');
+                            button.classList.add('btn-success');
+                            button.innerHTML = '<i class="fas fa-wifi me-1"></i>Sincronizar Ahora';
+                        }
+                    }
+                }
+            })
+            .catch(() => {
+                // Aún sin conexión, no hacer nada
+            });
+        }, 30000);
+    }
+}
 
 // Limpiar errores de validación
 function clearValidationErrors() {
@@ -1214,4 +1524,5 @@ function isValidEmail(email) {
 }
 </script>
 @endpush
+
 @endsection

@@ -69,7 +69,24 @@ Route::middleware('custom.auth')->group(function () {
             ->name('search');
         Route::get('stats', [PacienteController::class, 'stats'])
             ->name('stats');
+            
+
+
     });
+
+    // ✅ ESTAS SON LAS RUTAS QUE FALTAN
+Route::post('pacientes/sync-all', [PacienteController::class, 'syncAllPendingChanges'])
+    ->name('pacientes.sync.all');
+
+Route::get('pacientes/pending-count', [PacienteController::class, 'getPendingCount'])
+    ->name('pacientes.pending.count');
+
+Route::post('pacientes/sync-pending', [PacienteController::class, 'syncPendingPacientes'])
+    ->name('pacientes.sync');
+    
+Route::post('pacientes/test-sync-manual', [PacienteController::class, 'testSyncManual'])
+    ->name('pacientes.test-sync');
+
   // Rutas de sincronización
     Route::post('/agendas/sync-pending', [AgendaController::class, 'syncPending'])->name('agendas.sync-pending');
     Route::get('/agendas/pending-count', [AgendaController::class, 'pendingCount'])->name('agendas.pending-count');
@@ -165,6 +182,11 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::get('/logs', [AdminController::class, 'logs'])->name('logs');
         Route::get('/logs/download', [AdminController::class, 'downloadLogs'])->name('logs.download');
         
+        // En routes/web.php - agregar esta ruta
+Route::get('/api/health-check', function () {
+    return response()->json(['status' => 'ok', 'timestamp' => now()]);
+})->name('health.check');
+
         // Configuración del sistema
         Route::get('/config', [AdminController::class, 'config'])->name('config');
         Route::post('/config', [AdminController::class, 'updateConfig'])->name('config.update');

@@ -768,7 +768,7 @@ private function enrichPacientesDataFromApi(array $pacientes, int $sedeId): arra
     /**
      * Sincronizar pacientes pendientes
      */
-   public function syncPendingPacientes(): array
+  public function syncPendingPacientes(): array
 {
     try {
         Log::info('🔄 Iniciando sincronización de pacientes pendientes');
@@ -813,16 +813,8 @@ private function enrichPacientesDataFromApi(array $pacientes, int $sedeId): arra
                 $result = $this->syncSinglePacienteToApi($paciente);
                 
                 if ($result['success']) {
-                    // Marcar como sincronizado
-                    $paciente['sync_status'] = 'synced';
-                    $paciente['synced_at'] = now()->toISOString();
-                    
-                    // Si viene un ID de la API, actualizarlo
-                    if (isset($result['data']['id'])) {
-                        $paciente['id'] = $result['data']['id'];
-                    }
-                    
-                    $this->storePacienteOffline($paciente, false);
+                    // ✅ USAR EL NUEVO MÉTODO PARA MARCAR COMO SINCRONIZADO
+                    $this->markPacienteAsSynced($paciente['uuid'], $result['data'] ?? []);
                     $results['synced'][] = $paciente['uuid'];
                     
                     Log::info('✅ Paciente sincronizado', [
@@ -878,6 +870,7 @@ private function enrichPacientesDataFromApi(array $pacientes, int $sedeId): arra
         ];
     }
 }
+
 private function syncSinglePacienteToApi(array $paciente): array
 {
     try {
@@ -886,64 +879,74 @@ private function syncSinglePacienteToApi(array $paciente): array
 
         Log::info('📤 Enviando paciente a API', [
             'uuid' => $paciente['uuid'],
-            'documento' => $paciente['documento'],
+            'documento' => $paciente['documento'] ?? 'sin-documento',
             'data_keys' => array_keys($apiData),
-            'prepared_data' => $apiData // ✅ Log de datos preparados
+            'has_id' => !empty($paciente['id']),
+            'sync_status' => $paciente['sync_status'] ?? 'unknown'
         ]);
 
-        // ✅ INTENTAR CREAR DIRECTAMENTE (más simple y confiable)
-        $response = $this->apiService->post('/pacientes', $apiData);
-
-        Log::info('📥 Respuesta de API para paciente', [
-            'uuid' => $paciente['uuid'],
-            'success' => $response['success'] ?? false,
-            'has_data' => isset($response['data']),
-            'response_keys' => array_keys($response)
-        ]);
-
-        // ✅ SI FALLA POR DUPLICADO, INTENTAR ACTUALIZAR
-        if (!$response['success'] && isset($response['error'])) {
-            $errorMessage = strtolower($response['error']);
+        // ✅ LÓGICA MEJORADA: SIEMPRE INTENTAR PUT PRIMERO SI HAY UUID
+        if (!empty($paciente['uuid'])) {
+            Log::info('🔄 Intentando actualizar paciente existente (PUT)', [
+                'uuid' => $paciente['uuid'],
+                'method' => 'PUT'
+            ]);
             
-            // Verificar si es error de duplicado
-            if (strpos($errorMessage, 'duplicate') !== false || 
-                strpos($errorMessage, 'duplicado') !== false ||
-                strpos($errorMessage, 'already exists') !== false ||
-                strpos($errorMessage, 'ya existe') !== false) {
-                
-                Log::info('🔄 Paciente duplicado, intentando actualizar', [
-                    'uuid' => $paciente['uuid'],
-                    'documento' => $paciente['documento']
+            $response = $this->apiService->put("/pacientes/{$paciente['uuid']}", $apiData);
+            
+            // ✅ SI PUT ES EXITOSO, RETORNAR
+            if ($response['success']) {
+                Log::info('✅ Paciente actualizado exitosamente con PUT', [
+                    'uuid' => $paciente['uuid']
                 ]);
+                return $response;
+            }
+            
+            // ✅ SI PUT FALLA POR "NO ENCONTRADO", INTENTAR POST
+            if (!$response['success'] && isset($response['error'])) {
+                $errorMessage = strtolower($response['error']);
                 
-                // Buscar el paciente existente por documento
-                $searchResponse = $this->apiService->get('/pacientes/search/document', [
-                    'documento' => $paciente['documento']
-                ]);
-                
-                if ($searchResponse['success'] && isset($searchResponse['data']['uuid'])) {
-                    $existingUuid = $searchResponse['data']['uuid'];
+                if (strpos($errorMessage, 'not found') !== false || 
+                    strpos($errorMessage, 'no encontrado') !== false ||
+                    strpos($errorMessage, '404') !== false) {
                     
-                    // Actualizar el paciente existente
-                    $updateResponse = $this->apiService->put("/pacientes/{$existingUuid}", $apiData);
-                    
-                    Log::info('🔄 Resultado de actualización', [
-                        'existing_uuid' => $existingUuid,
-                        'success' => $updateResponse['success'] ?? false
+                    Log::info('🔄 PUT falló (no encontrado), intentando POST', [
+                        'uuid' => $paciente['uuid'],
+                        'original_error' => substr($response['error'], 0, 100)
                     ]);
                     
-                    return $updateResponse;
+                    // ✅ INTENTAR POST
+                    $postResponse = $this->apiService->post('/pacientes', $apiData);
+                    
+                    Log::info('📥 Resultado de POST después de PUT fallido', [
+                        'uuid' => $paciente['uuid'],
+                        'success' => $postResponse['success'] ?? false,
+                        'method' => 'POST_FALLBACK'
+                    ]);
+                    
+                    return $postResponse;
                 }
             }
+            
+            // ✅ SI PUT FALLA POR OTRA RAZÓN, RETORNAR ERROR
+            return $response;
         }
-
-        return $response;
+        
+        // ✅ SI NO HAY UUID, USAR POST (caso muy raro)
+        Log::info('➕ Creando nuevo paciente (sin UUID)', [
+            'documento' => $paciente['documento'] ?? 'sin-documento',
+            'method' => 'POST'
+        ]);
+        
+        return $this->apiService->post('/pacientes', $apiData);
 
     } catch (\Exception $e) {
         Log::error('❌ Error enviando paciente a API', [
             'uuid' => $paciente['uuid'] ?? 'sin-uuid',
+            'documento' => $paciente['documento'] ?? 'sin-documento',
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'line' => $e->getLine(),
+            'file' => basename($e->getFile())
         ]);
         
         return [
@@ -952,6 +955,8 @@ private function syncSinglePacienteToApi(array $paciente): array
         ];
     }
 }
+
+
 private function prepareDataForApi(array $paciente): array
 {
     // ✅ MAPEAR SOLO LOS CAMPOS QUE LA API ESPERA
@@ -1168,6 +1173,27 @@ private function prepareDataForApi(array $paciente): array
             return;
         }
 
+        // ✅ VERIFICAR SI YA EXISTE CON CAMBIOS PENDIENTES
+        $existingPath = $this->offlineService->getStoragePath() . "/pacientes/{$pacienteData['uuid']}.json";
+        
+        if (file_exists($existingPath)) {
+            $existingData = json_decode(file_get_contents($existingPath), true);
+            
+            // ✅ SI TIENE CAMBIOS PENDIENTES Y NO ESTAMOS FORZANDO SYNC, NO SOBRESCRIBIR
+            if (isset($existingData['sync_status']) && 
+                $existingData['sync_status'] === 'pending' && 
+                !$needsSync) {
+                
+                Log::info('⚠️ Paciente con cambios pendientes - no sobrescribir', [
+                    'uuid' => $pacienteData['uuid'],
+                    'documento' => $pacienteData['documento'] ?? 'sin-documento',
+                    'existing_sync_status' => $existingData['sync_status'],
+                    'needs_sync' => $needsSync
+                ]);
+                return; // ✅ NO SOBRESCRIBIR
+            }
+        }
+
         // ✅ ASEGURAR SEDE_ID
         if (empty($pacienteData['sede_id'])) {
             $user = $this->authService->usuario();
@@ -1268,6 +1294,40 @@ private function prepareDataForApi(array $paciente): array
         ]);
     }
 }
+/**
+ * ✅ NUEVO MÉTODO: Marcar paciente como sincronizado después de sync exitoso
+ */
+private function markPacienteAsSynced(string $uuid, array $apiData = []): void
+{
+    try {
+        $filePath = $this->offlineService->getStoragePath() . "/pacientes/{$uuid}.json";
+        
+        if (file_exists($filePath)) {
+            $currentData = json_decode(file_get_contents($filePath), true);
+            
+            // ✅ ACTUALIZAR CON DATOS DE LA API SI ESTÁN DISPONIBLES
+            if (!empty($apiData)) {
+                $currentData = array_merge($currentData, $apiData);
+            }
+            
+            // ✅ MARCAR COMO SINCRONIZADO
+            $currentData['sync_status'] = 'synced';
+            $currentData['synced_at'] = now()->toISOString();
+            
+            file_put_contents($filePath, json_encode($currentData, JSON_PRETTY_PRINT));
+            
+            Log::info('✅ Paciente marcado como sincronizado', [
+                'uuid' => $uuid
+            ]);
+        }
+    } catch (\Exception $e) {
+        Log::error('Error marcando paciente como sincronizado', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
     /**
      * Obtener paciente offline
      */
@@ -1712,7 +1772,7 @@ private function prepareDataForApi(array $paciente): array
     }
 
 
-    public function getTestSyncData(int $sedeId): array
+ public function getTestSyncData(int $sedeId): array
 {
     try {
         $allPacientes = $this->getAllPacientesOffline($sedeId);
@@ -1750,4 +1810,5 @@ private function prepareDataForApi(array $paciente): array
         ];
     }
 }
+
 }
