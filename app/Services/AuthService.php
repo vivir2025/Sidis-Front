@@ -17,16 +17,16 @@ class AuthService
         $this->offlineService = $offlineService;
     }
 
+  
     /**
-     * ✅ MÉTODO COMPLETAMENTE CORREGIDO
+     * ✅ LOGIN MODIFICADO - SIN RESTRICCIÓN DE SEDE
      */
     public function login(array $credentials)
     {
         // Guardar contraseña temporalmente para uso offline
         session(['temp_password_for_offline' => $credentials['password']]);
 
-        // ✅ DEBUG: Log de las credenciales (sin password)
-        Log::info('🔍 Intentando login', [
+        Log::info('🔍 Intentando login con sede seleccionada', [
             'login' => $credentials['login'],
             'sede_id' => $credentials['sede_id'],
             'has_password' => !empty($credentials['password'])
@@ -35,7 +35,6 @@ class AuthService
         // 1. Intentar login online primero
         $response = $this->apiService->post('/auth/login', $credentials);
 
-        // ✅ DEBUG: Log de la respuesta completa
         Log::info('🔍 Respuesta completa de ApiService', [
             'response_keys' => array_keys($response),
             'success' => $response['success'] ?? 'no definido',
@@ -48,7 +47,6 @@ class AuthService
             
             Log::info('✅ Respuesta exitosa de la API');
 
-            // ✅ VERIFICAR QUE EXISTE data
             if (!isset($response['data'])) {
                 Log::error('❌ Respuesta exitosa pero sin data', ['response' => $response]);
                 return [
@@ -59,7 +57,6 @@ class AuthService
 
             $responseData = $response['data'];
 
-            // ✅ VERIFICAR QUE EXISTE usuario en data
             if (!isset($responseData['usuario'])) {
                 Log::error('❌ Respuesta sin datos de usuario', [
                     'response_data_keys' => array_keys($responseData),
@@ -74,7 +71,6 @@ class AuthService
             $userData = $responseData['usuario'];
             $token = $responseData['token'] ?? null;
 
-            // ✅ VERIFICAR TOKEN
             if (!$token) {
                 Log::error('❌ Respuesta sin token', ['response_data' => $responseData]);
                 return [
@@ -83,7 +79,6 @@ class AuthService
                 ];
             }
 
-            // ✅ PROCESAR EXPIRACIÓN
             $expiresAt = isset($responseData['expires_at']) 
                 ? \Carbon\Carbon::parse($responseData['expires_at'])
                 : now()->addHours(8);
@@ -91,16 +86,17 @@ class AuthService
             // ✅ NORMALIZAR DATOS DE USUARIO
             $userData = $this->normalizeUserData($userData);
 
-            // Guardar en sesión
+            // ✅ GUARDAR SEDE SELECCIONADA EN LA SESIÓN
             session([
                 'usuario' => $userData,
                 'api_token' => $token,
                 'token_expires_at' => $expiresAt,
+                'sede_id' => $credentials['sede_id'], // ✅ SEDE SELECCIONADA
                 'is_offline' => false
             ]);
 
             // Guardar para uso offline futuro
-               $this->syncMasterDataAfterLogin();
+            $this->syncMasterDataAfterLogin();
             $this->offlineService->storeUserData($userData);
             $this->apiService->setToken($token);
 
@@ -113,12 +109,14 @@ class AuthService
 
             Log::info('✅ Login exitoso (online)', [
                 'usuario_id' => $userData['id'],
-                'login' => $userData['login']
+                'login' => $userData['login'],
+                'sede_seleccionada' => $credentials['sede_id'],
+                'sede_nombre' => $userData['sede']['nombre'] ?? 'N/A'
             ]);
 
             return [
                 'success' => true,
-                'message' => 'Bienvenido ' . $userData['nombre_completo'],
+                'message' => 'Bienvenido a ' . ($userData['sede']['nombre'] ?? 'la sede') . ' - ' . $userData['nombre_completo'],
                 'usuario' => $userData,
                 'offline' => false
             ];
@@ -140,7 +138,6 @@ class AuthService
         $errorMessage = 'Error de autenticación';
         
         if (isset($response['errors'])) {
-            // Error de validación (422)
             if (isset($response['errors']['login'])) {
                 $errorMessage = is_array($response['errors']['login']) 
                     ? $response['errors']['login'][0] 
@@ -158,7 +155,6 @@ class AuthService
             'login' => $credentials['login']
         ]);
 
-        // Limpiar contraseña temporal en caso de error
         session()->forget('temp_password_for_offline');
         
         return [
@@ -232,15 +228,16 @@ private function syncMasterDataAfterLogin(): void
         ];
     }
 
-    /**
-     * ✅ CORREGIDO: Login offline
+     /**
+     * ✅ LOGIN OFFLINE MODIFICADO - SIN RESTRICCIÓN DE SEDE
      */
     private function attemptOfflineLogin(array $credentials): array
     {
         $login = $credentials['login'];
         $password = $credentials['password'];
+        $sedeId = $credentials['sede_id'];
         
-        // ✅ USAR MÉTODO DEL OFFLINE SERVICE
+        // ✅ BUSCAR USUARIO SIN RESTRICCIÓN DE SEDE
         $offlineUser = $this->offlineService->getOfflineUser($login);
         
         if (!$offlineUser) {
@@ -250,13 +247,8 @@ private function syncMasterDataAfterLogin(): void
             ];
         }
 
-        // Verificar sede
-        if (isset($credentials['sede_id']) && $offlineUser['sede_id'] != $credentials['sede_id']) {
-            return [
-                'success' => false,
-                'error' => 'Sede incorrecta para este usuario'
-            ];
-        }
+        // ✅ NO VERIFICAR SEDE DEL USUARIO, PERMITIR CUALQUIER SEDE
+        // (El usuario puede acceder a cualquier sede offline)
 
         // ✅ VERIFICAR CONTRASEÑA OFFLINE
         if (!$this->validateOfflinePassword($login, $password)) {
@@ -270,32 +262,158 @@ private function syncMasterDataAfterLogin(): void
             ];
         }
 
-        // ✅ NORMALIZAR DATOS OFFLINE
+        // ✅ NORMALIZAR DATOS OFFLINE Y ASIGNAR SEDE SELECCIONADA
         $userData = $this->normalizeUserData($offlineUser);
+        
+        // ✅ SOBRESCRIBIR SEDE CON LA SELECCIONADA
+        $userData['sede_id'] = $sedeId;
+        $userData['sede'] = [
+            'id' => $sedeId,
+            'nombre' => $this->getSedeNameById($sedeId) // Método auxiliar
+        ];
 
         // Guardar sesión offline
         session([
             'usuario' => $userData,
             'api_token' => null,
+            'sede_id' => $sedeId, // ✅ SEDE SELECCIONADA
             'is_offline' => true
         ]);
 
-        // Limpiar contraseña temporal
         session()->forget('temp_password_for_offline');
 
         Log::info('Login offline exitoso', [
             'login' => $login,
-            'sede_id' => $credentials['sede_id'] ?? 'no especificada'
+            'sede_seleccionada' => $sedeId,
+            'sede_nombre' => $userData['sede']['nombre']
         ]);
 
         return [
             'success' => true,
-            'message' => 'Acceso offline exitoso - ' . ($userData['nombre_completo'] ?? 'Usuario'),
+            'message' => 'Acceso offline exitoso a ' . $userData['sede']['nombre'] . ' - ' . ($userData['nombre_completo'] ?? 'Usuario'),
             'usuario' => $userData,
             'offline' => true
         ];
     }
 
+    /**
+     * ✅ NUEVO: Obtener nombre de sede por ID
+     */
+    private function getSedeNameById(int $sedeId): string
+    {
+        try {
+            // Intentar obtener desde cache o datos maestros
+            $sedes = cache('sedes_cache', []);
+            
+            foreach ($sedes as $sede) {
+                if (isset($sede['id']) && $sede['id'] == $sedeId) {
+                    return $sede['nombre'];
+                }
+            }
+            
+            // Sedes por defecto
+            $defaultSedes = [
+                1 => 'Sede Principal',
+                2 => 'Sede Norte', 
+                3 => 'Sede Sur'
+            ];
+            
+            return $defaultSedes[$sedeId] ?? "Sede #{$sedeId}";
+            
+        } catch (\Exception $e) {
+            Log::warning('Error obteniendo nombre de sede', [
+                'sede_id' => $sedeId,
+                'error' => $e->getMessage()
+            ]);
+            return "Sede #{$sedeId}";
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Cambiar sede sin cerrar sesión
+     */
+    public function cambiarSede(int $nuevaSedeId): array
+    {
+        try {
+            if (!$this->check()) {
+                return [
+                    'success' => false,
+                    'error' => 'Usuario no autenticado'
+                ];
+            }
+
+            // Si está online, notificar al servidor
+            if (!$this->isOffline() && $this->apiService->isOnline()) {
+                $response = $this->apiService->post('/auth/cambiar-sede', [
+                    'sede_id' => $nuevaSedeId
+                ]);
+                
+                if ($response['success']) {
+                    $userData = $response['data']['usuario'];
+                    
+                    // Actualizar sesión con nueva sede
+                    session([
+                        'usuario' => $userData,
+                        'sede_id' => $nuevaSedeId
+                    ]);
+                    
+                    return [
+                        'success' => true,
+                        'message' => $response['message'],
+                        'usuario' => $userData
+                    ];
+                }
+            }
+
+            // Cambio offline
+            $usuario = session('usuario');
+            $usuario['sede_id'] = $nuevaSedeId;
+            $usuario['sede'] = [
+                'id' => $nuevaSedeId,
+                'nombre' => $this->getSedeNameById($nuevaSedeId)
+            ];
+
+            session([
+                'usuario' => $usuario,
+                'sede_id' => $nuevaSedeId
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Cambiado a ' . $usuario['sede']['nombre'],
+                'usuario' => $usuario
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error cambiando sede', [
+                'nueva_sede_id' => $nuevaSedeId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Error interno al cambiar sede'
+            ];
+        }
+    }
+
+       /**
+     * ✅ OBTENER SEDE ACTUAL DE LA SESIÓN
+     */
+    public function sedeActual(): ?array
+    {
+        $usuario = $this->usuario();
+        return $usuario['sede'] ?? null;
+    }
+
+    /**
+     * ✅ OBTENER ID DE SEDE ACTUAL
+     */
+    public function sedeId(): ?int
+    {
+        return session('sede_id') ?? $this->usuario()['sede_id'] ?? null;
+    }
+    
     /**
      * ✅ NUEVO: Validar contraseña offline
      */

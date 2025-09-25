@@ -34,7 +34,8 @@ Route::get('/health-check', function() {
 
 // Rutas protegidas (requieren autenticación)
 Route::middleware('custom.auth')->group(function () {
-    
+  Route::post('/cambiar-sede', [AuthController::class, 'cambiarSede'])->name('cambiar-sede');
+    Route::get('/sedes-disponibles', [AuthController::class, 'getSedesDisponibles'])->name('sedes-disponibles');
     // ✅ AUTENTICACIÓN Y SESIÓN
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::post('/sync', [AuthController::class, 'sync'])->name('sync');

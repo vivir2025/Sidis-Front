@@ -36,11 +36,11 @@ class AuthController extends Controller
     }
 
     /**
-     * ✅ CORREGIDO: Procesar login - DEBE recibir Request
+     * ✅ LOGIN MODIFICADO
      */
     public function login(Request $request)
     {
-        // Validación de entrada
+        // Validación sin cambios
         $validator = Validator::make($request->all(), [
             'login' => 'required|string|max:50',
             'password' => 'required|string|min:4',
@@ -63,32 +63,27 @@ class AuthController extends Controller
         $credentials = $request->only('login', 'password', 'sede_id');
 
         try {
-            // ✅ DEBUGGING TEMPORAL
             Log::info('Iniciando login desde controller', [
                 'login' => $credentials['login'],
                 'sede_id' => $credentials['sede_id'],
                 'api_online' => $this->apiService->isOnline()
             ]);
 
-            // Guardar contraseña temporalmente para offline
             session(['temp_password_for_offline' => $credentials['password']]);
 
-            // ✅ LLAMAR AL SERVICIO DE AUTENTICACIÓN
+            // ✅ LOGIN SIN RESTRICCIÓN DE SEDE
             $result = $this->authService->login($credentials);
 
-            // ✅ DEBUGGING: Log del resultado completo
             Log::info('Resultado de AuthService::login', [
                 'result' => $result,
                 'login' => $credentials['login']
             ]);
 
-            // Limpiar contraseña temporal
             session()->forget('temp_password_for_offline');
 
             if ($result['success']) {
                 $message = $result['message'];
                 
-                // Agregar indicador de modo offline
                 if (isset($result['offline']) && $result['offline']) {
                     $message .= ' (Modo Offline)';
                 }
@@ -96,22 +91,22 @@ class AuthController extends Controller
                 Log::info('Login exitoso desde web', [
                     'usuario' => $result['usuario']['login'] ?? 'unknown',
                     'rol' => $result['usuario']['rol']['nombre'] ?? 'unknown',
-                    'sede_id' => $credentials['sede_id'],
+                    'sede_seleccionada' => $credentials['sede_id'],
+                    'sede_nombre' => $result['usuario']['sede']['nombre'] ?? 'unknown',
                     'offline' => $result['offline'] ?? false,
                     'ip' => $request->ip()
                 ]);
 
-                // Recordar datos si está marcado
                 if ($request->has('remember')) {
                     $this->rememberLoginData($credentials);
                 }
 
-                // ✅ REDIRIGIR SEGÚN EL ROL DEL USUARIO
                 $redirectRoute = $this->authService->getDashboardRoute();
                 
                 Log::info('Redirigiendo usuario según rol', [
                     'usuario' => $result['usuario']['login'] ?? 'unknown',
                     'rol' => $result['usuario']['rol']['nombre'] ?? 'unknown',
+                    'sede_nombre' => $result['usuario']['sede']['nombre'] ?? 'unknown',
                     'redirect_route' => $redirectRoute
                 ]);
 
@@ -120,7 +115,6 @@ class AuthController extends Controller
                     ->with('success', $message);
             }
 
-            // Login fallido
             Log::warning('Login fallido desde web', [
                 'login' => $credentials['login'],
                 'sede_id' => $credentials['sede_id'],
@@ -135,7 +129,6 @@ class AuthController extends Controller
                 ->withInput($request->except('password'));
 
         } catch (\Exception $e) {
-            // Limpiar contraseña temporal en caso de error
             session()->forget('temp_password_for_offline');
             
             Log::error('Error crítico en login', [
@@ -148,6 +141,84 @@ class AuthController extends Controller
             return back()
                 ->withErrors(['login' => 'Error interno del sistema. Intente nuevamente.'])
                 ->withInput($request->except('password'));
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Cambiar sede sin cerrar sesión
+     */
+    public function cambiarSede(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'sede_id' => 'required|integer'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $result = $this->authService->cambiarSede($request->sede_id);
+            
+            if ($result['success']) {
+                Log::info('Cambio de sede exitoso', [
+                    'usuario' => $this->authService->usuario()['login'] ?? 'unknown',
+                    'nueva_sede_id' => $request->sede_id,
+                    'sede_nombre' => $result['usuario']['sede']['nombre'] ?? 'unknown'
+                ]);
+            }
+            
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Error cambiando sede', [
+                'error' => $e->getMessage(),
+                'usuario' => $this->authService->usuario()['login'] ?? 'unknown',
+                'nueva_sede_id' => $request->sede_id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del sistema'
+            ], 500);
+        }
+    }
+      /**
+     * ✅ OBTENER SEDES DISPONIBLES PARA CAMBIO
+     */
+    public function getSedesDisponibles(Request $request)
+    {
+        if (!$request->ajax()) {
+            abort(404);
+        }
+
+        try {
+            $sedes = $this->getSedes($this->apiService->isOnline());
+            
+            return response()->json([
+                'success' => true,
+                'data' => $sedes,
+                'sede_actual' => $this->authService->sedeId(),
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo sedes disponibles', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo sedes',
+                'data' => []
+            ], 500);
         }
     }
 
