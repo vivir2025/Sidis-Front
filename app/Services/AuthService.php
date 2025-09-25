@@ -313,9 +313,9 @@ private function syncMasterDataAfterLogin(): void
             
             // Sedes por defecto
             $defaultSedes = [
-                1 => 'Sede Principal',
-                2 => 'Sede Norte', 
-                3 => 'Sede Sur'
+                1 => 'Cajibio',
+                2 => 'Piendamo', 
+                3 => 'Morales'
             ];
             
             return $defaultSedes[$sedeId] ?? "Sede #{$sedeId}";
@@ -413,7 +413,7 @@ private function syncMasterDataAfterLogin(): void
     {
         return session('sede_id') ?? $this->usuario()['sede_id'] ?? null;
     }
-    
+
     /**
      * ✅ NUEVO: Validar contraseña offline
      */

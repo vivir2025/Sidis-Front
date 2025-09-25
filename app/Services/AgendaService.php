@@ -1165,7 +1165,7 @@ private function enrichAgendaDataForResponse(array $agendaData): array
         if (!isset($agendaData['sede'])) {
             $currentUser = $this->authService->usuario();
             $agendaData['sede'] = [
-                'nombre' => $currentUser['sede']['nombre'] ?? 'Sede Principal'
+                'nombre' => $currentUser['sede']['nombre'] ?? 'Cajibio'
             ];
         }
         
@@ -1363,7 +1363,7 @@ private function enrichAgendaWithRelations(array $agenda): array
         
         if (!isset($agenda['sede'])) {
             $agenda['sede'] = [
-                'nombre' => 'Sede Principal'
+                'nombre' => 'Cajibio'
             ];
         }
         

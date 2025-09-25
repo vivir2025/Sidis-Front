@@ -29,9 +29,9 @@ class ExistsInSedes implements Rule
         // Si no hay cache, usar sedes por defecto
         if (empty($sedes)) {
             $sedes = [
-                ['id' => 1, 'nombre' => 'Sede Principal'],
-                ['id' => 2, 'nombre' => 'Sede Norte'],
-                ['id' => 3, 'nombre' => 'Sede Sur']
+                ['id' => 1, 'nombre' => 'Cajibio'],
+                ['id' => 2, 'nombre' => 'Piendamo'],
+                ['id' => 3, 'nombre' => 'Morales']
             ];
         }
 

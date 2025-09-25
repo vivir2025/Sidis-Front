@@ -487,7 +487,7 @@ private function enrichAgendaDataForView(array $agenda): array
         if (!isset($agenda['sede']) || empty($agenda['sede']['nombre'])) {
             $currentUser = $this->authService->usuario();
             $agenda['sede'] = [
-                'nombre' => $currentUser['sede']['nombre'] ?? 'Sede Principal',
+                'nombre' => $currentUser['sede']['nombre'] ?? 'Cajibio',
                 'id' => $agenda['sede_id'] ?? $currentUser['sede_id'] ?? null
             ];
         }

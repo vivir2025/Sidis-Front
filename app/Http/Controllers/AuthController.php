@@ -299,9 +299,9 @@ class AuthController extends Controller
 
         // Sedes por defecto si no hay conexión ni cache
         $defaultSedes = [
-            ['id' => 1, 'nombre' => 'Sede Principal'],
-            ['id' => 2, 'nombre' => 'Sede Norte'],
-            ['id' => 3, 'nombre' => 'Sede Sur']
+            ['id' => 1, 'nombre' => 'Cajibio'],
+            ['id' => 2, 'nombre' => 'Piendamo'],
+            ['id' => 3, 'nombre' => 'Morales']
         ];
 
         Log::info('Usando sedes por defecto (sin conexión ni cache)');

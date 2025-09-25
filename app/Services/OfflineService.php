@@ -2528,7 +2528,7 @@ public function getCitaOffline(string $uuid): ?array
         if (!empty($cita['sede_id'])) {
             $cita['sede'] = [
                 'id' => $cita['sede_id'],
-                'nombre' => 'Sede principal' // Por defecto
+                'nombre' => 'Cajibio' // Por defecto
             ];
         }
 

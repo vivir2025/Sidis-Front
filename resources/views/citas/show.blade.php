@@ -151,7 +151,7 @@
                           
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Sede:</label>
-                                <p class="mb-1">{{ $cita['sede']['nombre'] ?? 'Sede principal' }}</p>
+                                <p class="mb-1">{{ $cita['sede']['nombre'] ?? 'Cajibio' }}</p>
                             </div>
                         </div>
                     </div>
