@@ -2014,19 +2014,36 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         ]);
     }
 }
-
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
     try {
+        // ✅ DEBUG CRÍTICO - AGREGAR AL INICIO
+        $user = auth()->user() ?? session('usuario');
+        $loginSedeId = session('sede_id') ?? $user['sede_id'] ?? 1; // ← SEDE DEL LOGIN
+        $citaSedeOriginal = $citaData['sede_id'] ?? 'NO_SEDE_CITA';
+        
+        Log::info('🧪 DEBUG CRÍTICO: Guardando cita con información de sedes', [
+            'cita_uuid' => $citaData['uuid'] ?? 'NO_UUID',
+            'sede_login' => $loginSedeId,
+            'cita_sede_original' => $citaSedeOriginal,
+            'usuario_sede' => $user['sede_id'] ?? 'NO_SEDE_USUARIO',
+            'session_sede_id' => session('sede_id') ?? 'NO_SESSION_SEDE',
+            'usuario_nombre' => $user['nombre_completo'] ?? 'NO_NOMBRE'
+        ]);
+
         if (empty($citaData['uuid'])) {
             Log::warning('⚠️ Intentando guardar cita sin UUID');
             return;
         }
 
-        if (empty($citaData['sede_id'])) {
-            $user = auth()->user();
-            $citaData['sede_id'] = $user['sede_id'] ?? 1;
-        }
+        // ✅ FORZAR SEDE DEL LOGIN (NO DEL USUARIO)
+        $citaData['sede_id'] = $loginSedeId;
+        
+        Log::info('🔧 Sede FORZADA a sede del login', [
+            'cita_uuid' => $citaData['uuid'],
+            'sede_final' => $citaData['sede_id'],
+            'era_diferente' => $citaSedeOriginal != $loginSedeId
+        ]);
 
         // ✅ CORREGIR FECHA ANTES DE GUARDAR
         if (isset($citaData['fecha'])) {
@@ -2111,6 +2128,18 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
                 ['uuid' => $citaData['uuid']],
                 $offlineData
             );
+            
+            // ✅ DEBUG FINAL: VERIFICAR QUE SE GUARDÓ CORRECTAMENTE
+            $citaGuardada = DB::connection('offline')->table('citas')
+                ->where('uuid', $citaData['uuid'])
+                ->first();
+                
+            Log::info('🔍 DEBUG: Verificación de cita guardada en SQLite', [
+                'cita_uuid' => $citaData['uuid'],
+                'guardada_correctamente' => $citaGuardada ? 'SÍ' : 'NO',
+                'sede_guardada' => $citaGuardada->sede_id ?? 'NO_ENCONTRADA',
+                'fecha_guardada' => $citaGuardada->fecha ?? 'NO_ENCONTRADA'
+            ]);
         }
 
         // ✅ GUARDAR EN JSON COMPLETO (CON DATOS ENRIQUECIDOS)
@@ -2119,6 +2148,7 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         Log::debug('✅ Cita almacenada offline con fecha corregida', [
             'uuid' => $citaData['uuid'],
             'fecha_final' => $citaData['fecha'],
+            'sede_final' => $citaData['sede_id'],
             'paciente_uuid' => $citaData['paciente_uuid'],
             'cups_contratado_uuid' => $citaData['cups_contratado_uuid'] ?? 'null',
             'has_agenda_data' => isset($citaData['agenda']),
@@ -2128,10 +2158,12 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
     } catch (\Exception $e) {
         Log::error('❌ Error almacenando cita offline', [
             'error' => $e->getMessage(),
-            'uuid' => $citaData['uuid'] ?? 'sin-uuid'
+            'uuid' => $citaData['uuid'] ?? 'sin-uuid',
+            'trace' => $e->getTraceAsString()
         ]);
     }
 }
+
 
 public function getAgendasOffline(int $sedeId, array $filters = []): array
 {
@@ -2185,10 +2217,22 @@ public function getAgendasOffline(int $sedeId, array $filters = []): array
         return [];
     }
 }
-
 public function getCitasOffline(int $sedeId, array $filters = []): array
 {
     try {
+        // ✅ DEBUG ADICIONAL
+        $user = auth()->user() ?? session('usuario');
+        $loginSedeId = session('sede_id') ?? $user['sede_id'] ?? 1;
+        
+        Log::info('🧪 DEBUG: Consultando citas con información completa de sedes', [
+            'sede_consultada' => $sedeId,
+            'sede_login' => $loginSedeId,
+            'usuario_sede_id' => $user['sede_id'] ?? 'NO_SEDE_USUARIO',
+            'session_sede_id' => session('sede_id') ?? 'NO_SESSION_SEDE',
+            'usuario_nombre' => $user['nombre_completo'] ?? 'NO_NOMBRE',
+            'consulta_coincide_login' => $sedeId == $loginSedeId
+        ]);
+
         Log::info('🔍 getCitasOffline iniciado', [
             'sede_id' => $sedeId,
             'filters' => $filters
@@ -2202,6 +2246,39 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
             $query = DB::connection('offline')->table('citas')
                 ->where('sede_id', $sedeId)
                 ->whereNull('deleted_at');
+                
+            // 🧪 DEBUG TEMPORAL - VERIFICAR TODAS LAS CITAS
+            $todasLasCitas = DB::connection('offline')->table('citas')->get();
+            $citasPorSede = [];
+            foreach ($todasLasCitas as $cita) {
+                $citasPorSede[$cita->sede_id] = ($citasPorSede[$cita->sede_id] ?? 0) + 1;
+            }
+            
+            Log::info('🧪 DEBUG: Verificando todas las citas en SQLite', [
+                'sede_consultada' => $sedeId,
+                'total_citas_sede_consultada' => DB::connection('offline')->table('citas')->where('sede_id', $sedeId)->count(),
+                'total_citas_todas_sedes' => $todasLasCitas->count(),
+                'citas_por_sede' => $citasPorSede
+            ]);
+
+            // Ver las últimas 3 citas guardadas DE CUALQUIER SEDE
+            $ultimasCitasTodasSedes = DB::connection('offline')->table('citas')
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get()
+                ->toArray();
+
+            Log::info('🧪 DEBUG: Últimas citas guardadas (todas las sedes)', [
+                'ultimas_citas' => array_map(function($cita) {
+                    return [
+                        'uuid' => $cita->uuid ?? 'N/A',
+                        'sede_id' => $cita->sede_id ?? 'N/A',
+                        'agenda_uuid' => $cita->agenda_uuid ?? 'N/A',
+                        'fecha' => $cita->fecha ?? 'N/A',
+                        'created_at' => $cita->created_at ?? 'N/A'
+                    ];
+                }, $ultimasCitasTodasSedes)
+            ]);
 
             // ✅ APLICAR FILTROS CON LOGGING DETALLADO
             if (!empty($filters['fecha'])) {
@@ -2340,6 +2417,7 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
         return [];
     }
 }
+
 /**
  * ✅ CORREGIDO: Obtener agenda offline por UUID
  */

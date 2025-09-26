@@ -465,33 +465,114 @@ public function getHorariosDisponibles(Request $request, string $agendaUuid)
             return [];
         }
     }
+/**
+ * ✅ CORREGIDO: Obtener citas existentes CON SEDE DE LA AGENDA
+ */
+private function obtenerCitasExistentes(string $agendaUuid, string $fecha): array
+{
+    try {
+        Log::info('🔍 Obteniendo citas existentes para agenda (Controlador)', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha
+        ]);
 
-    // ✅ NUEVO: Obtener citas existentes
-    private function obtenerCitasExistentes(string $agendaUuid, string $fecha): array
-    {
-        try {
-            $user = $this->authService->usuario();
+        // ✅ PASO 1: OBTENER LA AGENDA PRIMERO PARA SABER SU SEDE
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if (!$agenda) {
+            Log::warning('⚠️ Agenda no encontrada offline, intentando desde API');
             
-            $filters = [
-                'agenda_uuid' => $agendaUuid,
-                'fecha' => $fecha
-            ];
-            
-            $citas = $this->offlineService->getCitasOffline($user['sede_id'], $filters);
-            
-            // Filtrar solo citas no canceladas
-            return array_filter($citas, function($cita) {
-                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
-            });
-            
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo citas existentes', [
-                'error' => $e->getMessage()
+            // Si no está offline, intentar desde API
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get("/agendas/{$agendaUuid}");
+                if ($response['success']) {
+                    $agenda = $response['data'];
+                }
+            }
+        }
+        
+        if (!$agenda) {
+            Log::error('❌ No se pudo obtener la agenda para determinar la sede', [
+                'agenda_uuid' => $agendaUuid
             ]);
-            
             return [];
         }
+        
+        // ✅ PASO 2: USAR LA SEDE DE LA AGENDA (NO DEL USUARIO)
+        $sedeAgenda = $agenda['sede_id'];
+        
+        Log::info('✅ Agenda encontrada, usando su sede (Controlador)', [
+            'agenda_uuid' => $agendaUuid,
+            'sede_agenda' => $sedeAgenda,
+            'usuario_sede' => $this->authService->usuario()['sede_id'] ?? 'N/A' // Solo para comparar
+        ]);
+        
+        // ✅ PASO 3: EXTRAER FECHA LIMPIA
+        $fechaLimpia = $fecha;
+        if (strpos($fecha, 'T') !== false) {
+            $fechaLimpia = explode('T', $fecha)[0];
+        }
+        
+        // ✅ PASO 4: OBTENER CITAS CON LA SEDE CORRECTA
+        $filters = [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fechaLimpia
+        ];
+        
+        $citas = $this->offlineService->getCitasOffline($sedeAgenda, $filters); // ← CAMBIO CRÍTICO
+        
+        // ✅ PASO 5: SI ESTAMOS ONLINE, TAMBIÉN VERIFICAR API
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/agendas/{$agendaUuid}/citas", [
+                    'fecha' => $fechaLimpia
+                ]);
+                
+                if ($response['success'] && isset($response['data'])) {
+                    $citasApi = $response['data'];
+                    $uuidsOffline = array_column($citas, 'uuid');
+                    
+                    foreach ($citasApi as $citaApi) {
+                        if (!in_array($citaApi['uuid'], $uuidsOffline)) {
+                            $citas[] = $citaApi;
+                            // También guardar offline
+                            $this->offlineService->storeCitaOffline($citaApi, false);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error sincronizando citas desde API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // ✅ PASO 6: FILTRAR SOLO CITAS ACTIVAS
+        $citasActivas = array_filter($citas, function($cita) {
+            return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+        });
+        
+        Log::info('📊 Citas existentes obtenidas (Controlador)', [
+            'agenda_uuid' => $agendaUuid,
+            'sede_agenda' => $sedeAgenda,
+            'fecha_consulta' => $fechaLimpia,
+            'total_citas' => count($citas),
+            'citas_activas' => count($citasActivas)
+        ]);
+        
+        return $citasActivas;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo citas existentes (Controlador)', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [];
     }
+}
 
     // ✅ NUEVO: Obtener paciente en horario específico
     private function obtenerPacienteEnHorario(array $citas, string $hora): ?string

@@ -391,17 +391,28 @@ private function cleanFiltersForOffline(array $filters): array
 private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
 {
     try {
-        // Obtener la agenda offline
+        Log::info('🔄 INICIO: actualizarAgendaOfflineDespuesDeCita', [
+            'agenda_uuid' => $agendaUuid,
+            'timestamp' => now()->toISOString()
+        ]);
+        
+        // ✅ OBTENER LA AGENDA OFFLINE
         $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
         
         if (!$agenda) {
-            Log::warning('⚠️ No se encontró agenda offline para actualizar', [
+            Log::error('❌ CRÍTICO: No se encontró agenda offline para actualizar', [
                 'agenda_uuid' => $agendaUuid
             ]);
             return;
         }
         
-        // ✅ PRESERVAR EL ESTADO DE SINCRONIZACIÓN ORIGINAL
+        Log::info('✅ Agenda encontrada para actualizar', [
+            'agenda_uuid' => $agendaUuid,
+            'agenda_data' => $agenda
+        ]);
+        
+        // ✅ USAR LA SEDE DE LA AGENDA, NO DEL USUARIO
+        $sedeAgenda = $agenda['sede_id'];
         $originalSyncStatus = $agenda['sync_status'] ?? 'synced';
         
         // ✅ EXTRAER FECHA LIMPIA DE LA AGENDA
@@ -410,60 +421,144 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
             $fechaAgenda = explode('T', $fechaAgenda)[0];
         }
         
-        Log::info('🔄 Actualizando agenda offline después de cita', [
+        Log::info('🔍 Datos extraídos de la agenda', [
             'agenda_uuid' => $agendaUuid,
+            'sede_agenda' => $sedeAgenda,
             'fecha_agenda_original' => $agenda['fecha'],
             'fecha_agenda_limpia' => $fechaAgenda,
-            'sync_status_original' => $originalSyncStatus // ✅ LOGGING DEL ESTADO
+            'sync_status_original' => $originalSyncStatus,
+            'hora_inicio' => $agenda['hora_inicio'] ?? 'NO_DEFINIDA',
+            'hora_fin' => $agenda['hora_fin'] ?? 'NO_DEFINIDA',
+            'intervalo' => $agenda['intervalo'] ?? 'NO_DEFINIDO'
         ]);
         
-        // Recalcular cupos disponibles
-        $user = $this->authService->usuario();
-        $citasActivas = $this->offlineService->getCitasOffline($user['sede_id'], [
+        // ✅ RECALCULAR CUPOS CON LA SEDE DE LA AGENDA
+        Log::info('🔍 Obteniendo citas para recalcular cupos', [
+            'sede_agenda' => $sedeAgenda,
             'agenda_uuid' => $agendaUuid,
             'fecha' => $fechaAgenda
         ]);
         
-        // Filtrar solo citas no canceladas
+        $citasActivas = $this->offlineService->getCitasOffline($sedeAgenda, [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fechaAgenda
+        ]);
+        
+        Log::info('📊 Citas obtenidas para recálculo', [
+            'total_citas_encontradas' => count($citasActivas),
+            'citas_preview' => array_slice($citasActivas, 0, 3) // Solo las primeras 3 para no saturar logs
+        ]);
+        
+        // ✅ FILTRAR SOLO CITAS NO CANCELADAS
         $citasValidas = array_filter($citasActivas, function($cita) {
-            return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+            $estado = $cita['estado'] ?? '';
+            $esValida = !in_array($estado, ['CANCELADA', 'NO_ASISTIO']);
+            
+            if (!$esValida) {
+                Log::info('🚫 Cita excluida del conteo', [
+                    'cita_uuid' => $cita['uuid'] ?? 'SIN_UUID',
+                    'estado' => $estado,
+                    'motivo' => 'Estado cancelada o no asistió'
+                ]);
+            }
+            
+            return $esValida;
         });
         
-        // Calcular cupos totales
-        $inicio = \Carbon\Carbon::parse($agenda['hora_inicio']);
-        $fin = \Carbon\Carbon::parse($agenda['hora_fin']);
+        Log::info('📋 Citas válidas después del filtro', [
+            'citas_totales' => count($citasActivas),
+            'citas_validas' => count($citasValidas),
+            'citas_excluidas' => count($citasActivas) - count($citasValidas)
+        ]);
+        
+        // ✅ CALCULAR CUPOS TOTALES
+        $horaInicio = $agenda['hora_inicio'] ?? '08:00:00';
+        $horaFin = $agenda['hora_fin'] ?? '17:00:00';
         $intervalo = (int) ($agenda['intervalo'] ?? 15);
         
-        $duracionMinutos = $fin->diffInMinutes($inicio);
-        $totalCupos = floor($duracionMinutos / $intervalo);
+        if ($intervalo <= 0) {
+            Log::warning('⚠️ Intervalo inválido, usando 15 minutos por defecto', [
+                'intervalo_original' => $agenda['intervalo'] ?? 'NO_DEFINIDO'
+            ]);
+            $intervalo = 15;
+        }
         
-        // Actualizar cupos disponibles
-        $agenda['cupos_disponibles'] = max(0, $totalCupos - count($citasValidas));
+        try {
+            $inicio = \Carbon\Carbon::parse($horaInicio);
+            $fin = \Carbon\Carbon::parse($horaFin);
+            $duracionMinutos = $fin->diffInMinutes($inicio);
+            $totalCupos = floor($duracionMinutos / $intervalo);
+        } catch (\Exception $e) {
+            Log::error('❌ Error calculando horarios', [
+                'hora_inicio' => $horaInicio,
+                'hora_fin' => $horaFin,
+                'error' => $e->getMessage()
+            ]);
+            $totalCupos = 0;
+            $duracionMinutos = 0;
+        }
+        
+        Log::info('🧮 Cálculo de cupos', [
+            'hora_inicio' => $horaInicio,
+            'hora_fin' => $horaFin,
+            'intervalo_minutos' => $intervalo,
+            'duracion_total_minutos' => $duracionMinutos,
+            'total_cupos_calculados' => $totalCupos,
+            'citas_validas_count' => count($citasValidas)
+        ]);
+        
+        // ✅ CALCULAR CUPOS DISPONIBLES
+        $cuposDisponibles = max(0, $totalCupos - count($citasValidas));
+        
+        // ✅ ACTUALIZAR AGENDA
+        $agenda['cupos_disponibles'] = $cuposDisponibles;
         $agenda['citas_count'] = count($citasValidas);
         $agenda['total_cupos'] = $totalCupos;
+        $agenda['updated_at'] = now()->toISOString();
+        
+        Log::info('🔄 Valores calculados para actualización', [
+            'cupos_disponibles_nuevo' => $cuposDisponibles,
+            'cupos_disponibles_anterior' => $agenda['cupos_disponibles'] ?? 'NO_DEFINIDO',
+            'citas_count_nuevo' => count($citasValidas),
+            'total_cupos' => $totalCupos
+        ]);
         
         // ✅ PRESERVAR EL ESTADO DE SINCRONIZACIÓN ORIGINAL
         $needsSync = ($originalSyncStatus === 'pending');
         
-        // Guardar agenda actualizada PRESERVANDO EL ESTADO DE SYNC
-        $this->offlineService->storeAgendaOffline($agenda, $needsSync);
-        
-        Log::info('✅ Agenda offline actualizada después de crear cita', [
+        Log::info('💾 Guardando agenda actualizada', [
             'agenda_uuid' => $agendaUuid,
+            'needs_sync' => $needsSync,
+            'sync_status_original' => $originalSyncStatus
+        ]);
+        
+        // ✅ GUARDAR AGENDA ACTUALIZADA
+        $resultado = $this->offlineService->storeAgendaOffline($agenda, $needsSync);
+        
+        Log::info('✅ ÉXITO: Agenda offline actualizada completamente', [
+            'agenda_uuid' => $agendaUuid,
+            'sede_agenda' => $sedeAgenda,
             'fecha_agenda_limpia' => $fechaAgenda,
-            'cupos_disponibles' => $agenda['cupos_disponibles'],
-            'citas_count' => $agenda['citas_count'],
-            'total_cupos' => $totalCupos,
-            'sync_status_preservado' => $needsSync ? 'pending' : 'synced' // ✅ CONFIRMAR PRESERVACIÓN
+            'cupos_disponibles_final' => $agenda['cupos_disponibles'],
+            'citas_count_final' => $agenda['citas_count'],
+            'total_cupos_final' => $totalCupos,
+            'sync_status_preservado' => $needsSync ? 'pending' : 'synced',
+            'resultado_guardado' => $resultado ? 'ÉXITO' : 'FALLO',
+            'timestamp_fin' => now()->toISOString()
         ]);
         
     } catch (\Exception $e) {
-        Log::error('❌ Error actualizando agenda offline después de cita', [
+        Log::error('❌ CRÍTICO: Error en actualizarAgendaOfflineDespuesDeCita', [
             'agenda_uuid' => $agendaUuid,
-            'error' => $e->getMessage()
+            'error_message' => $e->getMessage(),
+            'error_file' => $e->getFile(),
+            'error_line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
         ]);
     }
 }
+
+
 
    public function show(string $uuid): array
 {
@@ -955,21 +1050,24 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
         $horaFin = $agenda['hora_fin'];
         $intervalo = (int) ($agenda['intervalo'] ?? 15);
         
+        // ✅ USAR LA SEDE DE LA AGENDA, NO DEL USUARIO
+        $sedeAgenda = $agenda['sede_id']; // ← CAMBIO CRÍTICO
+        
         // ✅ EXTRAER SOLO LA FECHA (YYYY-MM-DD) SIN ZONA HORARIA
         $fechaLimpia = $fecha;
         if (strpos($fecha, 'T') !== false) {
             $fechaLimpia = explode('T', $fecha)[0];
         }
         
-        Log::info('🔍 Calculando horarios con fecha limpia', [
+        Log::info('🔍 Calculando horarios con sede de la agenda', [
             'fecha_original' => $fecha,
             'fecha_limpia' => $fechaLimpia,
-            'agenda_uuid' => $agenda['uuid']
+            'agenda_uuid' => $agenda['uuid'],
+            'sede_agenda' => $sedeAgenda // ← USAR SEDE DE LA AGENDA
         ]);
         
-        // ✅ OBTENER CITAS EXISTENTES CON FECHA LIMPIA
-        $user = $this->authService->usuario();
-        $citasExistentes = $this->offlineService->getCitasOffline($user['sede_id'], [
+        // ✅ OBTENER CITAS EXISTENTES CON SEDE DE LA AGENDA
+        $citasExistentes = $this->offlineService->getCitasOffline($sedeAgenda, [ // ← CAMBIO AQUÍ
             'agenda_uuid' => $agenda['uuid'],
             'fecha' => $fechaLimpia
         ]);
@@ -1005,10 +1103,11 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
             return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
         });
         
-        Log::info('📊 Citas encontradas para horarios', [
+        Log::info('📊 Citas encontradas para horarios con sede correcta', [
             'total_citas' => count($citasExistentes),
             'citas_activas' => count($citasActivas),
-            'fecha_consulta' => $fechaLimpia
+            'fecha_consulta' => $fechaLimpia,
+            'sede_agenda' => $sedeAgenda // ← CONFIRMAR SEDE USADA
         ]);
         
         // Crear array de horarios ocupados con información del paciente
@@ -1061,9 +1160,10 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
             $inicio->addMinutes($intervalo);
         }
         
-        Log::info('✅ Horarios calculados completamente', [
+        Log::info('✅ Horarios calculados con sede correcta', [
             'agenda_uuid' => $agenda['uuid'],
             'fecha_limpia' => $fechaLimpia,
+            'sede_agenda' => $sedeAgenda, // ← CONFIRMAR SEDE USADA
             'total_horarios' => count($horarios),
             'horarios_disponibles' => count(array_filter($horarios, fn($h) => $h['disponible'])),
             'horarios_ocupados' => count(array_filter($horarios, fn($h) => !$h['disponible']))
@@ -1080,4 +1180,5 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
         return [];
     }
 }
+
 }

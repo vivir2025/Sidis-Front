@@ -739,7 +739,7 @@ private function performFullSyncManual(int $sedeId, array $baseFilters = []): ar
 }
 
 /**
- * ✅ NUEVO: Contar citas reales de una agenda
+ * ✅ CORREGIDO: Contar citas reales de una agenda - USAR CONEXIÓN 'offline'
  */
 private function contarCitasReales(array $agenda): int
 {
@@ -751,6 +751,16 @@ private function contarCitasReales(array $agenda): int
         if (strpos($fechaAgenda, 'T') !== false) {
             $fechaAgenda = explode('T', $fechaAgenda)[0];
         }
+        
+        // ✅ USAR LA SEDE DE LA AGENDA
+        $sedeAgenda = $agenda['sede_id'];
+        
+        Log::info('📊 Contando citas con sede de la agenda', [
+            'agenda_uuid' => $agenda['uuid'],
+            'sede_agenda' => $sedeAgenda,
+            'fecha_agenda' => $fechaAgenda,
+            'sqlite_available' => $this->offlineService->isSQLiteAvailable()
+        ]);
         
         // ✅ INTENTAR DESDE API PRIMERO SI HAY CONEXIÓN
         if ($this->apiService->isOnline()) {
@@ -780,19 +790,51 @@ private function contarCitasReales(array $agenda): int
             }
         }
         
-        // ✅ CONTAR DESDE OFFLINE
+        // ✅ CONTAR DESDE OFFLINE - USAR CONEXIÓN 'offline' COMO EN TU OFFLINESERVICE
         if ($this->offlineService->isSQLiteAvailable()) {
-            $citasCount = DB::connection('offline')
-                ->table('citas')
-                ->where('agenda_uuid', $agenda['uuid'])
-                ->where('fecha', $fechaAgenda)
-                ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
-                ->whereNull('deleted_at')
-                ->count();
+            try {
+                // ✅ USAR 'offline' EN LUGAR DE 'sqlite'
+                $citasCount = DB::connection('offline')  // ← CAMBIO CRÍTICO
+                    ->table('citas')
+                    ->where('agenda_uuid', $agenda['uuid'])
+                    ->where('fecha', $fechaAgenda)
+                    ->where('sede_id', $sedeAgenda)
+                    ->whereNotIn('estado', ['CANCELADA', 'NO_ASISTIO'])
+                    ->whereNull('deleted_at')
+                    ->count();
+                    
+                Log::info('📊 Citas contadas desde SQLite offline', [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'fecha' => $fechaAgenda,
+                    'sede_agenda' => $sedeAgenda,
+                    'citas_count' => $citasCount
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error('❌ Error contando desde SQLite offline, usando JSON fallback', [
+                    'error' => $e->getMessage()
+                ]);
+                
+                // ✅ FALLBACK A JSON
+                $citas = $this->offlineService->getCitasOffline($sedeAgenda, [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'fecha' => $fechaAgenda
+                ]);
+                
+                $citasActivas = array_filter($citas, function($cita) {
+                    return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+                });
+                
+                $citasCount = count($citasActivas);
+                
+                Log::info('📊 Citas contadas desde JSON fallback', [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'citas_count' => $citasCount
+                ]);
+            }
         } else {
-            // Fallback a archivos JSON
-            $user = $this->authService->usuario();
-            $citas = $this->offlineService->getCitasOffline($user['sede_id'], [
+            // ✅ FALLBACK A ARCHIVOS JSON
+            $citas = $this->offlineService->getCitasOffline($sedeAgenda, [
                 'agenda_uuid' => $agenda['uuid'],
                 'fecha' => $fechaAgenda
             ]);
@@ -802,25 +844,29 @@ private function contarCitasReales(array $agenda): int
             });
             
             $citasCount = count($citasActivas);
+            
+            Log::info('📊 Citas contadas desde JSON', [
+                'agenda_uuid' => $agenda['uuid'],
+                'fecha' => $fechaAgenda,
+                'sede_agenda' => $sedeAgenda,
+                'citas_count' => $citasCount
+            ]);
         }
-        
-        Log::info('📊 Citas contadas desde offline', [
-            'agenda_uuid' => $agenda['uuid'],
-            'fecha' => $fechaAgenda,
-            'citas_count' => $citasCount
-        ]);
         
         return $citasCount;
         
     } catch (\Exception $e) {
         Log::error('❌ Error contando citas reales', [
             'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return 0;
     }
 }
+
+
     /**
      * ✅ VERIFICAR SI LOS DATOS COINCIDEN CON LOS FILTROS
      */
@@ -1955,10 +2001,9 @@ private function syncDeleteAgenda($uuid)
         }
     }
 
-    /**
- * ✅ NUEVO: Obtener citas de una agenda
+   /**
+ * ✅ CORREGIDO: Obtener citas de una agenda CON SEDE DE LA AGENDA
  */
-// En app/Services/AgendaService.php
 public function getCitasForAgenda(string $agendaUuid): array
 {
     try {
@@ -1966,33 +2011,49 @@ public function getCitasForAgenda(string $agendaUuid): array
             'agenda_uuid' => $agendaUuid
         ]);
         
-        // ✅ OBTENER LA FECHA DE LA AGENDA DESDE OFFLINE PRIMERO
+        // ✅ OBTENER LA AGENDA PRIMERO PARA SABER SU SEDE Y FECHA
         $agenda = $this->getAgendaOffline($agendaUuid);
         $fechaAgenda = null;
+        $sedeAgenda = null; // ← AGREGAR ESTA VARIABLE
         
         if ($agenda && isset($agenda['fecha'])) {
             $fechaAgenda = $agenda['fecha'];
+            $sedeAgenda = $agenda['sede_id']; // ← OBTENER SEDE DE LA AGENDA
+            
             // Limpiar la fecha (quitar la hora)
             if (strpos($fechaAgenda, 'T') !== false) {
                 $fechaAgenda = explode('T', $fechaAgenda)[0];
             }
             
-            Log::info('📅 Usando fecha de agenda para obtener citas', [
-                'fecha_agenda' => $fechaAgenda
+            Log::info('📅 Usando fecha y sede de agenda para obtener citas', [
+                'fecha_agenda' => $fechaAgenda,
+                'sede_agenda' => $sedeAgenda, // ← AGREGAR ESTE LOG
+                'usuario_sede' => $this->authService->usuario()['sede_id'] ?? 'N/A' // Solo para comparar
             ]);
+        }
+        
+        // ✅ SI NO TENEMOS LA AGENDA, NO PODEMOS CONTINUAR
+        if (!$sedeAgenda) {
+            Log::error('❌ No se pudo obtener la sede de la agenda', [
+                'agenda_uuid' => $agendaUuid
+            ]);
+            return [
+                'success' => false,
+                'error' => 'No se pudo obtener información de la agenda',
+                'data' => []
+            ];
         }
         
         // ✅ PRIMERO INTENTAR DESDE OFFLINE (MÁS CONFIABLE)
         Log::info('📱 Obteniendo citas desde offline primero');
-        
-        $user = $this->authService->usuario();
         
         $filters = ['agenda_uuid' => $agendaUuid];
         if ($fechaAgenda) {
             $filters['fecha'] = $fechaAgenda;
         }
         
-        $citasOffline = $this->offlineService->getCitasOffline($user['sede_id'], $filters);
+        // ✅ USAR SEDE DE LA AGENDA, NO DEL USUARIO
+        $citasOffline = $this->offlineService->getCitasOffline($sedeAgenda, $filters); // ← CAMBIO CRÍTICO
         
         // Enriquecer con datos de pacientes
         foreach ($citasOffline as &$cita) {
@@ -2001,9 +2062,10 @@ public function getCitasForAgenda(string $agendaUuid): array
             }
         }
         
-        Log::info('✅ Citas obtenidas desde offline', [
+        Log::info('✅ Citas obtenidas desde offline con sede correcta', [
             'count' => count($citasOffline),
-            'filters_used' => $filters
+            'filters_used' => $filters,
+            'sede_agenda' => $sedeAgenda // ← CONFIRMAR SEDE USADA
         ]);
         
         // ✅ SI HAY CITAS OFFLINE, USARLAS
@@ -2079,6 +2141,7 @@ public function getCitasForAgenda(string $agendaUuid): array
         ];
     }
 }
+
 // ✅ AGREGAR ESTE MÉTODO AUXILIAR
 private function getAgendaOffline(string $uuid): ?array
 {
