@@ -1346,83 +1346,73 @@ private function searchPacientesOfflineByDocument(string $documento, int $sedeId
         ];
     }
 }
-
+// En PacienteService.php - Método syncSinglePacienteToApi()
 private function syncSinglePacienteToApi(array $paciente): array
 {
     try {
-        // ✅ PREPARAR DATOS PARA LA API
         $apiData = $this->prepareDataForApi($paciente);
 
-        Log::info('📤 Enviando paciente a API', [
-            'uuid' => $paciente['uuid'],
-            'documento' => $paciente['documento'] ?? 'sin-documento',
-            'data_keys' => array_keys($apiData),
-            'has_id' => !empty($paciente['id']),
-            'sync_status' => $paciente['sync_status'] ?? 'unknown'
-        ]);
-
-        // ✅ LÓGICA MEJORADA: SIEMPRE INTENTAR PUT PRIMERO SI HAY UUID
         if (!empty($paciente['uuid'])) {
             Log::info('🔄 Intentando actualizar paciente existente (PUT)', [
-                'uuid' => $paciente['uuid'],
-                'method' => 'PUT'
+                'uuid' => $paciente['uuid']
             ]);
             
             $response = $this->apiService->put("/pacientes/{$paciente['uuid']}", $apiData);
             
-            // ✅ SI PUT ES EXITOSO, RETORNAR
             if ($response['success']) {
-                Log::info('✅ Paciente actualizado exitosamente con PUT', [
-                    'uuid' => $paciente['uuid']
-                ]);
                 return $response;
             }
             
-            // ✅ SI PUT FALLA POR "NO ENCONTRADO", INTENTAR POST
+            // ✅ DETECCIÓN MEJORADA - BUSCAR EN TODO EL ERROR
             if (!$response['success'] && isset($response['error'])) {
                 $errorMessage = strtolower($response['error']);
                 
-                if (strpos($errorMessage, 'not found') !== false || 
-                    strpos($errorMessage, 'no encontrado') !== false ||
-                    strpos($errorMessage, '404') !== false) {
-                    
-                    Log::info('🔄 PUT falló (no encontrado), intentando POST', [
-                        'uuid' => $paciente['uuid'],
-                        'original_error' => substr($response['error'], 0, 100)
+                // ✅ BUSCAR MÚLTIPLES PATRONES DE 404
+                $is404 = (
+                    strpos($errorMessage, 'status code 404') !== false ||
+                    strpos($errorMessage, 'paciente no encontrado') !== false ||
+                    strpos($errorMessage, 'not found') !== false ||
+                    strpos($errorMessage, '404') !== false ||
+                    (isset($response['status_code']) && $response['status_code'] == 404)
+                );
+                
+                Log::info('🔍 Analizando error para detectar 404', [
+                    'uuid' => $paciente['uuid'],
+                    'error_message' => substr($errorMessage, 0, 200),
+                    'is_404_detected' => $is404,
+                    'status_code' => $response['status_code'] ?? 'no-status'
+                ]);
+                
+                if ($is404) {
+                    Log::info('✅ 404 detectado - Intentando POST', [
+                        'uuid' => $paciente['uuid']
                     ]);
                     
-                    // ✅ INTENTAR POST
-                    $postResponse = $this->apiService->post('/pacientes', $apiData);
+                    // ✅ INTENTAR POST SIN UUID
+                    $postData = $apiData;
+                    unset($postData['uuid']);
                     
-                    Log::info('📥 Resultado de POST después de PUT fallido', [
+                    $postResponse = $this->apiService->post('/pacientes', $postData);
+                    
+                    Log::info('📥 Resultado POST después de 404', [
                         'uuid' => $paciente['uuid'],
-                        'success' => $postResponse['success'] ?? false,
-                        'method' => 'POST_FALLBACK'
+                        'success' => $postResponse['success'] ?? false
                     ]);
                     
                     return $postResponse;
                 }
             }
             
-            // ✅ SI PUT FALLA POR OTRA RAZÓN, RETORNAR ERROR
             return $response;
         }
         
-        // ✅ SI NO HAY UUID, USAR POST (caso muy raro)
-        Log::info('➕ Creando nuevo paciente (sin UUID)', [
-            'documento' => $paciente['documento'] ?? 'sin-documento',
-            'method' => 'POST'
-        ]);
-        
+        // POST para pacientes sin UUID
         return $this->apiService->post('/pacientes', $apiData);
 
     } catch (\Exception $e) {
         Log::error('❌ Error enviando paciente a API', [
             'uuid' => $paciente['uuid'] ?? 'sin-uuid',
-            'documento' => $paciente['documento'] ?? 'sin-documento',
-            'error' => $e->getMessage(),
-            'line' => $e->getLine(),
-            'file' => basename($e->getFile())
+            'error' => $e->getMessage()
         ]);
         
         return [

@@ -182,13 +182,12 @@ class ApiService
         return $this->makeRequest('DELETE', $endpoint);
     }
 
-    /**
-     * ✅ CORREGIDO: Realizar petición HTTP genérica
-     */
-   protected function makeRequest(string $method, string $endpoint, array $data = []): array
+   /**
+ * ✅ CORREGIDO: Realizar petición HTTP genérica
+ */
+protected function makeRequest(string $method, string $endpoint, array $data = []): array
 {
-
-     // ✅ AGREGAR DEBUG DEL TOKEN
+    // ✅ AGREGAR DEBUG DEL TOKEN
     $token = session('api_token');
     
     Log::info('🔐 ApiService - Token debug', [
@@ -280,36 +279,61 @@ class ApiService
             return $responseData;
         }
 
-        // Manejar errores HTTP
-        $errorData = $response->json();
+        // ✅ MANEJAR ERRORES HTTP ESPECÍFICOS (INCLUYENDO 404)
+        $statusCode = $response->status();
+        $errorBody = $response->body();
+        $errorMessage = "HTTP request returned status code {$statusCode}: {$errorBody}";
         
-        Log::warning("⚠️ API Error Response", [
-            'status' => $response->status(),
-            'error_data' => $errorData
+        Log::error("❌ API {$method} Request failed", [
+            'endpoint' => $endpoint,
+            'status_code' => $statusCode,
+            'error' => $errorMessage
         ]);
-        
-        // ✅ DEVOLVER ESTRUCTURA DE ERROR CONSISTENTE
+
+        // ✅ DEVOLVER ERROR ESPECÍFICO CON STATUS CODE
         return [
             'success' => false,
-            'error' => $errorData['message'] ?? $errorData['error'] ?? 'Error del servidor',
-            'errors' => $errorData['errors'] ?? [],
-            'status' => $response->status()
+            'error' => $errorMessage,        // ← ERROR COMPLETO
+            'status_code' => $statusCode,    // ← STATUS CODE SEPARADO
+            'raw_response' => $errorBody
         ];
 
     } catch (RequestException $e) {
-        Log::error("❌ API {$method} Request failed", [
+        // ✅ VERIFICAR SI ES ERROR HTTP O ERROR DE CONEXIÓN REAL
+        if ($e->response) {
+            // Es un error HTTP (4xx, 5xx) - NO es error de conexión
+            $statusCode = $e->response->status();
+            $errorBody = $e->response->body();
+            $errorMessage = "HTTP request returned status code {$statusCode}: {$errorBody}";
+            
+            Log::error("❌ API {$method} HTTP Error", [
+                'endpoint' => $endpoint,
+                'status_code' => $statusCode,
+                'error' => $errorMessage
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $errorMessage,
+                'status_code' => $statusCode,
+                'raw_response' => $errorBody
+            ];
+        }
+
+        // ✅ ERROR DE CONEXIÓN REAL (sin respuesta del servidor)
+        Log::error("❌ API {$method} Connection Error", [
             'endpoint' => $endpoint,
             'error' => $e->getMessage()
         ]);
 
-        // Marcar como offline si hay error de conexión
         Cache::put('api_online_status', false, 30);
 
         return [
             'success' => false,
-            'error' => 'Error de conexión con el servidor',
+            'error' => 'Error de conexión con el servidor: ' . $e->getMessage(),
             'offline' => true
         ];
+
     } catch (\Exception $e) {
         Log::error("❌ API {$method} Exception", [
             'endpoint' => $endpoint,
