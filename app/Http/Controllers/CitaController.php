@@ -310,28 +310,105 @@ class CitaController extends Controller
             ], 500);
         }
     }
+public function buscarPaciente(Request $request)
+{
+    try {
+        $request->validate([
+            'documento' => 'required|string|min:3'
+        ]);
 
-    public function buscarPaciente(Request $request)
-    {
-        try {
-            $request->validate([
-                'documento' => 'required|string|min:3'
-            ]);
+        Log::info('🔍 CitaController::buscarPaciente iniciado', [
+            'documento' => $request->documento
+        ]);
 
-            $result = $this->pacienteService->searchByDocument($request->documento);
-            return response()->json($result);
+        $result = $this->pacienteService->searchByDocument($request->documento);
+        
+        // ✅ VALIDACIÓN ADICIONAL SI SE ENCUENTRA EL PACIENTE
+        if ($result['success'] && isset($result['data']) && !empty($result['data'])) {
+            $pacientes = $result['data'];
+            $paciente = is_array($pacientes) ? $pacientes[0] : $pacientes;
             
-        } catch (\Exception $e) {
-            Log::error('Error en CitaController@buscarPaciente', [
-                'error' => $e->getMessage()
+            // ✅ VALIDAR UUID DEL PACIENTE ENCONTRADO
+            if (!isset($paciente['uuid']) || empty($paciente['uuid'])) {
+                Log::error('❌ Paciente encontrado sin UUID válido', [
+                    'documento' => $request->documento,
+                    'paciente_keys' => array_keys($paciente),
+                    'sede_id' => $paciente['sede_id'] ?? 'NO_DEFINIDA'
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El paciente encontrado no tiene un identificador válido'
+                ]);
+            }
+
+            // ✅ VALIDAR FORMATO DE UUID
+            if (!$this->isValidUuid($paciente['uuid'])) {
+                Log::error('❌ UUID con formato inválido', [
+                    'documento' => $request->documento,
+                    'uuid' => $paciente['uuid']
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'error' => 'El identificador del paciente tiene formato inválido'
+                ]);
+            }
+
+            Log::info('✅ Paciente encontrado correctamente', [
+                'documento' => $request->documento,
+                'uuid' => $paciente['uuid'],
+                'nombre' => ($paciente['primer_nombre'] ?? '') . ' ' . ($paciente['primer_apellido'] ?? ''),
+                'sede_id' => $paciente['sede_id'] ?? 'NO_DEFINIDA',
+                'offline' => $result['offline'] ?? false
             ]);
 
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
+            // ✅ ASEGURAR QUE RETORNAMOS EL PACIENTE INDIVIDUAL
+            $result['data'] = $paciente;
         }
+        
+        return response()->json($result);
+        
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::warning('⚠️ Validación fallida en búsqueda de paciente', [
+            'errors' => $e->errors()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Datos de entrada inválidos',
+            'details' => $e->errors()
+        ], 422);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en CitaController@buscarPaciente', [
+            'documento' => $request->documento ?? 'NO_DEFINIDO',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
     }
+}
+
+/**
+ * ✅ CORREGIDO: Validar formato de UUID
+ */
+private function isValidUuid($uuid): bool
+{
+    if (empty($uuid) || !is_string($uuid)) {
+        return false;
+    }
+    
+    // ✅ PATRÓN UUID CORREGIDO (acepta cualquier versión de UUID)
+    $pattern = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+    
+    return preg_match($pattern, $uuid) === 1;
+}
+
 
    /**
  * ✅ CORREGIDO: Obtener horarios disponibles de una agenda

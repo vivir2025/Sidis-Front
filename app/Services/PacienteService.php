@@ -912,110 +912,334 @@ public function show(string $uuid): array
         }
     }
 
-    /**
-     * Buscar paciente por documento
-     */
-    public function searchByDocument(string $documento): array
-    {
-        try {
+   /**
+ * ✅ CORREGIDO: Buscar paciente por documento FILTRADO POR SEDE DEL LOGIN
+ */
+public function searchByDocument(string $documento, ?int $sedeId = null): array
+{
+    try {
+        // ✅ OBTENER SEDE DEL LOGIN SI NO SE PROPORCIONA
+        if (!$sedeId) {
             $user = $this->authService->usuario();
-            $sedeId = $user['sede_id'];
+            $sedeId = $user['sede_id']; // ← SEDE DEL LOGIN
+        }
+        
+        Log::info('🔍 PacienteService::searchByDocument - Filtrando por sede del login', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId
+        ]);
 
-            // Intentar buscar online primero
-            if ($this->apiService->isOnline()) {
+        // ✅ INTENTAR BUSCAR ONLINE PRIMERO CON FILTRO DE SEDE
+        if ($this->apiService->isOnline()) {
+            try {
+                // ✅ AGREGAR SEDE_ID A LOS PARÁMETROS DE BÚSQUEDA
+                $params = [
+                    'documento' => $documento,
+                    'sede_id' => $sedeId // ← FORZAR FILTRO POR SEDE
+                ];
+                
                 $response = $this->apiService->get(
                     $this->getEndpoint('search_by_document'), 
-                    ['documento' => $documento]
+                    $params
                 );
 
-                if ($response['success']) {
-                    // Sincronizar datos localmente
-                    $this->storePacienteOffline($response['data'], false);
+                Log::info('📥 Respuesta API para búsqueda por documento', [
+                    'documento' => $documento,
+                    'sede_filtro' => $sedeId,
+                    'success' => $response['success'] ?? false,
+                    'has_data' => isset($response['data'])
+                ]);
 
-                    return [
-                        'success' => true,
-                        'data' => $response['data'],
-                        'offline' => false
-                    ];
+                if ($response['success']) {
+                    $pacienteData = $response['data'];
+                    
+                    // ✅ DOBLE VERIFICACIÓN: ASEGURAR QUE EL PACIENTE SEA DE LA SEDE CORRECTA
+                    if (($pacienteData['sede_id'] ?? 0) != $sedeId) {
+                        Log::warning('⚠️ Paciente encontrado en API pero de sede diferente', [
+                            'documento' => $documento,
+                            'sede_esperada' => $sedeId,
+                            'sede_paciente' => $pacienteData['sede_id'] ?? 'NO_DEFINIDA'
+                        ]);
+                        
+                        // Continuar con búsqueda offline
+                    } else {
+                        // ✅ PACIENTE VÁLIDO - Sincronizar localmente
+                        $this->storePacienteOffline($pacienteData, false);
+
+                        Log::info('✅ Paciente encontrado online y es de la sede correcta', [
+                            'documento' => $documento,
+                            'sede_id' => $pacienteData['sede_id'],
+                            'uuid' => $pacienteData['uuid']
+                        ]);
+
+                        return [
+                            'success' => true,
+                            'data' => [$pacienteData], // ← RETORNAR COMO ARRAY PARA CONSISTENCIA
+                            'offline' => false
+                        ];
+                    }
                 }
                 
-                // Si no se encuentra online, buscar offline
-                if (isset($response['error']) && strpos($response['error'], 'no encontrado') !== false) {
-                    // Continuar con búsqueda offline
-                } else {
-                    return [
-                        'success' => false,
-                        'error' => $response['error'] ?? 'Error en búsqueda'
-                    ];
-                }
+                // Si no se encuentra online, continuar con búsqueda offline
+                Log::info('ℹ️ Paciente no encontrado online, buscando offline', [
+                    'documento' => $documento,
+                    'sede_filtro' => $sedeId
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error buscando paciente online, usando offline', [
+                    'documento' => $documento,
+                    'error' => $e->getMessage()
+                ]);
             }
+        }
 
-            // Buscar localmente
-            $paciente = $this->searchPacienteOfflineByDocument($documento, $sedeId);
+        // ✅ BUSCAR LOCALMENTE CON FILTRO DE SEDE
+        Log::info('📱 Buscando paciente offline con filtro de sede', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId
+        ]);
+        
+        $pacientes = $this->searchPacientesOfflineByDocument($documento, $sedeId);
 
-            if (!$paciente) {
-                return [
-                    'success' => false,
-                    'error' => 'Paciente no encontrado'
-                ];
-            }
-
-            return [
-                'success' => true,
-                'data' => $paciente,
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error buscando paciente por documento', ['error' => $e->getMessage(), 'documento' => $documento]);
+        if (empty($pacientes)) {
+            Log::info('❌ Paciente no encontrado offline', [
+                'documento' => $documento,
+                'sede_filtro' => $sedeId
+            ]);
+            
             return [
                 'success' => false,
-                'error' => 'Error interno'
+                'error' => 'Paciente no encontrado en esta sede',
+                'data' => []
             ];
         }
-    }
 
-    /**
-     * Búsqueda general de pacientes
-     */
-    public function search(array $criteria): array
-    {
-        try {
-            // Intentar búsqueda online primero
-            if ($this->apiService->isOnline()) {
+        Log::info('✅ Pacientes encontrados offline filtrados por sede', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId,
+            'total_encontrados' => count($pacientes)
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $pacientes, // ← YA ES ARRAY
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando paciente por documento', [
+            'error' => $e->getMessage(),
+            'documento' => $documento,
+            'sede_id' => $sedeId
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno en búsqueda: ' . $e->getMessage(),
+            'data' => []
+        ];
+    }
+}
+
+/**
+ * ✅ CORREGIDO: Búsqueda general de pacientes CON FILTRO DE SEDE
+ */
+public function search(array $criteria): array
+{
+    try {
+        // ✅ OBTENER SEDE DEL LOGIN
+        $user = $this->authService->usuario();
+        $sedeId = $user['sede_id'];
+        
+        // ✅ AGREGAR FILTRO DE SEDE OBLIGATORIO
+        $criteria['sede_id'] = $sedeId;
+        
+        Log::info('🔍 PacienteService::search - Con filtro de sede', [
+            'criteria_original' => array_diff_key($criteria, ['sede_id' => null]),
+            'sede_filtro' => $sedeId
+        ]);
+
+        // Intentar búsqueda online primero
+        if ($this->apiService->isOnline()) {
+            try {
                 $response = $this->apiService->get(
                     $this->getEndpoint('search'), 
-                    $criteria
+                    $criteria // ← YA INCLUYE sede_id
                 );
 
                 if ($response['success']) {
+                    $pacientes = $response['data'] ?? [];
+                    
+                    // ✅ DOBLE FILTRADO POR SEDE
+                    $pacientesFiltrados = array_filter($pacientes, function($paciente) use ($sedeId) {
+                        return ($paciente['sede_id'] ?? 0) == $sedeId;
+                    });
+                    
                     // Sincronizar resultados localmente
-                    if (isset($response['data']) && is_array($response['data'])) {
-                        foreach ($response['data'] as $paciente) {
+                    if (!empty($pacientesFiltrados)) {
+                        foreach ($pacientesFiltrados as $paciente) {
                             $this->storePacienteOffline($paciente, false);
                         }
                     }
 
+                    Log::info('✅ Búsqueda online completada con filtro de sede', [
+                        'total_api' => count($pacientes),
+                        'filtrados_sede' => count($pacientesFiltrados),
+                        'sede_filtro' => $sedeId
+                    ]);
+
                     return [
                         'success' => true,
-                        'data' => $response['data'],
+                        'data' => array_values($pacientesFiltrados),
                         'meta' => $response['meta'] ?? [],
                         'offline' => false
                     ];
                 }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error en búsqueda online', [
+                    'error' => $e->getMessage()
+                ]);
             }
-
-            // Búsqueda offline
-            return $this->searchOffline($criteria);
-
-        } catch (\Exception $e) {
-            Log::error('Error en búsqueda de pacientes', ['error' => $e->getMessage(), 'criteria' => $criteria]);
-            return [
-                'success' => false,
-                'error' => 'Error interno'
-            ];
         }
+
+        // ✅ BÚSQUEDA OFFLINE CON SEDE
+        return $this->searchOfflineWithSede($criteria, $sedeId);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en búsqueda de pacientes', [
+            'error' => $e->getMessage(), 
+            'criteria' => $criteria
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno en búsqueda'
+        ];
     }
+}
+
+/**
+ * ✅ NUEVO: Búsqueda offline con filtro de sede
+ */
+private function searchOfflineWithSede(array $criteria, int $sedeId): array
+{
+    try {
+        $allPacientes = $this->getAllPacientesOffline($sedeId); // ← YA FILTRA POR SEDE
+        $filteredPacientes = $this->applySearchCriteria($allPacientes, $criteria);
+        
+        Log::info('✅ Búsqueda offline completada', [
+            'sede_filtro' => $sedeId,
+            'total_pacientes_sede' => count($allPacientes),
+            'resultados_filtrados' => count($filteredPacientes)
+        ]);
+        
+        return [
+            'success' => true,
+            'data' => $filteredPacientes,
+            'meta' => [
+                'total' => count($filteredPacientes)
+            ],
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en búsqueda offline', [
+            'error' => $e->getMessage(),
+            'sede_id' => $sedeId
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error en búsqueda offline'
+        ];
+    }
+}
+/**
+ * ✅ MEJORADO: Buscar pacientes offline por documento CON FILTRO DE SEDE
+ */
+private function searchPacientesOfflineByDocument(string $documento, int $sedeId): array
+{
+    try {
+        Log::info('🔍 Búsqueda offline por documento con sede', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId
+        ]);
+        
+        // ✅ MÉTODO 1: Buscar por índice de documento
+        $index = $this->offlineService->getData('pacientes_by_document/' . $documento . '.json');
+        
+        if ($index && isset($index['uuid']) && ($index['sede_id'] ?? 0) == $sedeId) {
+            $paciente = $this->getPacienteOffline($index['uuid']);
+            if ($paciente && isset($paciente['uuid'])) {
+                Log::info('✅ Paciente encontrado por índice de documento', [
+                    'documento' => $documento,
+                    'uuid' => $paciente['uuid'],
+                    'sede_id' => $paciente['sede_id'] ?? 'NO_DEFINIDA'
+                ]);
+                return [$paciente];
+            }
+        }
+        
+        // ✅ MÉTODO 2: Búsqueda completa en todos los archivos de la sede
+        Log::info('🔍 Búsqueda completa en archivos offline', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId
+        ]);
+        
+        $allPacientes = $this->getAllPacientesOffline($sedeId);
+        $pacientesEncontrados = [];
+        
+        foreach ($allPacientes as $paciente) {
+            // ✅ VALIDAR QUE EL PACIENTE TENGA UUID
+            if (!isset($paciente['uuid']) || empty($paciente['uuid'])) {
+                Log::warning('⚠️ Paciente sin UUID encontrado en búsqueda offline', [
+                    'documento_paciente' => $paciente['documento'] ?? 'NO_DEFINIDO',
+                    'paciente_keys' => array_keys($paciente)
+                ]);
+                continue;
+            }
+            
+            $documentoPaciente = $paciente['documento'] ?? '';
+            
+            // ✅ BÚSQUEDA EXACTA Y PARCIAL
+            if ($documentoPaciente === $documento || 
+                str_contains($documentoPaciente, $documento)) {
+                
+                // ✅ VERIFICAR SEDE NUEVAMENTE
+                if (($paciente['sede_id'] ?? 0) == $sedeId) {
+                    $pacientesEncontrados[] = $paciente;
+                    
+                    Log::info('✅ Paciente válido encontrado', [
+                        'documento' => $documento,
+                        'uuid' => $paciente['uuid'],
+                        'sede_id' => $paciente['sede_id'],
+                        'nombre' => ($paciente['primer_nombre'] ?? '') . ' ' . ($paciente['primer_apellido'] ?? '')
+                    ]);
+                }
+            }
+        }
+        
+        Log::info('📊 Resultado búsqueda offline completa', [
+            'documento' => $documento,
+            'sede_filtro' => $sedeId,
+            'total_pacientes_revisados' => count($allPacientes),
+            'pacientes_encontrados' => count($pacientesEncontrados)
+        ]);
+        
+        return $pacientesEncontrados;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en búsqueda offline por documento', [
+            'documento' => $documento,
+            'sede_id' => $sedeId,
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
 
     /**
      * Sincronizar pacientes pendientes

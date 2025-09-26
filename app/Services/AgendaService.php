@@ -1606,58 +1606,128 @@ private function enrichAgendaData(array $agenda): array
         ];
     }
 }
-
-    /**
-     * ✅ OBTENER AGENDAS DISPONIBLES
-     */
-    public function disponibles(array $filters = []): array
-    {
-        try {
-            $user = $this->authService->usuario();
-            $sedeId = $user['sede_id'];
-
-            // Intentar obtener desde API
-            if ($this->apiService->isOnline()) {
-                try {
-                    $response = $this->apiService->get('/agendas/disponibles', $filters);
-                    
-                    if ($response['success']) {
-                        return [
-                            'success' => true,
-                            'data' => $response['data'],
-                            'offline' => false
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Error obteniendo agendas disponibles desde API', [
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
-
-            // Obtener offline - solo agendas activas y futuras
-            $filters['estado'] = 'ACTIVO';
-            $filters['fecha_desde'] = now()->format('Y-m-d');
-            
-            $agendas = $this->offlineService->getAgendasOffline($sedeId, $filters);
-
-            return [
-                'success' => true,
-                'data' => $agendas,
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error obteniendo agendas disponibles', [
-                'error' => $e->getMessage()
-            ]);
-            
-            return [
-                'success' => false,
-                'error' => 'Error interno'
-            ];
-        }
+// ✅ AGREGAR ESTE MÉTODO HELPER EN TU AgendaService
+private function ensureArray($data): array
+{
+    if ($data instanceof \stdClass) {
+        return (array) $data;
     }
+    return is_array($data) ? $data : [];
+}
+
+
+
+/**
+ * ✅ OBTENER AGENDAS DISPONIBLES - CORREGIDO
+ */
+public function disponibles(array $filters = []): array
+{
+    try {
+        // ✅ OBTENER SEDE DEL LOGIN
+        $user = $this->authService->usuario();
+        $sedeLogin = $user['sede_id']; // ← SEDE DEL LOGIN
+        
+        Log::info('🔍 AgendaService::disponibles - Filtrando por sede del login', [
+            'sede_login' => $sedeLogin,
+            'filters_originales' => $filters
+        ]);
+        
+        // ✅ AGREGAR FILTRO DE SEDE OBLIGATORIO
+        $filters['sede_id'] = $sedeLogin; // ← FORZAR SEDE DEL LOGIN
+        
+        // ✅ FILTROS ADICIONALES PARA AGENDAS DISPONIBLES
+        $filters['estado'] = 'ACTIVO';
+        $filters['fecha_desde'] = $filters['fecha_desde'] ?? now()->format('Y-m-d');
+
+        // Intentar obtener desde API
+        if ($this->apiService->isOnline()) {
+            try {
+                // ✅ ENVIAR FILTROS INCLUYENDO SEDE_ID
+                $response = $this->apiService->get('/agendas/disponibles', $filters);
+                
+                if ($response['success'] && isset($response['data'])) {
+                    $agendas = $response['data'];
+                    
+                    // ✅ DOBLE VERIFICACIÓN: FILTRAR POR SEDE EN CASO DE QUE LA API NO LO HAGA
+                    $agendasFiltradas = array_filter($agendas, function($agenda) use ($sedeLogin) {
+                        return ($agenda['sede_id'] ?? 0) == $sedeLogin;
+                    });
+                    
+                    Log::info('✅ Agendas disponibles filtradas por sede desde API', [
+                        'sede_login' => $sedeLogin,
+                        'total_api' => count($agendas),
+                        'filtradas' => count($agendasFiltradas)
+                    ]);
+                    
+                    // Guardar offline para futura referencia
+                    foreach ($agendasFiltradas as $agenda) {
+                        $this->offlineService->storeAgendaOffline($agenda, false);
+                    }
+                    
+                    return [
+                        'success' => true,
+                        'data' => $agendasFiltradas, // ← USAR AGENDAS FILTRADAS
+                        'offline' => false
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error obteniendo agendas disponibles desde API', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ OBTENER OFFLINE - YA FILTRADO POR SEDE
+        Log::info('📱 Obteniendo agendas disponibles offline con filtro de sede', [
+            'sede_login' => $sedeLogin,
+            'filters' => $filters
+        ]);
+        
+        $agendas = $this->offlineService->getAgendasOffline($sedeLogin, $filters); // ← YA USA SEDE CORRECTA
+        
+        // ✅ ENRIQUECER CON CUPOS Y FILTRAR SOLO LAS QUE TIENEN CUPOS DISPONIBLES
+        $agendasConCupos = [];
+        foreach ($agendas as $agenda) {
+            // ✅ ASEGURAR QUE SEA ARRAY
+            $agenda = $this->ensureArray($agenda);
+            
+            // Enriquecer con cupos
+            $agenda = $this->enrichAgendaWithCupos($agenda);
+            
+            // Solo incluir si tiene cupos disponibles
+            if (($agenda['cupos_disponibles'] ?? 0) > 0) {
+                $agendasConCupos[] = $agenda;
+            }
+        }
+        
+        Log::info('✅ Agendas disponibles obtenidas offline filtradas por sede', [
+            'sede_login' => $sedeLogin,
+            'total_encontradas' => count($agendas),
+            'con_cupos_disponibles' => count($agendasConCupos)
+        ]);
+
+        return [
+            'success' => true,
+            'data' => $agendasConCupos, // ← SOLO AGENDAS CON CUPOS DISPONIBLES
+            'offline' => true
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo agendas disponibles', [
+            'error' => $e->getMessage(),
+            'sede_login' => $user['sede_id'] ?? 'NO_DEFINIDA',
+            'filters' => $filters
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno: ' . $e->getMessage(),
+            'data' => []
+        ];
+    }
+}
+
+
    
     /**
      * ✅ NUEVO: Sincronizar una agenda individual a la API
