@@ -5,13 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'SIDIS - Sistema Médico')</title>
-    @push('styles')
-<link href="{{ asset('css/cups-autocomplete.css') }}" rel="stylesheet">
-@endpush
-
-@push('scripts')
-<script src="{{ asset('js/cups-autocomplete.js') }}"></script>
-@endpush
     
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -23,108 +16,350 @@
     <style>
         :root {
             --primary-color: #2c5aa0;
+            --primary-dark: #1e3d6f;
             --secondary-color: #f8f9fa;
             --success-color: #28a745;
             --warning-color: #ffc107;
             --danger-color: #dc3545;
             --info-color: #17a2b8;
+            --dark-bg: #1a1a1a;
+            --dark-card: #2d3748;
+            --dark-border: #4b5563;
+            --border-radius: 12px;
+            --box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--secondary-color);
+            line-height: 1.6;
+            transition: var(--transition);
+        }
+
+        /* ===== NAVBAR ===== */
+        .navbar {
+            background: linear-gradient(135deg, #ffffff, #f8f9fa) !important;
+            border-bottom: 1px solid #e9ecef;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            padding: 0.75rem 0;
         }
 
         .navbar-brand {
-            font-weight: bold;
+            font-weight: 700;
+            font-size: 1.5rem;
             color: var(--primary-color) !important;
+            transition: var(--transition);
         }
 
+        .navbar-brand:hover {
+            transform: scale(1.05);
+        }
+
+        .navbar-brand i {
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* ===== CONNECTION STATUS ===== */
         .connection-status {
             position: fixed;
-            top: 10px;
-            right: 10px;
+            top: 15px;
+            right: 15px;
             z-index: 1050;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
+            padding: 10px 16px;
+            border-radius: 25px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            box-shadow: var(--box-shadow);
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
         }
 
         .connection-online {
-            background-color: var(--success-color);
+            background: linear-gradient(135deg, var(--success-color), #20c997);
             color: white;
         }
 
         .connection-offline {
-            background-color: var(--danger-color);
+            background: linear-gradient(135deg, var(--danger-color), #e74c3c);
             color: white;
         }
 
         .connection-syncing {
-            background-color: var(--warning-color);
-            color: white;
+            background: linear-gradient(135deg, var(--warning-color), #f39c12);
+            color: #212529;
         }
 
+        /* ===== SIDEBAR ===== */
         .sidebar {
-            min-height: calc(100vh - 56px);
-            background-color: white;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            min-height: calc(100vh - 76px);
+            background: linear-gradient(180deg, #ffffff, #f8f9fa);
+            box-shadow: 2px 0 15px rgba(0,0,0,0.1);
+            border-right: 1px solid #e9ecef;
         }
 
         .sidebar .nav-link {
-            color: #333;
-            padding: 12px 20px;
-            border-radius: 0;
-            transition: all 0.3s;
+            color: #495057;
+            padding: 14px 20px;
+            margin: 4px 8px;
+            border-radius: var(--border-radius);
+            transition: var(--transition);
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar .nav-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .sidebar .nav-link:hover::before {
+            left: 100%;
         }
 
         .sidebar .nav-link:hover,
         .sidebar .nav-link.active {
-            background-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
             color: white;
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(44, 90, 160, 0.3);
         }
 
         .sidebar .nav-link i {
             width: 20px;
-            margin-right: 10px;
+            margin-right: 12px;
+            text-align: center;
         }
 
+        /* ===== MAIN CONTENT ===== */
         .main-content {
-            padding: 20px;
+            padding: 25px;
+            background-color: var(--secondary-color);
+            min-height: calc(100vh - 76px);
         }
 
+        /* ===== CARDS ===== */
         .card {
             border: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border-radius: 10px;
+            box-shadow: var(--box-shadow);
+            border-radius: var(--border-radius);
+            transition: var(--transition);
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
 
         .card-header {
-            background-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
             color: white;
-            border-radius: 10px 10px 0 0 !important;
+            border: none;
+            padding: 1.25rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            border-radius: 8px;
+            font-weight: 500;
+            padding: 0.625rem 1.25rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.3s, height 0.3s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
         }
 
         .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border: none;
         }
 
         .btn-primary:hover {
-            background-color: #1e3d6f;
-            border-color: #1e3d6f;
+            background: linear-gradient(135deg, var(--primary-dark), #0f2347);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(44, 90, 160, 0.4);
         }
 
+        /* ===== SEDE SELECTOR ===== */
+        .sede-selector-container {
+            background: linear-gradient(135deg, #ffffff, #f8f9fa);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 25px;
+            border-left: 4px solid var(--primary-color);
+            box-shadow: var(--box-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sede-selector-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(44, 90, 160, 0.1), transparent);
+            border-radius: 50%;
+            transform: translate(30px, -30px);
+        }
+
+        .sede-actual-info {
+            transition: var(--transition);
+            position: relative;
+            z-index: 1;
+        }
+
+        .sede-actual-info:hover {
+            transform: translateY(-2px);
+        }
+
+        #btnCambiarSede {
+            border-radius: 20px;
+            transition: var(--transition);
+            font-size: 0.875rem;
+            padding: 0.5rem 1rem;
+        }
+
+        #btnCambiarSede:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(var(--bs-primary-rgb), 0.3);
+        }
+
+        /* ===== MODALS ===== */
+        .modal-content {
+            border-radius: var(--border-radius);
+            border: none;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            color: white;
+            border: none;
+            padding: 1.5rem;
+        }
+
+        .modal-body {
+            padding: 2rem;
+        }
+
+        .modal-footer {
+            border: none;
+            padding: 1.5rem 2rem;
+            background-color: #f8f9fa;
+        }
+
+        /* ===== FORMS ===== */
+        .form-control,
+        .form-select {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            transition: var(--transition);
+            font-size: 0.95rem;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(44, 90, 160, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.75rem;
+        }
+
+        /* ===== ALERTS ===== */
+        .alert {
+            border-radius: var(--border-radius);
+            border: none;
+            padding: 1rem 1.25rem;
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .alert-info {
+            background: linear-gradient(135deg, #d1ecf1, #bee5eb);
+            color: #0c5460;
+            border-left: 4px solid var(--info-color);
+        }
+
+        .offline-indicator {
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            border-radius: var(--border-radius);
+            border-left: 4px solid var(--warning-color);
+            box-shadow: var(--box-shadow);
+        }
+
+        /* ===== SYNC BUTTON ===== */
         .sync-button {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 25px;
+            right: 25px;
             z-index: 1040;
             border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            width: 65px;
+            height: 65px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            border: none;
+            background: linear-gradient(135deg, var(--warning-color), #f39c12);
+            color: #212529;
+            font-size: 1.25rem;
+            transition: var(--transition);
+        }
+
+        .sync-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
         }
 
         .sync-button.spinning {
@@ -136,80 +371,100 @@
             100% { transform: rotate(360deg); }
         }
 
-        .offline-indicator {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-        }
-
+        /* ===== USER INFO ===== */
         .user-info {
-            background: linear-gradient(135deg, var(--primary-color), #1e3d6f);
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
             color: white;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: var(--border-radius);
+            margin-bottom: 25px;
+            box-shadow: var(--box-shadow);
         }
 
-        /* ✅ NUEVOS ESTILOS PARA SELECTOR DE SEDE */
-        .sede-selector-container {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-left: 4px solid var(--primary-color);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .sede-actual-info {
-            transition: all 0.3s ease;
-        }
-
-        .sede-actual-info:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-        }
-
-        #btnCambiarSede {
-            border-radius: 20px;
-            transition: all 0.3s ease;
-        }
-
-        #btnCambiarSede:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
-        }
-
-        .modal-content {
-            border-radius: 15px;
+        /* ===== DROPDOWN ===== */
+        .dropdown-menu {
             border: none;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            box-shadow: var(--box-shadow);
+            border-radius: var(--border-radius);
+            padding: 0.5rem 0;
         }
 
-        .modal-header {
-            background: linear-gradient(135deg, var(--primary-color), #1e3d6f);
+        .dropdown-item {
+            padding: 0.75rem 1.25rem;
+            transition: var(--transition);
+            font-weight: 500;
+        }
+
+        .dropdown-item:hover {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
             color: white;
-            border-radius: 15px 15px 0 0;
+            transform: translateX(5px);
         }
 
-        .form-select {
-            border-radius: 10px;
-            border: 2px solid #e9ecef;
-            transition: all 0.3s ease;
+        .dropdown-item i {
+            width: 20px;
+            margin-right: 10px;
         }
 
-        .form-select:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.25rem rgba(44, 90, 160, 0.15);
+        /* ===== DARK THEME ===== */
+        .dark-theme {
+            background-color: var(--dark-bg) !important;
+            color: #e9ecef !important;
         }
 
-        .alert-info {
-            border-radius: 10px;
-            border-left: 4px solid #0dcaf0;
+        .dark-theme .navbar {
+            background: linear-gradient(135deg, var(--dark-card), #374151) !important;
+            border-bottom-color: var(--dark-border);
         }
 
+        .dark-theme .sidebar {
+            background: linear-gradient(180deg, var(--dark-card), #374151);
+            border-right-color: var(--dark-border);
+        }
+
+        .dark-theme .sidebar .nav-link {
+            color: #e9ecef !important;
+        }
+
+        .dark-theme .sidebar .nav-link:hover,
+        .dark-theme .sidebar .nav-link.active {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+            color: white !important;
+        }
+
+        .dark-theme .card {
+            background-color: var(--dark-card) !important;
+            color: #e9ecef !important;
+        }
+
+        .dark-theme .form-control,
+        .dark-theme .form-select {
+            background-color: #374151 !important;
+            border-color: var(--dark-border) !important;
+            color: #e9ecef !important;
+        }
+
+        .dark-theme .form-control:focus,
+        .dark-theme .form-select:focus {
+            background-color: #374151 !important;
+            border-color: var(--primary-color) !important;
+            color: #e9ecef !important;
+        }
+
+        .dark-theme .sede-selector-container {
+            background: linear-gradient(135deg, var(--dark-card), #374151);
+        }
+
+        .dark-theme .modal-content {
+            background-color: var(--dark-card);
+            color: #e9ecef;
+        }
+
+        .dark-theme .modal-footer {
+            background-color: #374151;
+        }
+
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .sidebar {
                 min-height: auto;
@@ -219,58 +474,117 @@
                 position: relative;
                 top: auto;
                 right: auto;
-                margin-bottom: 10px;
+                margin-bottom: 15px;
                 display: inline-block;
             }
+            
+            .main-content {
+                padding: 15px;
+            }
+            
+            .sede-selector-container {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .sync-button {
+                width: 55px;
+                height: 55px;
+                bottom: 20px;
+                right: 20px;
+                font-size: 1.1rem;
+            }
+            
+            .card-body {
+                padding: 1.25rem;
+            }
         }
-        /* Dark Theme Styles */
-.dark-theme {
-    background-color: #1a1a1a !important;
-    color: #e9ecef !important;
-}
 
-.dark-theme .card {
-    background-color: #2d3748 !important;
-    color: #e9ecef !important;
-}
+        @media (max-width: 576px) {
+            .navbar-brand {
+                font-size: 1.25rem;
+            }
+            
+            .main-content {
+                padding: 10px;
+            }
+            
+            .sede-selector-container {
+                padding: 12px;
+            }
+            
+            .btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.875rem;
+            }
+        }
 
-.dark-theme .navbar {
-    background-color: #2d3748 !important;
-}
+        /* ===== ANIMATIONS ===== */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
 
-.dark-theme .sidebar {
-    background-color: #2d3748 !important;
-}
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-.dark-theme .sidebar .nav-link {
-    color: #e9ecef !important;
-}
+        .slide-in-right {
+            animation: slideInRight 0.3s ease-out;
+        }
 
-.dark-theme .sidebar .nav-link:hover,
-.dark-theme .sidebar .nav-link.active {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-}
+        @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
 
-.dark-theme .form-control,
-.dark-theme .form-select {
-    background-color: #374151 !important;
-    border-color: #4b5563 !important;
-    color: #e9ecef !important;
-}
+        /* ===== SCROLLBAR ===== */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
 
-.dark-theme .form-control:focus,
-.dark-theme .form-select:focus {
-    background-color: #374151 !important;
-    border-color: var(--primary-color) !important;
-    color: #e9ecef !important;
-}
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
 
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark);
+        }
+
+        /* ===== LOADING STATES ===== */
+        .loading {
+            position: relative;
+            pointer-events: none;
+        }
+
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
     </style>
+
+    @push('styles')
+        <link href="{{ asset('css/cups-autocomplete.css') }}" rel="stylesheet">
+    @endpush
 
     @stack('styles')
 </head>
-<body>
+<body class="fade-in">
     <!-- Connection Status -->
     <div id="connectionStatus" class="connection-status {{ session('is_online', true) ? 'connection-online' : 'connection-offline' }}">
         <i class="fas fa-wifi"></i> 
@@ -278,7 +592,7 @@
     </div>
 
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
+    <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ route('dashboard') }}">
                 <i class="fas fa-heartbeat"></i> SIDIS
@@ -292,11 +606,11 @@
                 <ul class="navbar-nav ms-auto">
                     @auth
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                                <i class="fas fa-user-circle"></i> 
+                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user-circle me-2"></i> 
                                 {{ session('usuario')['nombre_completo'] ?? 'Usuario' }}
                             </a>
-                            <ul class="dropdown-menu">
+                            <ul class="dropdown-menu dropdown-menu-end slide-in-right">
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-user"></i> Mi Perfil</a></li>
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-cog"></i> Configuración</a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -326,17 +640,23 @@
 
                 <!-- Main Content -->
                 <div class="col-md-9 col-lg-10 main-content">
-                    <!-- ✅ SELECTOR DE SEDE -->
+                    <!-- Selector de Sede -->
                     <div class="sede-selector-container">
                         <div class="sede-actual-info">
                             <div class="d-flex align-items-center">
-                                <i class="fas fa-building text-primary me-2"></i>
-                                <div>
-                                    <strong id="sedeActualNombre">{{ session('usuario')['sede']['nombre'] ?? 'Cargando...' }}</strong>
-                                    <br>
-                                    <small class="text-muted">Sede actual</small>
+                                <div class="me-3">
+                                    <i class="fas fa-building text-primary fs-4"></i>
                                 </div>
-                                <button class="btn btn-outline-primary btn-sm ms-auto" 
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1 fw-bold" id="sedeActualNombre">
+                                        {{ session('usuario')['sede']['nombre'] ?? 'Cargando...' }}
+                                    </h6>
+                                    <small class="text-muted">
+                                        <i class="fas fa-map-marker-alt me-1"></i>
+                                        Sede actual
+                                    </small>
+                                </div>
+                                <button class="btn btn-outline-primary btn-sm" 
                                         id="btnCambiarSede"
                                         data-bs-toggle="modal" 
                                         data-bs-target="#modalCambiarSede">
@@ -349,8 +669,12 @@
 
                     @if(($is_offline ?? false) || !($is_online ?? true))
                         <div class="offline-indicator">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <strong>Modo Offline:</strong> Trabajando sin conexión. Los cambios se sincronizarán automáticamente cuando se restablezca la conexión.
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-exclamation-triangle me-3 fs-5"></i>
+                                <div>
+                                    <strong>Modo Offline:</strong> Trabajando sin conexión. Los cambios se sincronizarán automáticamente cuando se restablezca la conexión.
+                                </div>
+                            </div>
                         </div>
                     @endif
 
@@ -366,33 +690,42 @@
         </div>
     </div>
 
-    <!-- ✅ MODAL PARA CAMBIAR SEDE -->
+    <!-- Modal para Cambiar Sede -->
     @auth
     <div class="modal fade" id="modalCambiarSede" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
                         <i class="fas fa-building me-2"></i>
                         Cambiar Sede
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Seleccionar nueva sede:</label>
+                    <div class="mb-4">
+                        <label class="form-label">
+                            <i class="fas fa-list me-2"></i>
+                            Seleccionar nueva sede:
+                        </label>
                         <select class="form-select" id="nuevaSedeSelect">
                             <option value="">Cargando sedes...</option>
                         </select>
                     </div>
                     
                     <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Nota:</strong> Al cambiar de sede, tendrás acceso completo a todos los datos y funcionalidades de la sede seleccionada.
+                        <div class="d-flex align-items-start">
+                            <i class="fas fa-info-circle me-3 mt-1"></i>
+                            <div>
+                                <strong>Información importante:</strong>
+                                <p class="mb-0 mt-1">Al cambiar de sede, tendrás acceso completo a todos los datos y funcionalidades de la sede seleccionada.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
                         Cancelar
                     </button>
                     <button type="button" class="btn btn-primary" id="btnConfirmarCambio">
@@ -405,10 +738,10 @@
     </div>
     @endauth
 
-    <!-- Sync Button (solo si está autenticado y offline) -->
+    <!-- Sync Button -->
     @auth
         @if(($is_offline ?? false) || !($is_online ?? true))
-            <button id="syncButton" class="btn btn-warning sync-button" title="Sincronizar datos">
+            <button id="syncButton" class="btn sync-button" title="Sincronizar datos">
                 <i class="fas fa-sync-alt"></i>
             </button>
         @endif
@@ -420,9 +753,14 @@
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 
     <script>
-        // ✅ TU SCRIPT EXISTENTE DE CONNECTION MONITORING (MANTENER EXACTAMENTE IGUAL)
+        // Tu JavaScript existente aquí (mantener exactamente igual)
         let isOnline = {{ ($is_online ?? true) ? 'true' : 'false' }};
         let checkInterval;
+        let wasOfflinePacientes = false;
+        let syncInProgress = false;
+
+        // Todas tus funciones JavaScript existentes...
+        // (Copio todo tu JavaScript tal como está)
 
         function updateConnectionStatus(online) {
             const statusEl = document.getElementById('connectionStatus');
@@ -453,7 +791,6 @@
                         updateConnectionStatus(data.online);
                         
                         if (data.online && !isOnline) {
-                            // Reconectado - mostrar opción de sincronizar
                             Swal.fire({
                                 title: '¡Conexión restablecida!',
                                 text: '¿Desea sincronizar los datos pendientes?',
@@ -496,7 +833,6 @@
             .then(data => {
                 if (data.success) {
                     Swal.fire('¡Sincronizado!', 'Los datos se han sincronizado correctamente', 'success');
-                    // Recargar página para actualizar estado
                     setTimeout(() => location.reload(), 1500);
                 } else {
                     Swal.fire('Error', 'No se pudo sincronizar: ' + data.error, 'error');
@@ -513,13 +849,9 @@
             });
         }
 
-        // 🆕 SOLO ESTAS VARIABLES Y FUNCIONES PARA SINCRONIZACIÓN AUTOMÁTICA
-        let wasOfflinePacientes = false;
-        let syncInProgress = false;
-
         function autoSyncPacientes() {
             if (syncInProgress) {
-                console.log('🔄 Sincronización ya en progreso...');
+                              console.log('🔄 Sincronización ya en progreso...');
                 return;
             }
 
@@ -534,13 +866,11 @@
             .then(data => {
                 const currentlyOnline = data.success && data.online;
                 
-                // Si acabamos de volver online después de estar offline
                 if (currentlyOnline && wasOfflinePacientes) {
                     console.log('🔄 Conexión restaurada, sincronizando pacientes...');
                     
                     syncInProgress = true;
                     
-                    // Mostrar notificación discreta
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
                             title: 'Sincronizando',
@@ -553,7 +883,6 @@
                         });
                     }
                     
-                    // Sincronizar pacientes automáticamente
                     fetch('/sync-pacientes', {
                         method: 'POST',
                         headers: {
@@ -578,7 +907,6 @@
                                 showConfirmButton: false
                             });
                             
-                            // Recargar si estamos en la página de pacientes
                             if (window.location.pathname.includes('pacientes')) {
                                 setTimeout(() => window.location.reload(), 2000);
                             }
@@ -601,10 +929,10 @@
             });
         }
 
-        // ✅ FUNCIONES PARA CAMBIO DE SEDE
         function cargarSedesDisponibles() {
             const nuevaSedeSelect = document.getElementById('nuevaSedeSelect');
             nuevaSedeSelect.innerHTML = '<option value="">Cargando...</option>';
+            nuevaSedeSelect.classList.add('loading');
             
             fetch('/sedes-disponibles', {
                 method: 'GET',
@@ -623,7 +951,6 @@
                         option.value = sede.id;
                         option.textContent = sede.nombre;
                         
-                        // Marcar la sede actual
                         if (sede.id === data.sede_actual) {
                             option.textContent += ' (Actual)';
                             option.disabled = true;
@@ -641,12 +968,18 @@
                 console.error('Error:', error);
                 nuevaSedeSelect.innerHTML = '<option value="">Error de conexión</option>';
                 mostrarAlerta('Error de conexión', 'error');
+            })
+            .finally(() => {
+                nuevaSedeSelect.classList.remove('loading');
             });
         }
 
         function cambiarSede(nuevaSedeId) {
             const btnConfirmarCambio = document.getElementById('btnConfirmarCambio');
+            const originalText = btnConfirmarCambio.innerHTML;
+            
             btnConfirmarCambio.disabled = true;
+            btnConfirmarCambio.classList.add('loading');
             btnConfirmarCambio.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Cambiando...';
 
             fetch('/cambiar-sede', {
@@ -663,17 +996,19 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Actualizar nombre de sede actual
                     document.getElementById('sedeActualNombre').textContent = data.usuario.sede.nombre;
                     
-                    // Cerrar modal
                     const modalCambiarSede = bootstrap.Modal.getInstance(document.getElementById('modalCambiarSede'));
                     modalCambiarSede.hide();
                     
-                    // Mostrar mensaje de éxito
-                    mostrarAlerta(data.message, 'success');
+                    Swal.fire({
+                        title: '¡Sede cambiada!',
+                        text: data.message,
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
                     
-                    // Recargar página después de un momento para actualizar todo
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
@@ -688,48 +1023,275 @@
             })
             .finally(() => {
                 btnConfirmarCambio.disabled = false;
-                btnConfirmarCambio.innerHTML = '<i class="fas fa-check me-1"></i> Cambiar Sede';
+                btnConfirmarCambio.classList.remove('loading');
+                btnConfirmarCambio.innerHTML = originalText;
             });
         }
 
         function mostrarAlerta(mensaje, tipo) {
-            // Crear alerta dinámica
             const alertaDiv = document.createElement('div');
             alertaDiv.className = `alert alert-${tipo === 'error' ? 'danger' : tipo} alert-dismissible fade show position-fixed`;
-            alertaDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            alertaDiv.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 350px; max-width: 400px;';
+            
+            const iconClass = tipo === 'success' ? 'check-circle' : 
+                             tipo === 'warning' ? 'exclamation-triangle' : 
+                             tipo === 'info' ? 'info-circle' : 'times-circle';
             
             alertaDiv.innerHTML = `
-                <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'warning' ? 'exclamation-triangle' : 'times-circle'} me-2"></i>
-                ${mensaje}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-${iconClass} me-2 fs-5"></i>
+                    <div class="flex-grow-1">${mensaje}</div>
+                    <button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>
+                </div>
             `;
             
             document.body.appendChild(alertaDiv);
             
+            // Animación de entrada
+            setTimeout(() => alertaDiv.classList.add('slide-in-right'), 10);
+            
             // Auto-remover después de 5 segundos
             setTimeout(() => {
                 if (alertaDiv.parentNode) {
-                    alertaDiv.remove();
+                    alertaDiv.classList.add('fade');
+                    setTimeout(() => alertaDiv.remove(), 300);
                 }
             }, 5000);
         }
 
-        // Event listeners (TU CÓDIGO EXISTENTE + PEQUEÑAS ADICIONES)
+        function testSyncNow() {
+            console.log('🧪 Iniciando test de sincronización manual...');
+            
+            Swal.fire({
+                title: 'Ejecutando Test',
+                text: 'Verificando sistema de sincronización...',
+                icon: 'info',
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            fetch('/test-sync-manual', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('🧪 Resultado del test:', data);
+                
+                Swal.fire({
+                    title: 'Resultado del Test',
+                    html: `
+                        <div class="text-start">
+                            <div class="mb-3">
+                                <strong>Estado:</strong> 
+                                <span class="badge bg-${data.success ? 'success' : 'danger'} ms-2">
+                                    ${data.success ? '✅ Exitoso' : '❌ Error'}
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Conexión:</strong> 
+                                <span class="badge bg-${data.connection ? 'success' : 'danger'} ms-2">
+                                    ${data.connection ? '🟢 Online' : '🔴 Offline'}
+                                </span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Pacientes pendientes:</strong> 
+                                <span class="badge bg-info ms-2">${data.pending_count || 0}</span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Mensaje:</strong> 
+                                <div class="mt-1 p-2 bg-light rounded">${data.message || 'Sin mensaje'}</div>
+                            </div>
+                            ${data.error ? `
+                                <div class="mb-3">
+                                    <strong>Error:</strong> 
+                                    <div class="mt-1 p-2 bg-danger bg-opacity-10 text-danger rounded">${data.error}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `,
+                    icon: data.success ? 'success' : 'error',
+                    width: '600px',
+                    confirmButtonText: 'Entendido'
+                });
+            })
+            .catch(error => {
+                console.error('❌ Error en test:', error);
+                Swal.fire({
+                    title: 'Error en Test',
+                    text: 'No se pudo ejecutar el test de sincronización',
+                    icon: 'error'
+                });
+            });
+        }
+
+        function syncAllPendingData() {
+            if (syncInProgress) {
+                Swal.fire({
+                    title: 'Sincronización en Progreso',
+                    text: 'Ya hay una sincronización ejecutándose',
+                    icon: 'warning'
+                });
+                return;
+            }
+
+            console.log('🚀 Forzando sincronización manual de pacientes...');
+            
+            Swal.fire({
+                title: 'Sincronizando',
+                text: 'Sincronizando todos los pacientes pendientes...',
+                icon: 'info',
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            syncInProgress = true;
+            
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                statusEl.className = 'connection-status connection-syncing';
+                document.getElementById('statusText').innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Sincronizando...';
+            }
+
+            fetch('/sync-pacientes', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                }
+            })
+            .then(response => {
+                console.log('📥 Respuesta del servidor:', response.status, response.statusText);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📊 Resultado de sincronización forzada:', data);
+                
+                if (data.success) {
+                    const syncedCount = data.synced_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    
+                    let message = '';
+                    let icon = 'success';
+                    
+                    if (syncedCount > 0) {
+                        message = `${syncedCount} pacientes sincronizados correctamente`;
+                        if (failedCount > 0) {
+                            message += `\n${failedCount} pacientes fallaron`;
+                            icon = 'warning';
+                        }
+                    } else if (failedCount > 0) {
+                        message = `${failedCount} pacientes fallaron al sincronizar`;
+                        icon = 'error';
+                    } else {
+                        message = 'No hay pacientes pendientes para sincronizar';
+                        icon = 'info';
+                    }
+                    
+                    Swal.fire({
+                        title: 'Sincronización Completada',
+                        text: message,
+                        icon: icon,
+                        confirmButtonText: 'Entendido'
+                    }).then(() => {
+                        if (syncedCount > 0 && window.location.pathname.includes('pacientes')) {
+                            window.location.reload();
+                        }
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Error de Sincronización',
+                        text: data.error || 'Error desconocido en la sincronización',
+                        icon: 'error'
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('💥 Error de conexión en sincronización forzada:', error);
+                
+                Swal.fire({
+                    title: 'Error de Conexión',
+                    text: 'No se pudo conectar con el servidor para sincronizar',
+                    icon: 'error'
+                });
+            })
+            .finally(() => {
+                syncInProgress = false;
+                
+                setTimeout(() => {
+                    updateConnectionStatus(isOnline);
+                }, 2000);
+                
+                console.log('🏁 Sincronización forzada finalizada');
+            });
+        }
+
+        // Utility functions
+        function showAlert(type, message, title = '') {
+            Swal.fire({
+                icon: type,
+                title: title || (type === 'success' ? '¡Éxito!' : type === 'error' ? '¡Error!' : '¡Información!'),
+                text: message,
+                timer: type === 'success' ? 3000 : undefined,
+                showConfirmButton: type !== 'success',
+                toast: type === 'success',
+                position: type === 'success' ? 'top-end' : 'center'
+            });
+        }
+
+        function confirmAction(message, callback) {
+            Swal.fire({
+                title: '¿Está seguro?',
+                text: message,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: 'var(--danger-color)',
+                cancelButtonColor: 'var(--primary-color)',
+                confirmButtonText: 'Sí, continuar',
+                cancelButtonText: 'Cancelar',
+                reverseButtons: true
+            }).then((result) => {
+                if (result.isConfirmed && callback) {
+                    callback();
+                }
+            });
+        }
+
+        // Event Listeners
         document.addEventListener('DOMContentLoaded', function() {
-            // Check connection every 30 seconds (tu código existente)
+            // Inicializar tooltips de Bootstrap
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // Check connection every 30 seconds
             checkInterval = setInterval(checkConnection, 30000);
             
-            // 🆕 SOLO AGREGAR ESTO: Verificar sincronización de pacientes cada 30 segundos
+            // Verificar sincronización de pacientes cada 30 segundos
             setInterval(autoSyncPacientes, 30000);
-            setTimeout(autoSyncPacientes, 3000); // Verificar al cargar
+            setTimeout(autoSyncPacientes, 3000);
 
-            // Sync button click (tu código existente)
+            // Sync button click
             const syncBtn = document.getElementById('syncButton');
             if (syncBtn) {
                 syncBtn.addEventListener('click', syncData);
             }
 
-            // ✅ EVENT LISTENERS PARA CAMBIO DE SEDE
+            // Event listeners para cambio de sede
             const btnCambiarSede = document.getElementById('btnCambiarSede');
             if (btnCambiarSede) {
                 btnCambiarSede.addEventListener('click', function() {
@@ -751,206 +1313,92 @@
                 });
             }
 
-            // Handle online/offline events (tu código existente + pequeña adición)
+            // Handle online/offline events
             window.addEventListener('online', () => {
                 updateConnectionStatus(true);
                 checkConnection();
-                // 🆕 SOLO AGREGAR ESTO: También verificar sincronización de pacientes
                 setTimeout(autoSyncPacientes, 1000);
+                mostrarAlerta('Conexión restablecida', 'success');
             });
 
             window.addEventListener('offline', () => {
                 updateConnectionStatus(false);
-                // 🆕 SOLO AGREGAR ESTO: Marcar como offline para pacientes
                 wasOfflinePacientes = true;
+                mostrarAlerta('Conexión perdida - Trabajando offline', 'warning');
             });
-        });
 
-        // Utility functions (tu código existente - MANTENER IGUAL)
-        function showAlert(type, message, title = '') {
-            Swal.fire({
-                icon: type,
-                title: title || (type === 'success' ? '¡Éxito!' : type === 'error' ? '¡Error!' : '¡Información!'),
-                text: message,
-                timer: type === 'success' ? 3000 : undefined,
-                showConfirmButton: type !== 'success'
+            // Smooth scroll para enlaces internos
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
             });
-        }
 
-        function confirmAction(message, callback) {
-            Swal.fire({
-                title: '¿Está seguro?',
-                text: message,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, continuar',
-                cancelButtonText: 'Cancelar'
-            }).then((result) => {
-                if (result.isConfirmed && callback) {
-                    callback();
-                }
-            });
-        }
-        // 🆕 AGREGAR ESTAS FUNCIONES PARA LOS BOTONES DE TEST
-// Función para test manual de sincronización
-function testSyncNow() {
-    console.log('🧪 Iniciando test de sincronización manual...');
-    
-    Swal.fire({
-        title: 'Ejecutando Test',
-        text: 'Verificando sistema de sincronización...',
-        icon: 'info',
-        showConfirmButton: false,
-        allowOutsideClick: false
-    });
-    
-    fetch('/test-sync-manual', {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('🧪 Resultado del test:', data);
-        
-        Swal.fire({
-            title: 'Resultado del Test',
-            html: `
-                <div style="text-align: left;">
-                    <p><strong>Estado:</strong> ${data.success ? '✅ Exitoso' : '❌ Error'}</p>
-                    <p><strong>Conexión:</strong> ${data.connection ? '🟢 Online' : '🔴 Offline'}</p>
-                    <p><strong>Pacientes pendientes:</strong> ${data.pending_count || 0}</p>
-                    <p><strong>Mensaje:</strong> ${data.message || 'Sin mensaje'}</p>
-                    ${data.error ? `<p><strong>Error:</strong> ${data.error}</p>` : ''}
-                </div>
-            `,
-            icon: data.success ? 'success' : 'error',
-            width: '500px'
+            // Auto-hide alerts after 5 seconds
+            setTimeout(() => {
+                const alerts = document.querySelectorAll('.alert:not(.alert-permanent)');
+                alerts.forEach(alert => {
+                    if (!alert.classList.contains('show')) return;
+                    
+                    setTimeout(() => {
+                        alert.classList.add('fade');
+                        setTimeout(() => {
+                            if (alert.parentNode) {
+                                alert.remove();
+                            }
+                        }, 300);
+                    }, 5000);
+                });
+            }, 100);
         });
-    })
-    .catch(error => {
-        console.error('❌ Error en test:', error);
-        Swal.fire({
-            title: 'Error en Test',
-            text: 'No se pudo ejecutar el test de sincronización',
-            icon: 'error'
-        });
-    });
-}
 
-// Función para forzar sincronización manual
-function syncAllPendingData() {
-    if (syncInProgress) {
-        Swal.fire({
-            title: 'Sincronización en Progreso',
-            text: 'Ya hay una sincronización ejecutándose',
-            icon: 'warning'
-        });
-        return;
-    }
-
-    console.log('🚀 Forzando sincronización manual de pacientes...');
-    
-    Swal.fire({
-        title: 'Sincronizando',
-        text: 'Sincronizando todos los pacientes pendientes...',
-        icon: 'info',
-        showConfirmButton: false,
-        allowOutsideClick: false
-    });
-
-    syncInProgress = true;
-    
-    // Actualizar indicador visual
-    const statusEl = document.getElementById('connectionStatus');
-    if (statusEl) {
-        statusEl.className = 'connection-status connection-syncing';
-        document.getElementById('statusText').innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Sincronizando...';
-    }
-
-    fetch('/sync-pacientes', {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        }
-    })
-    .then(response => {
-        console.log('📥 Respuesta del servidor:', response.status, response.statusText);
-        return response.json();
-    })
-    .then(data => {
-        console.log('📊 Resultado de sincronización forzada:', data);
-        
-        if (data.success) {
-            const syncedCount = data.synced_count || 0;
-            const failedCount = data.failed_count || 0;
+        // Prevenir envío múltiple de formularios
+        document.addEventListener('submit', function(e) {
+            const form = e.target;
+            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
             
-            let message = '';
-            let icon = 'success';
-            
-            if (syncedCount > 0) {
-                message = `${syncedCount} pacientes sincronizados correctamente`;
-                if (failedCount > 0) {
-                    message += `\n${failedCount} pacientes fallaron`;
-                    icon = 'warning';
+            if (submitBtn && !submitBtn.disabled) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('loading');
+                
+                const originalText = submitBtn.innerHTML || submitBtn.value;
+                
+                if (submitBtn.tagName === 'BUTTON') {
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Procesando...';
+                } else {
+                    submitBtn.value = 'Procesando...';
                 }
-            } else if (failedCount > 0) {
-                message = `${failedCount} pacientes fallaron al sincronizar`;
-                icon = 'error';
-            } else {
-                message = 'No hay pacientes pendientes para sincronizar';
-                icon = 'info';
+                
+                // Re-habilitar después de 5 segundos como fallback
+                setTimeout(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('loading');
+                    if (submitBtn.tagName === 'BUTTON') {
+                        submitBtn.innerHTML = originalText;
+                    } else {
+                        submitBtn.value = originalText;
+                    }
+                }, 5000);
             }
-            
-            Swal.fire({
-                title: 'Sincronización Completada',
-                text: message,
-                icon: icon
-            }).then(() => {
-                // Recargar la página si estamos en pacientes y se sincronizó algo
-                if (syncedCount > 0 && window.location.pathname.includes('pacientes')) {
-                    window.location.reload();
-                }
-            });
-        } else {
-            Swal.fire({
-                title: 'Error de Sincronización',
-                text: data.error || 'Error desconocido en la sincronización',
-                icon: 'error'
-            });
-        }
-    })
-    .catch(error => {
-        console.error('💥 Error de conexión en sincronización forzada:', error);
-        
-        Swal.fire({
-            title: 'Error de Conexión',
-            text: 'No se pudo conectar con el servidor para sincronizar',
-            icon: 'error'
         });
-    })
-    .finally(() => {
-        syncInProgress = false;
-        
-        // Restaurar indicador de conexión después de 2 segundos
-        setTimeout(() => {
-            updateConnectionStatus(isOnline);
-        }, 2000);
-        
-        console.log('🏁 Sincronización forzada finalizada');
-    });
-}
 
+        // Manejo global de errores AJAX
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Error no manejado:', event.reason);
+            mostrarAlerta('Ha ocurrido un error inesperado', 'error');
+        });
     </script>
+
+    @push('scripts')
+        <script src="{{ asset('js/cups-autocomplete.js') }}"></script>
+    @endpush
 
     @stack('scripts')
 </body>
