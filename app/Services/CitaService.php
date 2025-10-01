@@ -854,71 +854,241 @@ private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
         }
     }
 
-    /**
-     * ✅ CAMBIAR ESTADO DE CITA
-     */
-    public function cambiarEstado(string $uuid, string $nuevoEstado): array
-    {
-        try {
-            $cita = $this->offlineService->getCitaOffline($uuid);
-            
-            if (!$cita) {
-                return [
-                    'success' => false,
-                    'error' => 'Cita no encontrada'
-                ];
-            }
+   /**
+ * ✅ MÉTODO PRINCIPAL CORREGIDO - CAMBIAR ESTADO (REEMPLAZAR EL EXISTENTE)
+ */
+public function cambiarEstado(string $uuid, string $nuevoEstado): array
+{
+    try {
+        // ✅ DEBUG CRÍTICO DEL UUID
+        Log::info('🔍 DEBUG CRÍTICO - CitaService cambiarEstado INICIO', [
+            'uuid_recibido' => $uuid,
+            'uuid_length' => strlen($uuid),
+            'nuevo_estado' => $nuevoEstado
+        ]);
 
-            $data = ['estado' => $nuevoEstado];
-
-            // Intentar actualizar online
-            if ($this->apiService->isOnline()) {
-                $url = $this->buildApiUrl('cambiar_estado', ['uuid' => $uuid]);
-                $response = $this->apiService->put($url, $data);
-                
-                if ($response['success']) {
-                    $citaData = $response['data'];
-                    $this->offlineService->storeCitaOffline($citaData, false);
-                    
-                    return [
-                        'success' => true,
-                        'data' => $citaData,
-                        'message' => 'Estado de cita actualizado exitosamente',
-                        'offline' => false
-                    ];
-                }
-                
-                return [
-                    'success' => false,
-                    'error' => $response['error'] ?? 'Error actualizando estado'
-                ];
-            }
-
-            // Actualizar offline
-            $cita['estado'] = $nuevoEstado;
-            $this->offlineService->storeCitaOffline($cita, true);
-
-            return [
-                'success' => true,
-                'data' => $cita,
-                'message' => 'Estado actualizado (se sincronizará cuando vuelva la conexión)',
-                'offline' => true
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error cambiando estado de cita', [
-                'error' => $e->getMessage(),
+        // ✅ VALIDACIÓN EXTREMA DEL UUID
+        if (empty($uuid) || strlen($uuid) !== 36) {
+            Log::error('❌ UUID inválido en CitaService', [
                 'uuid' => $uuid,
-                'estado' => $nuevoEstado
+                'longitud' => strlen($uuid ?? '')
             ]);
             
             return [
                 'success' => false,
-                'error' => 'Error interno'
+                'error' => 'UUID de cita inválido'
             ];
         }
-    }
 
+        // ✅ OBTENER CITA OFFLINE PRIMERO
+        $citaOffline = $this->offlineService->getCitaOffline($uuid);
+        
+        if (!$citaOffline) {
+            Log::error('❌ Cita no encontrada offline', ['uuid' => $uuid]);
+            return [
+                'success' => false,
+                'error' => 'Cita no encontrada'
+            ];
+        }
+
+        Log::info('✅ Cita encontrada offline', [
+            'uuid' => $uuid,
+            'estado_actual' => $citaOffline['estado'] ?? 'N/A'
+        ]);
+
+        // ✅ INTENTAR CAMBIO ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            Log::info('🌐 Intentando cambio de estado online', [
+                'uuid' => $uuid,
+                'estado' => $nuevoEstado
+            ]);
+            
+            $resultadoOnline = $this->cambiarEstadoOnline($uuid, $nuevoEstado);
+            
+            if ($resultadoOnline['success']) {
+                Log::info('✅ Estado cambiado exitosamente online', [
+                    'uuid' => $uuid,
+                    'estado' => $nuevoEstado
+                ]);
+                return $resultadoOnline;
+            } else {
+                Log::warning('⚠️ Fallo cambio online, intentando offline', [
+                    'uuid' => $uuid,
+                    'error' => $resultadoOnline['error'] ?? 'Error desconocido'
+                ]);
+            }
+        }
+
+        // ✅ FALLBACK A CAMBIO OFFLINE
+        Log::info('🔄 Realizando cambio offline', [
+            'uuid' => $uuid,
+            'estado' => $nuevoEstado
+        ]);
+        
+        return $this->cambiarEstadoOffline($uuid, $nuevoEstado);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error crítico en CitaService::cambiarEstado', [
+            'uuid' => $uuid ?? 'N/A',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        // ✅ FALLBACK FINAL A OFFLINE
+        return $this->cambiarEstadoOffline($uuid, $nuevoEstado);
+    }
+}
+private function cambiarEstadoOffline(string $uuid, string $nuevoEstado): array
+{
+    try {
+        Log::info('📱 CitaService - Cambio offline', [
+            'cita_uuid' => $uuid,
+            'nuevo_estado' => $nuevoEstado
+        ]);
+
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'] ?? 1;
+
+        $actualizado = $this->offlineService->actualizarEstadoCitaOffline($uuid, $nuevoEstado, $sedeId);
+
+        if ($actualizado) {
+            return [
+                'success' => true,
+                'data' => ['estado' => $nuevoEstado],
+                'offline' => true
+            ];
+        } else {
+            return [
+                'success' => false,
+                'error' => 'Error actualizando estado offline'
+            ];
+        }
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en cambio offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+
+        return [
+            'success' => false,
+            'error' => 'Error en cambio offline: ' . $e->getMessage()
+        ];
+    }
+}
+private function getEndpoint(string $action): string
+{
+    $endpoints = [
+        'index' => '/citas',
+        'store' => '/citas',
+        'show' => '/citas/{uuid}',
+        'update' => '/citas/{uuid}',
+        'destroy' => '/citas/{uuid}',
+        'del_dia' => '/citas/del-dia',
+        'cambiar_estado' => '/citas/{uuid}/estado', // ✅ ESTE ES EL CORRECTO
+        'por_agenda' => '/agendas/{uuid}/citas',
+        'horarios_disponibles' => '/agendas/{uuid}/horarios-disponibles'
+    ];
+
+    $endpoint = $endpoints[$action] ?? '/citas';
+    
+    Log::info('🔧 Construyendo URL de API con getEndpoint', [
+        'action' => $action,
+        'available_endpoints' => array_keys($endpoints),
+        'selected_endpoint' => $endpoint
+    ]);
+
+    return $endpoint;
+}
+/**
+ * ✅ MÉTODO CORREGIDO - REEMPLAZAR UUID EN URL
+ */
+private function cambiarEstadoOnline(string $uuid, string $nuevoEstado): array
+{
+    try {
+        Log::info('🔍 DEBUG CRÍTICO - cambiarEstadoOnline INICIO', [
+            'uuid_recibido' => $uuid,
+            'uuid_length' => strlen($uuid),
+            'nuevo_estado' => $nuevoEstado
+        ]);
+
+        // ✅ CONSTRUIR ENDPOINT CORRECTAMENTE - REEMPLAZAR {uuid}
+        $endpointTemplate = $this->getEndpoint('cambiar_estado'); // "/citas/{uuid}/estado"
+        $endpoint = str_replace('{uuid}', $uuid, $endpointTemplate);
+
+        Log::info('🔧 Construcción de endpoint CORREGIDA', [
+            'template_original' => $endpointTemplate,
+            'uuid_para_reemplazar' => $uuid,
+            'endpoint_final' => $endpoint,
+            'contiene_placeholder' => strpos($endpoint, '{uuid}') !== false ? 'SÍ - ERROR' : 'NO - CORRECTO'
+        ]);
+
+        // ✅ VERIFICACIÓN CRÍTICA - NO DEBE CONTENER {uuid}
+        if (strpos($endpoint, '{uuid}') !== false) {
+            Log::error('❌ ENDPOINT TODAVÍA CONTIENE PLACEHOLDER', [
+                'endpoint_malformado' => $endpoint,
+                'template' => $endpointTemplate,
+                'uuid' => $uuid
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Error interno: endpoint malformado'
+            ];
+        }
+
+        Log::info('🌐 CitaService - Llamando API externa con endpoint corregido', [
+            'endpoint_final' => $endpoint,
+            'uuid_usado' => $uuid,
+            'data_a_enviar' => ['estado' => $nuevoEstado]
+        ]);
+
+        // ✅ HACER PETICIÓN CON EL ENDPOINT CORREGIDO
+        $response = $this->apiService->put($endpoint, [
+            'estado' => $nuevoEstado
+        ]);
+
+        Log::info('📡 Respuesta API recibida', [
+            'response' => $response,
+            'endpoint_usado' => $endpoint
+        ]);
+
+        if (isset($response['success']) && $response['success']) {
+            // ✅ ACTUALIZAR CACHÉ OFFLINE
+            $usuario = $this->authService->usuario();
+            $sedeId = $usuario['sede_id'] ?? 1;
+            
+            $this->offlineService->actualizarEstadoCitaOffline($uuid, $nuevoEstado, $sedeId);
+
+            return [
+                'success' => true,
+                'data' => $response['data'] ?? ['estado' => $nuevoEstado],
+                'offline' => false
+            ];
+        } else {
+            Log::error('❌ API devolvió error', [
+                'response' => $response,
+                'endpoint' => $endpoint
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $response['error'] ?? 'Error en API externa'
+            ];
+        }
+
+    } catch (\Exception $e) {
+        Log::error('❌ Excepción en cambiarEstadoOnline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid ?? 'N/A',
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        // ✅ FALLBACK A OFFLINE
+        Log::info('🔄 Fallback a cambio offline por excepción');
+        return $this->cambiarEstadoOffline($uuid, $nuevoEstado);
+    }
+}
     /**
      * ✅ CITAS POR AGENDA
      */

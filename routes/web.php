@@ -220,13 +220,66 @@ Route::get('/api/health-check', function () {
 
 
 });
-    Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
-        // Cronograma
-        Route::get('/cronograma', [CronogramaController::class, 'index'])->name('cronograma.index');
-        Route::get('/cronograma/cita/{uuid}', [CronogramaController::class, 'getDetalleCita'])->name('cronograma.cita.detalle');
-        Route::patch('/cronograma/cita/{uuid}/estado', [CronogramaController::class, 'cambiarEstadoCita'])->name('cronograma.cita.estado');
+Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
+    // ✅ CRONOGRAMA - RUTAS COMPLETAS PARA PROFESIONALES DE SALUD
+    Route::prefix('cronograma')->name('cronograma.')->group(function () {
+        // Vista principal del cronograma
+        Route::get('/', [CronogramaController::class, 'index'])->name('index');
+        
+        // Datos del cronograma vía AJAX
+        Route::get('/data/{fecha}', [CronogramaController::class, 'getData'])->name('data');
+        
+        // Actualización rápida
+        Route::get('/refresh', [CronogramaController::class, 'refresh'])->name('refresh');
+        
+        // Ver detalle de cita
+        Route::get('/cita/{uuid}', [CronogramaController::class, 'verCita'])
+              ->name('cita')
+              ->where('uuid', '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
+              
+        Route::get('/cita/{uuid}/detalle', [CronogramaController::class, 'getDetalleCita'])
+              ->name('cita.detalle')
+              ->where('uuid', '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
+        
+        // ✅ RUTA ÚNICA PARA CAMBIAR ESTADO - DEBE COINCIDIR CON EL JAVASCRIPT
+        Route::post('/cita/{uuid}/cambiar-estado', [CronogramaController::class, 'cambiarEstadoCita'])
+              ->name('cita.cambiar-estado')
+              ->where('uuid', '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
+        
+        // ✅ RUTAS ADICIONALES ESPECÍFICAS PARA PROFESIONALES
+        Route::get('/estadisticas/{fecha}', [CronogramaController::class, 'getEstadisticas'])
+              ->name('estadisticas')
+              ->where('fecha', '\d{4}-\d{2}-\d{2}');
+              
+        Route::get('/agenda/{uuid}/citas', [CronogramaController::class, 'getCitasAgenda'])
+              ->name('agenda.citas')
+              ->where('uuid', '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
+              
+        Route::get('/mis-agendas/{fecha}', [CronogramaController::class, 'getMisAgendas'])
+              ->name('mis-agendas')
+              ->where('fecha', '\d{4}-\d{2}-\d{2}');
+              
+        Route::get('/resumen-dia/{fecha}', [CronogramaController::class, 'getResumenDia'])
+              ->name('resumen-dia')
+              ->where('fecha', '\d{4}-\d{2}-\d{2}');
+              
+        // ✅ RUTA PARA SINCRONIZACIÓN DE CAMBIOS
+        Route::post('/sincronizar', [CronogramaController::class, 'sincronizarCambios'])
+              ->name('sincronizar');
     });
 
+    // ✅ OTRAS RUTAS ESPECÍFICAS PARA PROFESIONALES DE SALUD
+    Route::prefix('profesional')->name('profesional.')->group(function () {
+        // Mis citas del día
+        Route::get('/mis-citas', [CronogramaController::class, 'misCitas'])->name('mis-citas');
+        
+        // Historial de atenciones
+        Route::get('/historial-atenciones', [CronogramaController::class, 'historialAtenciones'])->name('historial-atenciones');
+        
+        // Estadísticas personales
+        Route::get('/estadisticas-personales', [CronogramaController::class, 'estadisticasPersonales'])->name('estadisticas-personales');
+    });
+});
 // ✅ NUEVA: Ruta de fallback para SPA (si usas Vue/React)
 Route::fallback(function () {
     if (request()->expectsJson()) {

@@ -1,3 +1,4 @@
+@auth
 <div class="sidebar-container">
     <!-- Sidebar Toggle Button -->
     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
@@ -239,6 +240,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Mouse Trigger Zone -->
+    <div class="sidebar-trigger-zone" id="sidebarTriggerZone"></div>
 </div>
 
 <style>
@@ -248,34 +252,53 @@
     z-index: 1000;
 }
 
+/* ===== MOUSE TRIGGER ZONE ===== */
+.sidebar-trigger-zone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 20px;
+    height: 100vh;
+    z-index: 999;
+    background: transparent;
+    transition: all 0.3s ease;
+}
+
+.sidebar-trigger-zone:hover {
+    width: 30px;
+    background: linear-gradient(to right, rgba(44, 90, 160, 0.1), transparent);
+}
+
 /* ===== SIDEBAR TOGGLE BUTTON ===== */
 .sidebar-toggle {
     position: fixed;
     top: 20px;
-    left: 20px;
+    left: -50px;
     z-index: 1100;
     width: 45px;
     height: 45px;
     border: none;
-    border-radius: 50%;
+    border-radius: 0 50% 50% 0;
     background: linear-gradient(135deg, var(--primary-color, #2c5aa0), var(--primary-dark, #1e3d6f));
     color: white;
     font-size: 1.2rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 15px rgba(44, 90, 160, 0.3);
+    box-shadow: 2px 4px 15px rgba(44, 90, 160, 0.3);
     transition: all 0.3s ease;
     cursor: pointer;
+    opacity: 0;
+}
+
+.sidebar-toggle.show {
+    left: 0;
+    opacity: 1;
 }
 
 .sidebar-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(44, 90, 160, 0.4);
-}
-
-.sidebar-toggle:active {
-    transform: scale(0.95);
+    transform: translateX(5px);
+    box-shadow: 2px 6px 20px rgba(44, 90, 160, 0.4);
 }
 
 /* ===== SIDEBAR OVERLAY ===== */
@@ -314,6 +337,23 @@
 
 .sidebar.active {
     left: 0;
+}
+
+/* Mostrar sidebar al hover en desktop */
+@media (min-width: 769px) {
+    .sidebar-container:hover .sidebar {
+        left: 0;
+    }
+    
+    .sidebar-container:hover .sidebar-toggle {
+        left: 320px;
+        border-radius: 50% 0 0 50%;
+    }
+    
+    .sidebar-container:hover .sidebar-overlay {
+        opacity: 0.3;
+        visibility: visible;
+    }
 }
 
 /* ===== SIDEBAR HEADER (MOBILE) ===== */
@@ -693,6 +733,22 @@
         left: -100%;
     }
     
+    .sidebar-trigger-zone {
+        display: none;
+    }
+    
+    .sidebar-toggle {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        opacity: 1;
+        border-radius: 50%;
+    }
+    
+    .sidebar-toggle.show {
+        left: 20px;
+    }
+    
     .user-profile-section {
         padding: 15px;
     }
@@ -771,6 +827,9 @@
 
 <script>
 // ===== SIDEBAR FUNCTIONALITY =====
+let sidebarTimeout;
+let isMouseOverSidebar = false;
+
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -788,9 +847,12 @@ function openSidebar() {
     
     sidebar.classList.add('active');
     overlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
+    
+    // Solo bloquear scroll en móvil
+    if (window.innerWidth <= 768) {
+        document.body.style.overflow = 'hidden';
+    }
 }
-
 function closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -798,6 +860,47 @@ function closeSidebar() {
     sidebar.classList.remove('active');
     overlay.classList.remove('active');
     document.body.style.overflow = '';
+}
+
+function setupSidebarHover() {
+    const sidebarContainer = document.querySelector('.sidebar-container');
+    const sidebar = document.getElementById('sidebar');
+    const triggerZone = document.getElementById('sidebarTriggerZone');
+    const toggleBtn = document.getElementById('sidebarToggle');
+    
+    if (!sidebarContainer || !sidebar || !triggerZone) return;
+    
+    // Solo en desktop
+    if (window.innerWidth > 768) {
+        // Mostrar sidebar al entrar en la zona de activación
+        triggerZone.addEventListener('mouseenter', () => {
+            clearTimeout(sidebarTimeout);
+            sidebar.classList.add('active');
+            toggleBtn.classList.add('show');
+        });
+        
+        // Mantener sidebar abierto mientras el mouse esté sobre él
+        sidebarContainer.addEventListener('mouseenter', () => {
+            clearTimeout(sidebarTimeout);
+            isMouseOverSidebar = true;
+        });
+        
+        // Ocultar sidebar cuando el mouse salga
+        sidebarContainer.addEventListener('mouseleave', () => {
+            isMouseOverSidebar = false;
+            sidebarTimeout = setTimeout(() => {
+                if (!isMouseOverSidebar) {
+                    sidebar.classList.remove('active');
+                    toggleBtn.classList.remove('show');
+                }
+            }, 300); // Delay de 300ms para evitar parpadeo
+        });
+        
+        // Prevenir que se cierre al hacer hover sobre el sidebar
+        sidebar.addEventListener('mouseenter', () => {
+            clearTimeout(sidebarTimeout);
+        });
+    }
 }
 
 // ===== FUNCIONES DE USUARIO =====
@@ -827,7 +930,9 @@ function showUserProfile() {
                                                 ${usuario.estado?.nombre || 'No definido'}
                                             </span>
                                         </p>
-                                                               </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="col-12">
@@ -1093,11 +1198,9 @@ function clearCache() {
         cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            // Limpiar diferentes tipos de caché
             localStorage.clear();
             sessionStorage.clear();
             
-            // Limpiar caché del service worker si existe
             if ('caches' in window) {
                 caches.keys().then(names => {
                     names.forEach(name => {
@@ -1108,7 +1211,6 @@ function clearCache() {
             
             mostrarAlerta('Caché limpiado correctamente', 'success');
             
-            // Recargar página después de 2 segundos
             setTimeout(() => {
                 window.location.reload();
             }, 2000);
@@ -1163,7 +1265,6 @@ function exportData() {
                 format: document.getElementById('exportFormat').value
             };
             
-            // Simular exportación
             Swal.fire({
                 title: 'Exportando...',
                 html: 'Preparando tus datos para descarga',
@@ -1173,7 +1274,6 @@ function exportData() {
                 }
             });
             
-            // Simular proceso de exportación
             setTimeout(() => {
                 Swal.fire({
                     title: '¡Exportación Completa!',
@@ -1181,7 +1281,6 @@ function exportData() {
                     icon: 'success',
                     confirmButtonText: 'Descargar'
                 }).then(() => {
-                    // Aquí iría la lógica real de descarga
                     mostrarAlerta('Descarga iniciada', 'info');
                 });
             }, 2000);
@@ -1204,7 +1303,6 @@ function syncAllPendingData() {
         }
     });
     
-    // Simular sincronización
     setTimeout(() => {
         Swal.fire({
             title: '¡Sincronización Completa!',
@@ -1244,7 +1342,6 @@ function confirmLogout() {
                 }
             });
 
-            // Submit logout form
             setTimeout(() => {
                 const form = document.createElement('form');
                 form.method = 'POST';
@@ -1276,12 +1373,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (themeIcon) themeIcon.className = 'fas fa-moon';
     }
     
+    // Configurar hover del sidebar
+    setupSidebarHover();
+    
     // Cerrar sidebar al hacer clic en enlaces (móvil)
     const navLinks = document.querySelectorAll('.sidebar .nav-link');
     navLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             if (window.innerWidth <= 768) {
-                // Solo cerrar si no es un dropdown toggle
                 if (!this.classList.contains('dropdown-toggle')) {
                     setTimeout(() => {
                         closeSidebar();
@@ -1291,10 +1390,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Cerrar sidebar al redimensionar ventana (desktop)
+    // Cerrar sidebar al redimensionar ventana
     window.addEventListener('resize', function() {
-        if (window.innerWidth > 768) {
-            closeSidebar();
+        if (window.innerWidth <= 768) {
+            // En móvil, resetear el comportamiento hover
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            if (sidebar) sidebar.classList.remove('active');
+            if (toggleBtn) toggleBtn.classList.remove('show');
+        } else {
+            // En desktop, reconfigurar hover
+            setupSidebarHover();
         }
     });
     
@@ -1312,7 +1418,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Función auxiliar para mostrar alertas (debe estar definida en tu archivo principal)
+// Función auxiliar para mostrar alertas
 function mostrarAlerta(mensaje, tipo) {
     if (typeof Swal !== 'undefined') {
         const iconos = {
@@ -1335,4 +1441,4 @@ function mostrarAlerta(mensaje, tipo) {
     }
 }
 </script>
-
+@endauth

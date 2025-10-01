@@ -1,9 +1,10 @@
 @extends('layouts.app')
-
+ @include('layouts.partials.sidebar')
 @section('title', 'Dashboard - SIDIS')
 
 @section('content')
 <div class="container-fluid">
+   
     <!-- Header del Dashboard -->
     <div class="row mb-4">
         <div class="col-12">
@@ -581,5 +582,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+
+
 @endsection
 

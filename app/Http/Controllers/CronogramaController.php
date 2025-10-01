@@ -1,665 +1,859 @@
 <?php
-
+// app/Http/Controllers/CronogramaController.php
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\{AgendaService, CitaService, AuthService, ApiService, OfflineService};
+use App\Services\{AuthService, ApiService, OfflineService, AgendaService, CitaService , PacienteService};
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class CronogramaController extends Controller
 {
-    protected $agendaService;
-    protected $citaService;
     protected $authService;
     protected $apiService;
     protected $offlineService;
+    protected $agendaService;
+    protected $citaService;
+    protected $pacienteService;
+
 
     public function __construct(
-        AgendaService $agendaService,
-        CitaService $citaService,
         AuthService $authService,
         ApiService $apiService,
-        OfflineService $offlineService
+        OfflineService $offlineService,
+        AgendaService $agendaService,
+        CitaService $citaService,
+        PacienteService $pacienteService
     ) {
-        $this->agendaService = $agendaService;
-        $this->citaService = $citaService;
+        $this->middleware('custom.auth');
         $this->authService = $authService;
         $this->apiService = $apiService;
         $this->offlineService = $offlineService;
+        $this->agendaService = $agendaService;
+        $this->citaService = $citaService;
+        $this->pacienteService = $pacienteService;
     }
 
     /**
-     * ✅ MÉTODO PRINCIPAL (tu ruta existente mantenida)
+     * ✅ VISTA PRINCIPAL DEL CRONOGRAMA
      */
-   public function index(Request $request)
+    public function index(Request $request)
     {
         try {
-            $fechaSeleccionada = $request->get('fecha', now()->format('Y-m-d'));
             $usuario = $this->authService->usuario();
             $isOffline = $this->authService->isOffline();
-
-            Log::info('🏥 Cronograma index', [
-                'fecha' => $fechaSeleccionada,
-                'usuario_id' => $usuario['id'] ?? null,
-                'is_offline' => $isOffline,
-                'is_ajax' => $request->ajax()
-            ]);
-
-            // ✅ OBTENER DATOS CON FALLBACK OFFLINE
-            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaSeleccionada, $usuario, $isOffline);
-
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => true,
-                    'data' => $cronogramaData,
-                    'offline' => $isOffline,
-                    'message' => $isOffline ? 'Datos cargados desde almacenamiento local' : 'Datos actualizados desde servidor'
-                ]);
+            
+            // ✅ OBTENER FECHA SELECCIONADA
+            $fechaSeleccionada = $request->get('fecha', now()->format('Y-m-d'));
+            
+            // ✅ VALIDAR FECHA
+            if (!$this->isValidDate($fechaSeleccionada)) {
+                $fechaSeleccionada = now()->format('Y-m-d');
             }
 
-            return view('cronograma.index', [
-                'fechaSeleccionada' => $fechaSeleccionada,
-                'usuario' => $usuario,
-                'cronogramaData' => $cronogramaData,
-                'isOffline' => $isOffline
+            Log::info('🏥 CronogramaController@index iniciado', [
+                'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
+                'usuario_nombre' => $usuario['nombre_completo'] ?? 'N/A',
+                'fecha_seleccionada' => $fechaSeleccionada,
+                'is_offline' => $isOffline
             ]);
 
+            // ✅ OBTENER DATOS DEL CRONOGRAMA CON FALLBACK
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaSeleccionada, $usuario);
+
+            Log::info('📊 Datos del cronograma obtenidos', [
+                'total_agendas' => count($cronogramaData['agendas'] ?? []),
+                'total_citas' => $cronogramaData['estadisticas']['total_citas'] ?? 0,
+                'offline' => $cronogramaData['offline'] ?? false,
+                'es_prueba' => $cronogramaData['es_prueba'] ?? false
+            ]);
+
+            return view('cronograma.index', compact(
+                'usuario',
+                'isOffline',
+                'fechaSeleccionada',
+                'cronogramaData'
+            ));
+
         } catch (\Exception $e) {
-            Log::error('❌ Error en cronograma index', [
+            Log::error('❌ Error en CronogramaController@index', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // ✅ FALLBACK COMPLETO A DATOS OFFLINE
-            $cronogramaFallback = $this->obtenerCronogramaOfflineFallback($fechaSeleccionada, $usuario ?? []);
-
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => true,
-                    'data' => $cronogramaFallback,
-                    'offline' => true,
-                    'message' => 'Datos cargados desde almacenamiento local de emergencia'
-                ]);
-            }
-
-            return view('cronograma.index', [
-                'fechaSeleccionada' => $fechaSeleccionada,
-                'usuario' => $usuario ?? [],
-                'cronogramaData' => $cronogramaFallback,
-                'isOffline' => true,
-                'error' => 'Trabajando en modo offline'
-            ]);
+            return back()->with('error', 'Error cargando cronograma: ' . $e->getMessage());
         }
     }
+// En app/Http/Controllers/CronogramaController.php
 
-        /**
-     * ✅ NUEVO: Obtener datos con fallback offline
-     */
-    private function obtenerDatosCronogramaConFallback($fecha, $usuario, $isOffline)
-    {
-        // ✅ SI ESTÁ ONLINE, INTENTAR OBTENER DATOS FRESCOS
-        if (!$isOffline) {
+public function sincronizarCambios(Request $request)
+{
+    try {
+        $cambios = $request->validate([
+            'cambios' => 'required|array',
+            'cambios.*.cita_uuid' => 'required|string',
+            'cambios.*.nuevo_estado' => 'required|string|in:PROGRAMADA,ATENDIDA,CANCELADA,NO_ASISTIO',
+            'cambios.*.timestamp' => 'required|string'
+        ]);
+
+        $resultados = [];
+        
+        foreach ($cambios['cambios'] as $cambio) {
             try {
-                $cronogramaData = $this->obtenerDatosCronogramaIntegrado($fecha, $usuario);
+                $result = $this->citaService->cambiarEstado(
+                    $cambio['cita_uuid'], 
+                    $cambio['nuevo_estado']
+                );
                 
-                // ✅ GUARDAR EN OFFLINE PARA FUTURO USO
-                $this->guardarCronogramaOffline($fecha, $usuario, $cronogramaData);
-                
-                return $cronogramaData;
+                $resultados[] = [
+                    'cita_uuid' => $cambio['cita_uuid'],
+                    'success' => $result['success'],
+                    'error' => $result['error'] ?? null
+                ];
                 
             } catch (\Exception $e) {
-                Log::warning('⚠️ Error obteniendo datos online, fallback a offline', [
+                $resultados[] = [
+                    'cita_uuid' => $cambio['cita_uuid'],
+                    'success' => false,
                     'error' => $e->getMessage()
-                ]);
-                
-                // ✅ MARCAR COMO OFFLINE Y CONTINUAR
-                $isOffline = true;
+                ];
             }
         }
 
-        // ✅ MODO OFFLINE: OBTENER DATOS LOCALES
-        return $this->obtenerCronogramaOffline($fecha, $usuario);
+        return response()->json([
+            'success' => true,
+            'data' => $resultados,
+            'message' => 'Sincronización completada'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en sincronización', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error en sincronización: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     /**
-     * ✅ NUEVO: Obtener cronograma desde almacenamiento offline
+     * ✅ OBTENER DATOS VÍA AJAX
      */
-    private function obtenerCronogramaOffline($fecha, $usuario)
+    public function getData(Request $request, string $fecha)
     {
         try {
-            Log::info('📱 Obteniendo cronograma offline', [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null
-            ]);
-
-            $usuarioUuid = $usuario['uuid'] ?? $usuario['id'] ?? null;
-            
-            if (!$usuarioUuid) {
-                Log::warning('⚠️ No hay usuario para cronograma offline');
-                return $this->getCronogramaVacio();
-            }
-
-            // ✅ OBTENER AGENDAS OFFLINE
-            $agendasOffline = $this->offlineService->getAgendasDelDia($usuarioUuid, $fecha);
-            
-            if (empty($agendasOffline)) {
-                Log::info('📅 No hay agendas offline para la fecha', ['fecha' => $fecha]);
-                return $this->getCronogramaVacio();
-            }
-
-            // ✅ ENRIQUECER AGENDAS CON CITAS OFFLINE
-            $agendasEnriquecidas = [];
-            foreach ($agendasOffline as $agenda) {
-                $agendaEnriquecida = $this->enriquecerAgendaOffline($agenda, $fecha);
-                $agendasEnriquecidas[] = $agendaEnriquecida;
-            }
-
-            // ✅ CALCULAR ESTADÍSTICAS
-            $estadisticas = $this->calcularEstadisticasGlobales($agendasEnriquecidas);
-
-            return [
-                'agendas' => $agendasEnriquecidas,
-                'estadisticas' => $estadisticas,
-                'resumen_citas' => $this->calcularResumenOffline($agendasEnriquecidas),
-                'fecha' => $fecha,
-                'total_agendas' => count($agendasEnriquecidas),
-                'isOffline' => true,
-                'timestamp' => now()->toISOString(),
-                'source' => 'offline'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo cronograma offline', [
-                'error' => $e->getMessage(),
-                'fecha' => $fecha
-            ]);
-
-            return $this->getCronogramaVacio();
-        }
-    }
-
-    /**
-     * ✅ DETALLE DE CITA (tu ruta existente mantenida)
-     */
-    public function getDetalleCita($uuid)
-    {
-        try {
-            Log::info('👁️ Obteniendo detalle de cita', ['cita_uuid' => $uuid]);
-
-            // ✅ USAR TU CitaService EXISTENTE
-            $result = $this->citaService->show($uuid);
-
-            if (!$result['success']) {
-                return response()->json([
-                    'success' => false,
-                    'error' => $result['error'] ?? 'Cita no encontrada'
-                ]);
-            }
-
-            $cita = $result['data'];
-            
-            // ✅ ENRIQUECER CON DATOS ADICIONALES PARA CRONOGRAMA
-            $citaEnriquecida = $this->enriquecerCitaParaCronograma($cita);
-
-            return response()->json([
-                'success' => true,
-                'data' => $citaEnriquecida
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo detalle de cita', [
-                'error' => $e->getMessage(),
-                'cita_uuid' => $uuid
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ]);
-        }
-    }
-
-    /**
-     * ✅ CAMBIAR ESTADO DE CITA (tu ruta existente mantenida)
-     */
-    public function cambiarEstadoCita(Request $request, $uuid)
-    {
-        try {
-            $nuevoEstado = $request->input('estado');
-            
-            Log::info('🔄 Cambiando estado de cita desde cronograma', [
-                'cita_uuid' => $uuid,
-                'estado' => $nuevoEstado
-            ]);
-
-            $request->validate([
-                'estado' => 'required|in:PROGRAMADA,EN_ATENCION,ATENDIDA,CANCELADA,NO_ASISTIO'
-            ]);
-
-            // ✅ USAR TU CitaService EXISTENTE
-            $result = $this->citaService->cambiarEstado($uuid, $nuevoEstado);
-
-            if ($result['success']) {
-                Log::info('✅ Estado de cita cambiado desde cronograma', [
-                    'cita_uuid' => $uuid,
-                    'estado' => $nuevoEstado
-                ]);
-            }
-
-            return response()->json($result);
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error cambiando estado de cita', [
-                'error' => $e->getMessage(),
-                'cita_uuid' => $uuid
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ]);
-        }
-    }
-
-    /**
-     * ✅ NUEVA: Obtener citas de una agenda específica
-     */
-    public function getCitasAgenda(Request $request, $uuid)
-    {
-        try {
-            $fecha = $request->get('fecha', now()->format('Y-m-d'));
-            
-            Log::info('🔍 Obteniendo citas de agenda para cronograma', [
-                'agenda_uuid' => $uuid,
-                'fecha' => $fecha
-            ]);
-
-            // ✅ USAR TU CitaService EXISTENTE
-            $citasResult = $this->citaService->index([
-                'agenda_uuid' => $uuid,
-                'fecha' => $fecha
-            ], 1, 100);
-
-            if (!$citasResult['success']) {
-                return response()->json([
-                    'success' => false,
-                    'error' => $citasResult['error'] ?? 'Error obteniendo citas'
-                ]);
-            }
-
-            $citas = $citasResult['data'] ?? [];
-
-            // ✅ ENRIQUECER CITAS PARA CRONOGRAMA
-            $citasEnriquecidas = array_map(function($cita) {
-                return $this->enriquecerCitaParaCronograma($cita);
-            }, $citas);
-
-            return response()->json([
-                'success' => true,
-                'data' => $citasEnriquecidas,
-                'total' => count($citasEnriquecidas),
-                'agenda_uuid' => $uuid,
-                'fecha' => $fecha
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo citas de agenda', [
-                'error' => $e->getMessage(),
-                'agenda_uuid' => $uuid
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
-        }
-    }
-
-    /**
-     * ✅ NUEVA: Obtener datos del cronograma (AJAX)
-     */
-    public function getData(Request $request, $fecha = null)
-    {
-        try {
-            $fecha = $fecha ?? $request->get('fecha', now()->format('Y-m-d'));
             $usuario = $this->authService->usuario();
+            
+            if (!$this->isValidDate($fecha)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Fecha inválida'
+                ], 400);
+            }
 
-            Log::info('📊 Obteniendo datos de cronograma vía AJAX', [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null
-            ]);
-
-            $cronogramaData = $this->obtenerDatosCronogramaIntegrado($fecha, $usuario);
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fecha, $usuario);
 
             return response()->json([
                 'success' => true,
                 'data' => $cronogramaData,
-                'fecha' => $fecha,
-                'timestamp' => now()->toISOString()
+                'offline' => $cronogramaData['offline'] ?? false,
+                'es_prueba' => $cronogramaData['es_prueba'] ?? false,
+                'message' => $this->getMensajeEstado($cronogramaData)
             ]);
 
         } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo datos de cronograma', [
+            Log::error('❌ Error en CronogramaController@getData', [
                 'error' => $e->getMessage(),
                 'fecha' => $fecha
             ]);
 
             return response()->json([
                 'success' => false,
-                'error' => 'Error interno del servidor'
+                'error' => 'Error obteniendo datos: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * ✅ NUEVA: Refrescar cronograma
+     * ✅ ACTUALIZACIÓN RÁPIDA VÍA AJAX
      */
     public function refresh(Request $request)
     {
         try {
             $fecha = $request->get('fecha', now()->format('Y-m-d'));
-            
-            Log::info('🔄 Refrescando cronograma', ['fecha' => $fecha]);
-
-            // ✅ LIMPIAR CACHÉ SI ES NECESARIO
-            $this->limpiarCacheCronograma($fecha);
-
-            // ✅ OBTENER DATOS FRESCOS
             $usuario = $this->authService->usuario();
-            $cronogramaData = $this->obtenerDatosCronogramaIntegrado($fecha, $usuario);
+
+            if (!$this->isValidDate($fecha)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Fecha inválida'
+                ], 400);
+            }
+
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fecha, $usuario, true);
 
             return response()->json([
                 'success' => true,
                 'data' => $cronogramaData,
-                'message' => 'Cronograma actualizado correctamente',
+                'offline' => $cronogramaData['offline'] ?? false,
+                'es_prueba' => $cronogramaData['es_prueba'] ?? false,
+                'message' => $this->getMensajeEstado($cronogramaData),
                 'timestamp' => now()->toISOString()
             ]);
 
         } catch (\Exception $e) {
-            Log::error('❌ Error refrescando cronograma', [
+            Log::error('❌ Error en refresh', [
                 'error' => $e->getMessage()
             ]);
 
             return response()->json([
                 'success' => false,
-                'error' => 'Error actualizando cronograma'
+                'error' => 'Error actualizando: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * ✅ MÉTODO PRINCIPAL: Obtener datos integrados del cronograma
+     * ✅ VER DETALLE DE CITA
      */
-   private function obtenerDatosCronogramaIntegrado($fecha, $usuario)
-{
-    try {
-        Log::info('📊 Obteniendo cronograma integrado', [
-            'fecha' => $fecha,
-            'usuario_id' => $usuario['id'] ?? null
-        ]);
+    public function verCita(Request $request, string $uuid)
+    {
+        try {
+            Log::info('👁️ Viendo detalle de cita', [
+                'cita_uuid' => $uuid,
+                'is_ajax' => $request->ajax()
+            ]);
 
-        // ✅ PASO 1: Obtener agendas del día usando TU AgendaService
-        $agendasResult = $this->agendaService->index([
-            'fecha_desde' => $fecha,
-            'fecha_hasta' => $fecha,
-            'estado' => 'ACTIVO'
-        ], 1, 50);
+            $result = $this->citaService->show($uuid);
 
-        $agendas = $agendasResult['success'] ? ($agendasResult['data'] ?? []) : [];
-
-        Log::info('📋 Agendas obtenidas para cronograma', [
-            'total_agendas' => count($agendas),
-            'success' => $agendasResult['success']
-        ]);
-
-        // ✅ PASO 1.5: Si no hay agendas, intentar obtener desde citas existentes
-        if (empty($agendas)) {
-            Log::info('🔍 No hay agendas, obteniendo desde citas existentes');
-            $agendas = $this->obtenerAgendasDesdeCitas($fecha);
-        }
-
-        // ✅ PASO 2: Enriquecer cada agenda con sus citas usando TU CitaService
-        $agendasEnriquecidas = [];
-        foreach ($agendas as $agenda) {
-            $agendaEnriquecida = $this->enriquecerAgendaConCitasIntegrada($agenda, $fecha);
-            $agendasEnriquecidas[] = $agendaEnriquecida;
-        }
-
-        // ✅ PASO 3: Calcular estadísticas globales
-        $estadisticas = $this->calcularEstadisticasGlobales($agendasEnriquecidas);
-
-        // ✅ PASO 4: Obtener resumen de citas del día usando TU CitaService
-        $resumenCitas = $this->obtenerResumenCitasDelDia($fecha);
-
-        return [
-            'agendas' => $agendasEnriquecidas,
-            'estadisticas' => $estadisticas,
-            'resumen_citas' => $resumenCitas,
-            'fecha' => $fecha,
-            'total_agendas' => count($agendasEnriquecidas),
-            'isOffline' => $this->authService->isOffline(),
-            'timestamp' => now()->toISOString()
-        ];
-
-    } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo cronograma integrado', [
-            'error' => $e->getMessage(),
-            'fecha' => $fecha
-        ]);
-
-        return $this->getCronogramaVacio();
-    }
-}
-/**
- * ✅ NUEVO: Obtener agendas desde citas existentes cuando no hay agendas
- */
-private function obtenerAgendasDesdeCitas($fecha)
-{
-    try {
-        Log::info('🔍 Obteniendo agendas desde citas existentes', ['fecha' => $fecha]);
-
-        // Obtener citas del día
-        $citasResult = $this->citaService->citasDelDia($fecha);
-        
-        if (!$citasResult['success'] || empty($citasResult['data'])) {
-            return [];
-        }
-
-        $citas = $citasResult['data'];
-        $agendasUnicas = [];
-
-        // Extraer agendas únicas de las citas
-        foreach ($citas as $cita) {
-            $agendaUuid = $cita['agenda_uuid'] ?? null;
-            
-            if ($agendaUuid && !isset($agendasUnicas[$agendaUuid])) {
-                // Crear agenda básica desde la cita
-                $agendasUnicas[$agendaUuid] = [
-                    'uuid' => $agendaUuid,
-                    'fecha' => $fecha,
-                    'etiqueta' => $cita['agenda']['etiqueta'] ?? 'Agenda',
-                    'hora_inicio' => '08:00',
-                    'hora_fin' => '17:00',
-                    'intervalo' => 15,
-                    'estado' => 'ACTIVO',
-                    'especialidad' => $cita['agenda']['especialidad'] ?? null,
-                    'usuario_medico' => $cita['agenda']['usuario_medico'] ?? null,
-                    'created_from_citas' => true // Marcador para identificar origen
-                ];
+            if (!$result['success']) {
+                if ($request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => $result['error'] ?? 'Cita no encontrada'
+                    ], 404);
+                }
+                
+                abort(404, $result['error'] ?? 'Cita no encontrada');
             }
+
+            $cita = $result['data'];
+
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $cita,
+                    'offline' => $result['offline'] ?? false
+                ]);
+            }
+
+            return view('cronograma.cita', compact('cita'));
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error viendo cita', [
+                'uuid' => $uuid,
+                'error' => $e->getMessage()
+            ]);
+
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Error interno del servidor'
+                ], 500);
+            }
+
+            abort(500, 'Error interno del servidor');
+        }
+    }
+
+    /**
+     * ✅ CAMBIAR ESTADO DE CITA
+     */
+   public function cambiarEstadoCita(Request $request, string $uuid)
+{
+    try {
+        // ✅ VALIDACIÓN CRÍTICA DEL UUID ANTES DE TODO
+        if (empty($uuid) || !is_string($uuid)) {
+            Log::error('❌ UUID vacío o inválido en controlador', [
+                'uuid_recibido' => $uuid,
+                'tipo' => gettype($uuid),
+                'request_route' => $request->route()->getName(),
+                'request_url' => $request->fullUrl()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'UUID de cita no válido'
+            ], 400);
+        }
+        
+        // ✅ LIMPIAR Y VALIDAR UUID
+        $uuid = trim($uuid);
+        
+        if (strlen($uuid) !== 36) {
+            Log::error('❌ UUID con longitud incorrecta en controlador', [
+                'uuid' => $uuid,
+                'longitud' => strlen($uuid)
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'UUID con formato incorrecto'
+            ], 400);
         }
 
-        Log::info('✅ Agendas extraídas desde citas', [
-            'total_agendas' => count($agendasUnicas),
-            'total_citas' => count($citas)
+        $request->validate([
+            'estado' => 'required|in:PROGRAMADA,EN_ATENCION,ATENDIDA,CANCELADA,NO_ASISTIO'
         ]);
 
-        return array_values($agendasUnicas);
+        $nuevoEstado = $request->estado;
+        $fecha = $request->get('fecha', now()->format('Y-m-d'));
+
+        Log::info('🔄 CronogramaController - Cambiando estado de cita', [
+            'cita_uuid' => $uuid,
+            'estado_nuevo' => $nuevoEstado,
+            'fecha' => $fecha,
+            'request_method' => $request->method(),
+            'request_url' => $request->fullUrl()
+        ]);
+
+        $result = $this->citaService->cambiarEstado($uuid, $nuevoEstado);
+
+        if (!$result['success']) {
+            Log::error('❌ CitaService devolvió error', [
+                'error' => $result['error'] ?? 'Error desconocido',
+                'uuid' => $uuid
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => $result['error'] ?? 'Error cambiando estado'
+            ], 400);
+        }
+
+        // ✅ OBTENER ESTADÍSTICAS ACTUALIZADAS
+        $usuario = $this->authService->usuario();
+        $estadisticasActualizadas = $this->calcularEstadisticasGlobales($fecha, $usuario);
+
+        Log::info('✅ Estado cambiado exitosamente en controlador', [
+            'cita_uuid' => $uuid,
+            'nuevo_estado' => $nuevoEstado,
+            'offline' => $result['offline'] ?? false
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $result['data'],
+            'message' => "Cita marcada como {$nuevoEstado}",
+            'estadisticas_globales' => $estadisticasActualizadas,
+            'offline' => $result['offline'] ?? false
+        ]);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::error('❌ Error de validación en controlador', [
+            'errors' => $e->errors(),
+            'uuid' => $uuid ?? 'N/A'
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Datos de entrada inválidos',
+            'validation_errors' => $e->errors()
+        ], 422);
 
     } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo agendas desde citas', [
+        Log::error('❌ Error crítico en controlador', [
+            'uuid' => $uuid ?? 'N/A',
             'error' => $e->getMessage(),
-            'fecha' => $fecha
+            'trace' => $e->getTraceAsString()
         ]);
 
-        return [];
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
     }
 }
 
     /**
-     * ✅ ENRIQUECER AGENDA CON CITAS (usando tus servicios existentes)
+     * ✅ OBTENER DATOS COMPLETOS DEL CRONOGRAMA
      */
-    private function enriquecerAgendaConCitasIntegrada($agenda, $fecha)
+    private function obtenerDatosCronograma(string $fecha, array $usuario, bool $refresh = false): array
     {
         try {
-            Log::info('🔍 Enriqueciendo agenda con citas integrada', [
-                'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
-                'fecha' => $fecha
+            Log::info('📊 Obteniendo datos del cronograma', [
+                'fecha' => $fecha,
+                'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
+                'refresh' => $refresh
             ]);
 
-            // ✅ OBTENER CITAS usando TU CitaService
-            $citasResult = $this->citaService->index([
-                'agenda_uuid' => $agenda['uuid'],
-                'fecha' => $fecha
-            ], 1, 100);
+            $usuarioUuid = $usuario['uuid'] ?? null;
+            $sedeId = $usuario['sede_id'] ?? 1;
+            
+            if (!$usuarioUuid) {
+                throw new \Exception('Usuario sin UUID válido');
+            }
 
-            $citas = $citasResult['success'] ? ($citasResult['data'] ?? []) : [];
-
-            // ✅ ENRIQUECER CITAS PARA CRONOGRAMA
-            $citasEnriquecidas = array_map(function($cita) {
-                return $this->enriquecerCitaParaCronograma($cita);
-            }, $citas);
-
-            // ✅ CALCULAR CUPOS Y ESTADÍSTICAS
-            $totalCupos = $this->calcularTotalCupos($agenda);
-            $citasActivas = array_filter($citasEnriquecidas, function($cita) {
-                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
-            });
-
-            // ✅ AGREGAR DATOS CALCULADOS A LA AGENDA
-            $agenda['citas'] = $citasEnriquecidas;
-            $agenda['total_citas'] = count($citasEnriquecidas);
-            $agenda['citas_activas'] = count($citasActivas);
-            $agenda['total_cupos'] = $totalCupos;
-            $agenda['cupos_disponibles'] = max(0, $totalCupos - count($citasActivas));
-            $agenda['porcentaje_ocupacion'] = $totalCupos > 0 ? 
-                round((count($citasActivas) / $totalCupos) * 100, 1) : 0;
-
-            // ✅ ESTADÍSTICAS POR ESTADO
-            $agenda['estadisticas'] = $this->calcularEstadisticasPorEstado($citasEnriquecidas);
-
-            Log::info('✅ Agenda enriquecida para cronograma', [
-                'agenda_uuid' => $agenda['uuid'],
-                'total_citas' => count($citasEnriquecidas),
-                'cupos_disponibles' => $agenda['cupos_disponibles']
+            // ✅ OBTENER AGENDAS DEL PROFESIONAL
+            $agendas = $this->obtenerAgendasProfesional($usuarioUuid, $fecha, $sedeId, $refresh);
+            
+            Log::info('📅 Agendas obtenidas', [
+                'total_agendas' => count($agendas['data']),
+                'offline' => $agendas['offline']
             ]);
 
-            return $agenda;
+            // ✅ ENRIQUECER AGENDAS CON CITAS
+            $agendasEnriquecidas = $this->enriquecerAgendasConCitas($agendas['data'], $fecha);
+
+            // ✅ CALCULAR ESTADÍSTICAS
+            $estadisticas = $this->calcularEstadisticasGlobales($fecha, $usuario, $agendasEnriquecidas);
+
+            return [
+                'agendas' => $agendasEnriquecidas,
+                'estadisticas' => $estadisticas,
+                'fecha' => $fecha,
+                'offline' => $agendas['offline'],
+                'timestamp' => now()->toISOString()
+            ];
 
         } catch (\Exception $e) {
-            Log::error('❌ Error enriqueciendo agenda integrada', [
+            Log::error('❌ Error obteniendo datos del cronograma', [
                 'error' => $e->getMessage(),
-                'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
+                'fecha' => $fecha
             ]);
 
-            // ✅ VALORES POR DEFECTO EN CASO DE ERROR
-            $agenda['citas'] = [];
-            $agenda['total_citas'] = 0;
-            $agenda['citas_activas'] = 0;
-            $agenda['total_cupos'] = 0;
-            $agenda['cupos_disponibles'] = 0;
-            $agenda['porcentaje_ocupacion'] = 0;
-            $agenda['estadisticas'] = $this->getEstadisticasVacias();
-
-            return $agenda;
+            throw $e; // Re-lanzar para que lo maneje el método con fallback
         }
     }
 
-   /**
- * ✅ ENRIQUECER CITA PARA CRONOGRAMA (VERSIÓN MEJORADA)
- */
-private function enriquecerCitaParaCronograma($cita)
-{
-    try {
-        // ✅ FORMATEAR FECHAS Y HORAS
-        if (isset($cita['fecha_inicio'])) {
-            $cita['hora_inicio'] = date('H:i', strtotime($cita['fecha_inicio']));
-            $cita['fecha_formateada'] = date('d/m/Y', strtotime($cita['fecha_inicio']));
-        }
-
-        if (isset($cita['fecha_final'])) {
-            $cita['hora_final'] = date('H:i', strtotime($cita['fecha_final']));
-        }
-
-        // ✅ INFORMACIÓN DE ESTADO CON COLORES
-        $cita['estado_info'] = $this->getEstadoInfo($cita['estado'] ?? 'PROGRAMADA');
-
-        // ✅ FORMATEAR INFORMACIÓN DEL PACIENTE (MEJORADO)
-        if (isset($cita['paciente']) && is_array($cita['paciente'])) {
-            $cita['paciente_nombre'] = $cita['paciente']['nombre_completo'] ?? 
-                                     ($cita['paciente']['primer_nombre'] ?? '') . ' ' . 
-                                     ($cita['paciente']['primer_apellido'] ?? '');
-            $cita['paciente_documento'] = $cita['paciente']['documento'] ?? 
-                                        $cita['paciente']['numero_documento'] ?? 'Sin documento';
-            $cita['paciente_telefono'] = $cita['paciente']['telefono'] ?? '';
-        } else {
-            // ✅ FALLBACK PARA PACIENTES FALTANTES
-            $cita['paciente_nombre'] = 'Paciente no encontrado';
-            $cita['paciente_documento'] = 'Sin documento';
-            $cita['paciente_telefono'] = '';
+    /**
+     * ✅ OBTENER DATOS CON FALLBACK A PRUEBA
+     */
+    private function obtenerDatosCronogramaConFallback(string $fecha, array $usuario, bool $refresh = false): array
+    {
+        try {
+            // Intentar obtener datos normalmente
+            return $this->obtenerDatosCronograma($fecha, $usuario, $refresh);
             
-            // Intentar obtener paciente desde OfflineService
-            if (isset($cita['paciente_uuid'])) {
-                $pacienteOffline = $this->offlineService->getPaciente($cita['paciente_uuid']);
-                if ($pacienteOffline) {
-                    $cita['paciente_nombre'] = $pacienteOffline['nombre_completo'] ?? 
-                                             ($pacienteOffline['primer_nombre'] ?? '') . ' ' . 
-                                             ($pacienteOffline['primer_apellido'] ?? '');
-                    $cita['paciente_documento'] = $pacienteOffline['numero_documento'] ?? 'Sin documento';
-                    $cita['paciente_telefono'] = $pacienteOffline['telefono'] ?? '';
+        } catch (\Exception $e) {
+            Log::warning('⚠️ Error obteniendo datos normales, intentando fallback', [
+                'error' => $e->getMessage(),
+                'fecha' => $fecha
+            ]);
+
+            // Si no hay agendas y estamos en desarrollo, generar datos de prueba
+            if (app()->environment('local')) {
+                Log::info('🧪 Generando datos de prueba para desarrollo');
+                
+                $agendasPrueba = $this->generarDatosPrueba($fecha, $usuario['uuid']);
+                $estadisticasPrueba = $this->calcularEstadisticasGlobales($fecha, $usuario, $agendasPrueba);
+                
+                return [
+                    'agendas' => $agendasPrueba,
+                    'estadisticas' => $estadisticasPrueba,
+                    'fecha' => $fecha,
+                    'offline' => true,
+                    'es_prueba' => true,
+                    'timestamp' => now()->toISOString()
+                ];
+            }
+
+            // En producción, devolver datos vacíos
+            return [
+                'agendas' => [],
+                'estadisticas' => $this->getEstadisticasVacias(),
+                'fecha' => $fecha,
+                'offline' => true,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * ✅ OBTENER AGENDAS DEL PROFESIONAL - MÉTODO CORREGIDO
+     */
+    private function obtenerAgendasProfesional(string $usuarioUuid, string $fecha, int $sedeId, bool $refresh = false): array
+    {
+        try {
+            $isOffline = $this->authService->isOffline();
+            
+            if (!$isOffline && $this->apiService->isOnline()) {
+                try {
+                    Log::info('🌐 Intentando obtener agendas desde API', [
+                        'usuario_uuid' => $usuarioUuid,
+                        'fecha' => $fecha,
+                        'sede_id' => $sedeId,
+                        'refresh' => $refresh
+                    ]);
+
+                    // ✅ CAMBIO PRINCIPAL: Usar ruta de agendas existente
+                    $response = $this->apiService->get('/agendas/disponibles', [
+                        'usuario_medico_uuid' => $usuarioUuid,
+                        'fecha' => $fecha,
+                        'sede_id' => $sedeId
+                    ]);
+
+                    if (isset($response['success']) && $response['success'] && !empty($response['data'])) {
+                        Log::info('✅ Agendas obtenidas desde API', [
+                            'total' => count($response['data'])
+                        ]);
+
+                        // ✅ GUARDAR OFFLINE PARA CACHE
+                        foreach ($response['data'] as $agenda) {
+                            $this->offlineService->storeAgendaOffline($agenda, false);
+                        }
+
+                        return [
+                            'data' => $response['data'],
+                            'offline' => false
+                        ];
+                    } else {
+                        Log::warning('⚠️ Respuesta API vacía o sin éxito', [
+                            'response' => $response
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error API agendas, usando offline', [
+                        'error' => $e->getMessage()
+                    ]);
                 }
             }
-        }
 
-        // ✅ TIEMPO TRANSCURRIDO/RESTANTE
-        if (isset($cita['fecha_inicio'])) {
-            $fechaCita = Carbon::parse($cita['fecha_inicio']);
-            $ahora = now();
+            // ✅ OBTENER DESDE OFFLINE
+            Log::info('📱 Obteniendo agendas desde offline');
             
-            if ($fechaCita->isPast()) {
-                $cita['tiempo_info'] = [
-                    'tipo' => 'pasado',
-                    'texto' => 'Hace ' . $fechaCita->diffForHumans($ahora, true)
-                ];
-            } else {
-                $cita['tiempo_info'] = [
-                    'tipo' => 'futuro',
-                    'texto' => 'En ' . $ahora->diffForHumans($fechaCita, true)
-                ];
+            $agendasOffline = $this->offlineService->getAgendasDelDia($usuarioUuid, $fecha);
+            
+            Log::info('📱 Agendas offline obtenidas', [
+                'total' => count($agendasOffline)
+            ]);
+
+            return [
+                'data' => $agendasOffline,
+                'offline' => true
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo agendas del profesional', [
+                'error' => $e->getMessage(),
+                'usuario_uuid' => $usuarioUuid,
+                'fecha' => $fecha
+            ]);
+
+            return [
+                'data' => [],
+                'offline' => true
+            ];
+        }
+    }
+
+    /**
+     * ✅ ENRIQUECER AGENDAS CON CITAS
+     */
+    private function enriquecerAgendasConCitas(array $agendas, string $fecha): array
+    {
+        try {
+            $agendasEnriquecidas = [];
+
+            foreach ($agendas as $agenda) {
+                Log::info('🔍 Enriqueciendo agenda con citas', [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'fecha' => $fecha
+                ]);
+
+                // ✅ OBTENER CITAS DE LA AGENDA
+                $citas = $this->obtenerCitasAgenda($agenda['uuid'], $fecha);
+                
+                // ✅ CALCULAR CUPOS Y ESTADÍSTICAS
+                $agenda = $this->calcularCuposAgenda($agenda);
+                $agenda['citas'] = $citas['data'];
+                $agenda['estadisticas'] = $this->calcularEstadisticasAgenda($citas['data']);
+                $agenda['source'] = $citas['offline'] ? 'offline' : 'api';
+
+                // ✅ ACTUALIZAR CUPOS DISPONIBLES BASADO EN CITAS ACTIVAS
+                $citasActivas = array_filter($citas['data'], function($cita) {
+                    return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+                });
+                $agenda['cupos_disponibles'] = max(0, ($agenda['total_cupos'] ?? 0) - count($citasActivas));
+
+                Log::info('✅ Agenda enriquecida', [
+                    'agenda_uuid' => $agenda['uuid'],
+                    'total_citas' => count($citas['data']),
+                    'citas_activas' => count($citasActivas),
+                    'cupos_disponibles' => $agenda['cupos_disponibles']
+                ]);
+
+                $agendasEnriquecidas[] = $agenda;
+            }
+
+            return $agendasEnriquecidas;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error enriqueciendo agendas', [
+                'error' => $e->getMessage()
+            ]);
+
+            return $agendas;
+        }
+    }
+
+  private function obtenerCitasAgenda(string $agendaUuid, string $fecha): array
+{
+    try {
+        $isOffline = $this->authService->isOffline();
+        
+        if (!$isOffline && $this->apiService->isOnline()) {
+            try {
+                Log::info('🌐 Obteniendo citas desde API', [
+                    'agenda_uuid' => $agendaUuid,
+                    'fecha' => $fecha
+                ]);
+
+                $response = $this->apiService->get("/agendas/{$agendaUuid}/citas", [
+                    'fecha' => $fecha
+                ]);
+
+                if (isset($response['success']) && $response['success']) {
+                    $citasApi = $response['data'] ?? [];
+                    
+                    Log::info('✅ Citas obtenidas desde API', [
+                        'total' => count($citasApi)
+                    ]);
+
+                    // ✅ CAMBIO CRÍTICO: Solo usar API si realmente hay citas O si offline también está vacío
+                    if (!empty($citasApi)) {
+                        // ✅ GUARDAR CITAS OFFLINE PARA CACHE
+                        foreach ($citasApi as $cita) {
+                            $this->offlineService->storeCitaOffline($cita, false);
+                        }
+
+                        return [
+                            'data' => $citasApi,
+                            'offline' => false
+                        ];
+                    } else {
+                        // ✅ API VACÍA: Verificar si offline tiene datos antes de decidir
+                        Log::info('⚠️ API devolvió 0 citas, verificando offline como fallback');
+                        
+                        // Verificar offline primero
+                        $usuario = $this->authService->usuario();
+                        $sedeId = $usuario['sede_id'];
+                        
+                        $citasOffline = $this->offlineService->getCitasOffline($sedeId, [
+                            'agenda_uuid' => $agendaUuid,
+                            'fecha' => $fecha
+                        ]);
+                        
+                        if (!empty($citasOffline)) {
+                            Log::info('✅ Encontradas citas offline, usando como fallback', [
+                                'total_offline' => count($citasOffline)
+                            ]);
+                            
+                            return [
+                                'data' => $citasOffline,
+                                'offline' => true
+                            ];
+                        } else {
+                            Log::info('📋 Tanto API como offline están vacíos');
+                            
+                            return [
+                                'data' => [],
+                                'offline' => false
+                            ];
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error API citas, usando offline', [
+                    'error' => $e->getMessage(),
+                    'agenda_uuid' => $agendaUuid
+                ]);
             }
         }
 
-        return $cita;
+        // ✅ OBTENER DESDE OFFLINE (cuando estamos offline o API falló)
+        Log::info('📱 Obteniendo citas desde offline', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha,
+            'motivo' => $isOffline ? 'modo_offline' : 'api_error'
+        ]);
+        
+        // ✅ OBTENER SEDE DEL USUARIO
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+        
+        // ✅ USAR EL MÉTODO CORRECTO CON PARÁMETROS CORRECTOS
+        $citasOffline = $this->offlineService->getCitasOffline($sedeId, [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha
+        ]);
+        
+        Log::info('📱 Citas offline obtenidas', [
+            'total' => count($citasOffline),
+            'sede_id' => $sedeId,
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha
+        ]);
+        
+        return [
+            'data' => $citasOffline,
+            'offline' => true
+        ];
 
     } catch (\Exception $e) {
-        Log::warning('⚠️ Error enriqueciendo cita para cronograma', [
+        Log::error('❌ Error obteniendo citas de agenda', [
             'error' => $e->getMessage(),
-            'cita_uuid' => $cita['uuid'] ?? 'unknown'
+            'agenda_uuid' => $agendaUuid,
+            'trace' => $e->getTraceAsString()
         ]);
 
-        return $cita;
+        return [
+            'data' => [],
+            'offline' => true
+        ];
     }
 }
+    /**
+     * ✅ GENERAR DATOS DE PRUEBA PARA DESARROLLO
+     */
+    private function generarDatosPrueba(string $fecha, string $usuarioUuid): array
+    {
+        Log::info('🧪 Generando datos de prueba para cronograma', [
+            'fecha' => $fecha,
+            'usuario_uuid' => $usuarioUuid
+        ]);
 
+        return [
+            [
+                'uuid' => 'test-agenda-' . uniqid(),
+                'nombre' => 'Consulta Medicina General - PRUEBA',
+                'medico_uuid' => $usuarioUuid,
+                'medico_nombre' => 'Dr. Juan Pérez (PRUEBA)',
+                'hora_inicio' => '08:00',
+                'hora_fin' => '12:00',
+                'intervalo' => 30,
+                'fecha' => $fecha,
+                'total_cupos' => 8,
+                'cupos_disponibles' => 3,
+                'citas' => [
+                    [
+                        'uuid' => 'test-cita-1',
+                        'hora' => '08:00',
+                        'paciente_nombre' => 'María González',
+                        'paciente_documento' => '12345678',
+                        'estado' => 'PROGRAMADA',
+                        'cups_nombre' => 'Consulta Medicina General',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-' . uniqid()
+                    ],
+                    [
+                        'uuid' => 'test-cita-2',
+                        'hora' => '08:30',
+                        'paciente_nombre' => 'Carlos Rodríguez',
+                        'paciente_documento' => '87654321',
+                        'estado' => 'ATENDIDA',
+                        'cups_nombre' => 'Consulta Medicina General',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-' . uniqid()
+                    ],
+                    [
+                        'uuid' => 'test-cita-3',
+                        'hora' => '09:00',
+                        'paciente_nombre' => 'Ana Martínez',
+                        'paciente_documento' => '11223344',
+                        'estado' => 'EN_ATENCION',
+                        'cups_nombre' => 'Consulta Medicina General',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-' . uniqid()
+                    ],
+                    [
+                        'uuid' => 'test-cita-4',
+                        'hora' => '09:30',
+                        'paciente_nombre' => 'Luis Fernández',
+                        'paciente_documento' => '55667788',
+                        'estado' => 'PROGRAMADA',
+                        'cups_nombre' => 'Consulta Medicina General',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-' . uniqid()
+                    ],
+                    [
+                        'uuid' => 'test-cita-5',
+                        'hora' => '10:00',
+                        'paciente_nombre' => 'Carmen López',
+                        'paciente_documento' => '99887766',
+                        'estado' => 'CANCELADA',
+                        'cups_nombre' => 'Consulta Medicina General',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-' . uniqid()
+                    ]
+                ],
+                'estadisticas' => [
+                    'PROGRAMADA' => 2,
+                    'EN_ATENCION' => 1,
+                    'ATENDIDA' => 1,
+                    'CANCELADA' => 1,
+                    'NO_ASISTIO' => 0
+                ],
+                'source' => 'prueba'
+            ],
+            [
+                'uuid' => 'test-agenda-2-' . uniqid(),
+                'nombre' => 'Consulta Especializada - PRUEBA',
+                'medico_uuid' => $usuarioUuid,
+                'medico_nombre' => 'Dr. Juan Pérez (PRUEBA)',
+                'hora_inicio' => '14:00',
+                'hora_fin' => '17:00',
+                'intervalo' => 45,
+                'fecha' => $fecha,
+                'total_cupos' => 4,
+                'cupos_disponibles' => 2,
+                'citas' => [
+                    [
+                        'uuid' => 'test-cita-6',
+                        'hora' => '14:00',
+                        'paciente_nombre' => 'Pedro Sánchez',
+                        'paciente_documento' => '33445566',
+                        'estado' => 'ATENDIDA',
+                        'cups_nombre' => 'Consulta Especializada',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-2-' . uniqid()
+                    ],
+                    [
+                        'uuid' => 'test-cita-7',
+                        'hora' => '14:45',
+                        'paciente_nombre' => 'Isabel Torres',
+                        'paciente_documento' => '77889900',
+                        'estado' => 'PROGRAMADA',
+                        'cups_nombre' => 'Consulta Especializada',
+                        'fecha' => $fecha,
+                        'agenda_uuid' => 'test-agenda-2-' . uniqid()
+                    ]
+                ],
+                'estadisticas' => [
+                    'PROGRAMADA' => 1,
+                    'EN_ATENCION' => 0,
+                    'ATENDIDA' => 1,
+                    'CANCELADA' => 0,
+                    'NO_ASISTIO' => 0
+                ],
+                'source' => 'prueba'
+            ]
+        ];
+    }
 
-    // ✅ MÉTODOS AUXILIARES (mantenidos de la implementación anterior)
-    private function calcularTotalCupos($agenda)
+    /**
+     * ✅ CALCULAR CUPOS DE AGENDA
+     */
+    private function calcularCuposAgenda(array $agenda): array
     {
         try {
             $horaInicio = $agenda['hora_inicio'] ?? '08:00';
             $horaFin = $agenda['hora_fin'] ?? '17:00';
             $intervalo = (int) ($agenda['intervalo'] ?? 15);
+
+            if ($intervalo <= 0) $intervalo = 15;
 
             $inicio = Carbon::createFromFormat('H:i', $horaInicio);
             $fin = Carbon::createFromFormat('H:i', $horaFin);
@@ -667,19 +861,27 @@ private function enriquecerCitaParaCronograma($cita)
             $duracionMinutos = $fin->diffInMinutes($inicio);
             $totalCupos = floor($duracionMinutos / $intervalo);
 
-            return max(1, $totalCupos);
+            $agenda['total_cupos'] = $totalCupos;
+            $agenda['cupos_disponibles'] = $totalCupos; // Se actualizará con las citas
+
+            return $agenda;
 
         } catch (\Exception $e) {
-            Log::warning('⚠️ Error calculando cupos', [
+            Log::error('❌ Error calculando cupos', [
                 'error' => $e->getMessage(),
-                'agenda' => $agenda['uuid'] ?? 'unknown'
+                'agenda_uuid' => $agenda['uuid'] ?? 'N/A'
             ]);
-            
-            return 20; // Valor por defecto
+
+            $agenda['total_cupos'] = 0;
+            $agenda['cupos_disponibles'] = 0;
+            return $agenda;
         }
     }
 
-    private function calcularEstadisticasPorEstado($citas)
+    /**
+     * ✅ CALCULAR ESTADÍSTICAS DE AGENDA
+     */
+    private function calcularEstadisticasAgenda(array $citas): array
     {
         $estadisticas = [
             'PROGRAMADA' => 0,
@@ -690,7 +892,7 @@ private function enriquecerCitaParaCronograma($cita)
         ];
 
         foreach ($citas as $cita) {
-            $estado = strtoupper($cita['estado'] ?? 'PROGRAMADA');
+            $estado = $cita['estado'] ?? 'PROGRAMADA';
             if (isset($estadisticas[$estado])) {
                 $estadisticas[$estado]++;
             }
@@ -699,14 +901,82 @@ private function enriquecerCitaParaCronograma($cita)
         return $estadisticas;
     }
 
-    private function calcularEstadisticasGlobales($agendas)
+    /**
+     * ✅ CALCULAR ESTADÍSTICAS GLOBALES
+     */
+    private function calcularEstadisticasGlobales(string $fecha, array $usuario, array $agendas = null): array
     {
-        $totales = [
-            'total_agendas' => count($agendas),
-            'total_cupos' => 0,
+        try {
+            if ($agendas === null) {
+                $usuarioUuid = $usuario['uuid'] ?? null;
+                $sedeId = $usuario['sede_id'] ?? 1;
+                $agendasResult = $this->obtenerAgendasProfesional($usuarioUuid, $fecha, $sedeId);
+                $agendas = $this->enriquecerAgendasConCitas($agendasResult['data'], $fecha);
+            }
+
+            $estadisticas = [
+                'total_agendas' => count($agendas),
+                'total_citas' => 0,
+                'cupos_disponibles' => 0,
+                'total_cupos' => 0,
+                'por_estado' => [
+                    'PROGRAMADA' => 0,
+                    'EN_ATENCION' => 0,
+                    'ATENDIDA' => 0,
+                    'CANCELADA' => 0,
+                    'NO_ASISTIO' => 0
+                ]
+            ];
+
+            foreach ($agendas as $agenda) {
+                $estadisticas['total_cupos'] += $agenda['total_cupos'] ?? 0;
+                
+                if (isset($agenda['citas'])) {
+                    $citasActivas = array_filter($agenda['citas'], function($cita) {
+                        return !in_array($cita['estado'] ?? 'PROGRAMADA', ['CANCELADA', 'NO_ASISTIO']);
+                    });
+                    
+                    $estadisticas['total_citas'] += count($agenda['citas']);
+                    $estadisticas['cupos_disponibles'] += max(0, ($agenda['total_cupos'] ?? 0) - count($citasActivas));
+
+                    foreach ($agenda['citas'] as $cita) {
+                        $estado = $cita['estado'] ?? 'PROGRAMADA';
+                        if (isset($estadisticas['por_estado'][$estado])) {
+                            $estadisticas['por_estado'][$estado]++;
+                        }
+                    }
+                }
+            }
+
+            // ✅ CALCULAR PORCENTAJE DE OCUPACIÓN
+            if ($estadisticas['total_cupos'] > 0) {
+                $cuposOcupados = $estadisticas['total_cupos'] - $estadisticas['cupos_disponibles'];
+                $estadisticas['porcentaje_ocupacion_global'] = round(($cuposOcupados / $estadisticas['total_cupos']) * 100, 1);
+            } else {
+                $estadisticas['porcentaje_ocupacion_global'] = 0;
+            }
+
+            return $estadisticas;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error calculando estadísticas globales', [
+                'error' => $e->getMessage()
+            ]);
+
+            return $this->getEstadisticasVacias();
+        }
+    }
+
+    /**
+     * ✅ ESTADÍSTICAS VACÍAS POR DEFECTO
+     */
+    private function getEstadisticasVacias(): array
+    {
+        return [
+            'total_agendas' => 0,
             'total_citas' => 0,
-            'citas_activas' => 0,
             'cupos_disponibles' => 0,
+            'total_cupos' => 0,
             'porcentaje_ocupacion_global' => 0,
             'por_estado' => [
                 'PROGRAMADA' => 0,
@@ -716,418 +986,219 @@ private function enriquecerCitaParaCronograma($cita)
                 'NO_ASISTIO' => 0
             ]
         ];
-
-        foreach ($agendas as $agenda) {
-            $totales['total_cupos'] += $agenda['total_cupos'] ?? 0;
-            $totales['total_citas'] += $agenda['total_citas'] ?? 0;
-            $totales['citas_activas'] += $agenda['citas_activas'] ?? 0;
-            $totales['cupos_disponibles'] += $agenda['cupos_disponibles'] ?? 0;
-
-            $estadisticas = $agenda['estadisticas'] ?? [];
-            foreach ($totales['por_estado'] as $estado => $valor) {
-                $totales['por_estado'][$estado] += $estadisticas[$estado] ?? 0;
-            }
-        }
-
-        $totales['porcentaje_ocupacion_global'] = $totales['total_cupos'] > 0 ? 
-            round(($totales['citas_activas'] / $totales['total_cupos']) * 100, 1) : 0;
-
-        return $totales;
     }
 
-    private function obtenerResumenCitasDelDia($fecha)
-    {
-        try {
-            // ✅ USAR TU CitaService EXISTENTE
-            $citasResult = $this->citaService->citasDelDia($fecha);
-            
-            if (!$citasResult['success']) {
-                return $this->getResumenVacio();
-            }
-
-            $citas = $citasResult['data'] ?? [];
-            
-            return [
-                'total' => count($citas),
-                'proximas' => $this->contarCitasProximas($citas),
-                'en_atencion' => $this->contarCitasPorEstado($citas, 'EN_ATENCION'),
-                'atendidas' => $this->contarCitasPorEstado($citas, 'ATENDIDA'),
-                'canceladas' => $this->contarCitasPorEstado($citas, 'CANCELADA')
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo resumen de citas', [
-                'error' => $e->getMessage(),
-                'fecha' => $fecha
-            ]);
-
-            return $this->getResumenVacio();
-        }
-    }
-
-    private function getEstadoInfo($estado)
-    {
-        $estados = [
-            'PROGRAMADA' => ['label' => 'Programada', 'color' => 'primary', 'icon' => 'calendar'],
-            'EN_ATENCION' => ['label' => 'En Atención', 'color' => 'warning', 'icon' => 'clock'],
-            'ATENDIDA' => ['label' => 'Atendida', 'color' => 'success', 'icon' => 'check'],
-            'CANCELADA' => ['label' => 'Cancelada', 'color' => 'danger', 'icon' => 'x'],
-            'NO_ASISTIO' => ['label' => 'No Asistió', 'color' => 'secondary', 'icon' => 'user-x']
-        ];
-
-        return $estados[$estado] ?? $estados['PROGRAMADA'];
-    }
-
-    private function limpiarCacheCronograma($fecha)
-    {
-        try {
-            $usuario = $this->authService->usuario();
-            $sedeId = $usuario['sede_id'] ?? null;
-            
-            if ($sedeId) {
-                // ✅ LIMPIAR CACHÉ ESPECÍFICO DEL CRONOGRAMA
-                $cacheKeys = [
-                    "cronograma_{$sedeId}_{$fecha}",
-                    "agendas_{$sedeId}_{$fecha}",
-                    "citas_del_dia_{$sedeId}_{$fecha}"
-                ];
-                
-                foreach ($cacheKeys as $key) {
-                    cache()->forget($key);
-                }
-                
-                Log::info('🧹 Caché de cronograma limpiado', [
-                    'sede_id' => $sedeId,
-                    'fecha' => $fecha,
-                    'keys_cleared' => count($cacheKeys)
-                ]);
-            }
-            
-        } catch (\Exception $e) {
-            Log::warning('⚠️ Error limpiando caché de cronograma', [
-                'error' => $e->getMessage()
-            ]);
-        }
-    }
-
-    // ✅ MÉTODOS DE UTILIDAD
-    private function getCronogramaVacio()
-    {
-        return [
-            'agendas' => [],
-            'estadisticas' => [
-                'total_agendas' => 0,
-                'total_cupos' => 0,
-                'total_citas' => 0,
-                'citas_activas' => 0,
-                'cupos_disponibles' => 0,
-                'porcentaje_ocupacion_global' => 0,
-                'por_estado' => [
-                    'PROGRAMADA' => 0,
-                    'EN_ATENCION' => 0,
-                    'ATENDIDA' => 0,
-                    'CANCELADA' => 0,
-                    'NO_ASISTIO' => 0
-                ]
-            ],
-            'resumen_citas' => $this->getResumenVacio(),
-            'fecha' => now()->format('Y-m-d'),
-            'total_agendas' => 0,
-            'isOffline' => true
-        ];
-    }
-
-    private function getEstadisticasVacias()
-    {
-        return [
-            'PROGRAMADA' => 0,
-            'EN_ATENCION' => 0,
-            'ATENDIDA' => 0,
-            'CANCELADA' => 0,
-            'NO_ASISTIO' => 0
-        ];
-    }
-
-    private function getResumenVacio()
-    {
-        return [
-            'total' => 0,
-            'proximas' => 0,
-            'en_atencion' => 0,
-            'atendidas' => 0,
-            'canceladas' => 0
-        ];
-    }
-
-    private function contarCitasProximas($citas)
-    {
-        $ahora = now();
-        $contador = 0;
-        
-        foreach ($citas as $cita) {
-            if (isset($cita['fecha_inicio'])) {
-                $fechaCita = Carbon::parse($cita['fecha_inicio']);
-                if ($fechaCita->gt($ahora) && $cita['estado'] === 'PROGRAMADA') {
-                    $contador++;
-                }
-            }
-        }
-        
-        return $contador;
-    }
-
-    private function contarCitasPorEstado($citas, $estado)
-    {
-        return count(array_filter($citas, function($cita) use ($estado) {
-                       return ($cita['estado'] ?? '') === $estado;
-        }));
-    }
-
-        /**
-     * ✅ MÉTODO FALTANTE: guardarCronogramaOffline
+    /**
+     * ✅ OBTENER MENSAJE DE ESTADO
      */
-    private function guardarCronogramaOffline($fecha, $usuario, $cronogramaData)
+    private function getMensajeEstado(array $cronogramaData): string
+    {
+        if (isset($cronogramaData['es_prueba']) && $cronogramaData['es_prueba']) {
+            return 'Datos de prueba - Desarrollo';
+        }
+        
+        if ($cronogramaData['offline'] ?? false) {
+            return 'Datos locales - Sin conexión';
+        }
+        
+        return 'Datos actualizados desde servidor';
+    }
+
+    /**
+     * ✅ VALIDAR FECHA
+     */
+    private function isValidDate(string $fecha): bool
     {
         try {
-            Log::info('💾 Guardando cronograma offline', [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null,
-                'total_agendas' => count($cronogramaData['agendas'] ?? [])
-            ]);
-
-            // Guardar en archivo JSON
-            $rutaArchivo = storage_path("app/offline/cronograma_{$fecha}.json");
-            
-            // Crear directorio si no existe
-            $directorio = dirname($rutaArchivo);
-            if (!is_dir($directorio)) {
-                mkdir($directorio, 0755, true);
-            }
-
-            // Preparar datos para guardar
-            $datosParaGuardar = [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null,
-                'timestamp' => now()->toISOString(),
-                'data' => $cronogramaData
-            ];
-
-            // Guardar datos
-            file_put_contents($rutaArchivo, json_encode($datosParaGuardar, JSON_PRETTY_PRINT));
-
-            Log::info('✅ Cronograma guardado offline', [
-                'archivo' => $rutaArchivo,
-                'tamaño' => filesize($rutaArchivo)
-            ]);
-
-            return true;
-
+            $date = Carbon::createFromFormat('Y-m-d', $fecha);
+            return $date && $date->format('Y-m-d') === $fecha;
         } catch (\Exception $e) {
-            Log::error('❌ Error guardando cronograma offline', [
-                'error' => $e->getMessage(),
-                'fecha' => $fecha
-            ]);
             return false;
         }
     }
 
     /**
-     * ✅ MÉTODO FALTANTE: enriquecerAgendaOffline
+     * ✅ MÉTODO ADICIONAL: OBTENER RESUMEN DEL DÍA
      */
-    private function enriquecerAgendaOffline($agenda, $fecha)
+    public function resumenDia(Request $request, string $fecha)
     {
         try {
-            Log::info('🔍 Enriqueciendo agenda offline', [
-                'agenda_uuid' => $agenda['uuid'] ?? 'unknown',
+            $usuario = $this->authService->usuario();
+            
+            if (!$this->isValidDate($fecha)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Fecha inválida'
+                ], 400);
+            }
+
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fecha, $usuario);
+            
+            // ✅ CREAR RESUMEN EJECUTIVO
+            $resumen = [
+                'fecha' => $fecha,
+                'total_agendas' => count($cronogramaData['agendas']),
+                'total_citas' => $cronogramaData['estadisticas']['total_citas'],
+                'citas_atendidas' => $cronogramaData['estadisticas']['por_estado']['ATENDIDA'],
+                'citas_pendientes' => $cronogramaData['estadisticas']['por_estado']['PROGRAMADA'] + 
+                                   $cronogramaData['estadisticas']['por_estado']['EN_ATENCION'],
+                'citas_canceladas' => $cronogramaData['estadisticas']['por_estado']['CANCELADA'] + 
+                                    $cronogramaData['estadisticas']['por_estado']['NO_ASISTIO'],
+                'porcentaje_ocupacion' => $cronogramaData['estadisticas']['porcentaje_ocupacion_global'],
+                'cupos_disponibles' => $cronogramaData['estadisticas']['cupos_disponibles'],
+                'offline' => $cronogramaData['offline'] ?? false,
+                'es_prueba' => $cronogramaData['es_prueba'] ?? false
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $resumen,
+                'message' => $this->getMensajeEstado($cronogramaData)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo resumen del día', [
+                'error' => $e->getMessage(),
                 'fecha' => $fecha
             ]);
 
-            // Obtener citas offline usando OfflineService
-            $citasOffline = $this->offlineService->getCitasByAgenda($agenda['uuid'], $fecha);
-            
-            // Enriquecer cada cita
-            $citasEnriquecidas = array_map(function($cita) {
-                return $this->enriquecerCitaParaCronograma($cita);
-            }, $citasOffline);
-
-            // Calcular cupos y estadísticas
-            $totalCupos = $this->calcularTotalCupos($agenda);
-            $citasActivas = array_filter($citasEnriquecidas, function($cita) {
-                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
-            });
-
-            // Agregar datos calculados
-            $agenda['citas'] = $citasEnriquecidas;
-            $agenda['total_citas'] = count($citasEnriquecidas);
-            $agenda['citas_activas'] = count($citasActivas);
-            $agenda['total_cupos'] = $totalCupos;
-            $agenda['cupos_disponibles'] = max(0, $totalCupos - count($citasActivas));
-            $agenda['porcentaje_ocupacion'] = $totalCupos > 0 ? 
-                round((count($citasActivas) / $totalCupos) * 100, 1) : 0;
-            $agenda['estadisticas'] = $this->calcularEstadisticasPorEstado($citasEnriquecidas);
-
-            Log::info('✅ Agenda offline enriquecida', [
-                'agenda_uuid' => $agenda['uuid'],
-                'total_citas' => count($citasEnriquecidas),
-                'cupos_disponibles' => $agenda['cupos_disponibles']
-            ]);
-
-            return $agenda;
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error enriqueciendo agenda offline', [
-                'error' => $e->getMessage(),
-                'agenda_uuid' => $agenda['uuid'] ?? 'unknown'
-            ]);
-
-            // Valores por defecto en caso de error
-            $agenda['citas'] = [];
-            $agenda['total_citas'] = 0;
-            $agenda['citas_activas'] = 0;
-            $agenda['total_cupos'] = 0;
-            $agenda['cupos_disponibles'] = 0;
-            $agenda['porcentaje_ocupacion'] = 0;
-            $agenda['estadisticas'] = $this->getEstadisticasVacias();
-
-            return $agenda;
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo resumen: ' . $e->getMessage()
+            ], 500);
         }
     }
 
     /**
-     * ✅ MÉTODO FALTANTE: calcularResumenOffline
+     * ✅ MÉTODO ADICIONAL: OBTENER PRÓXIMAS CITAS
      */
-    private function calcularResumenOffline($agendas)
+    public function proximasCitas(Request $request)
     {
         try {
-            $resumen = [
-                'total_citas' => 0,
-                'proximas' => 0,
-                'en_atencion' => 0,
-                'atendidas' => 0,
-                'canceladas' => 0,
-                'no_asistio' => 0
-            ];
+            $usuario = $this->authService->usuario();
+            $fecha = now()->format('Y-m-d');
+            $horaActual = now()->format('H:i');
 
-            $ahora = now();
-
-            foreach ($agendas as $agenda) {
-                $citas = $agenda['citas'] ?? [];
-                
-                foreach ($citas as $cita) {
-                    $resumen['total_citas']++;
-                    
-                    $estado = strtoupper($cita['estado'] ?? 'PROGRAMADA');
-                    
-                    switch ($estado) {
-                        case 'PROGRAMADA':
-                            // Verificar si es próxima (en el futuro)
-                            if (isset($cita['fecha_inicio'])) {
-                                $fechaCita = Carbon::parse($cita['fecha_inicio']);
-                                if ($fechaCita->gt($ahora)) {
-                                    $resumen['proximas']++;
-                                }
-                            } else {
-                                $resumen['proximas']++;
-                            }
-                            break;
-                        case 'EN_ATENCION':
-                            $resumen['en_atencion']++;
-                            break;
-                        case 'ATENDIDA':
-                            $resumen['atendidas']++;
-                            break;
-                        case 'CANCELADA':
-                            $resumen['canceladas']++;
-                            break;
-                        case 'NO_ASISTIO':
-                            $resumen['no_asistio']++;
-                            break;
+            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fecha, $usuario);
+            
+            $proximasCitas = [];
+            
+            foreach ($cronogramaData['agendas'] as $agenda) {
+                foreach ($agenda['citas'] ?? [] as $cita) {
+                    if (($cita['estado'] ?? '') === 'PROGRAMADA' && 
+                        ($cita['hora'] ?? '') >= $horaActual) {
+                        $proximasCitas[] = [
+                            'cita_uuid' => $cita['uuid'],
+                            'hora' => $cita['hora'],
+                            'paciente_nombre' => $cita['paciente_nombre'] ?? 'Sin nombre',
+                            'paciente_documento' => $cita['paciente_documento'] ?? 'Sin documento',
+                            'agenda_nombre' => $agenda['nombre'] ?? 'Sin agenda',
+                            'cups_nombre' => $cita['cups_nombre'] ?? 'Sin procedimiento'
+                        ];
                     }
                 }
             }
 
-            Log::info('📊 Resumen offline calculado', $resumen);
+            // ✅ ORDENAR POR HORA
+            usort($proximasCitas, function($a, $b) {
+                return strcmp($a['hora'], $b['hora']);
+            });
 
-            return $resumen;
+            // ✅ TOMAR SOLO LAS PRÓXIMAS 5
+            $proximasCitas = array_slice($proximasCitas, 0, 5);
+
+            return response()->json([
+                'success' => true,
+                'data' => $proximasCitas,
+                'total' => count($proximasCitas),
+                'offline' => $cronogramaData['offline'] ?? false,
+                'es_prueba' => $cronogramaData['es_prueba'] ?? false
+            ]);
 
         } catch (\Exception $e) {
-            Log::error('❌ Error calculando resumen offline', [
+            Log::error('❌ Error obteniendo próximas citas', [
                 'error' => $e->getMessage()
             ]);
 
-            return $this->getResumenVacio();
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo próximas citas: ' . $e->getMessage()
+            ], 500);
         }
     }
 
     /**
-     * ✅ MÉTODO FALTANTE: obtenerCronogramaOfflineFallback
+     * ✅ MÉTODO ADICIONAL: ESTADÍSTICAS SEMANALES
      */
-    private function obtenerCronogramaOfflineFallback($fecha, $usuario)
+    public function estadisticasSemanales(Request $request)
     {
         try {
-            Log::info('🚨 Fallback de emergencia para cronograma', [
-                'fecha' => $fecha,
-                'usuario_id' => $usuario['id'] ?? null
-            ]);
+            $usuario = $this->authService->usuario();
+            $fechaInicio = $request->get('fecha_inicio', now()->startOfWeek()->format('Y-m-d'));
+            $fechaFin = $request->get('fecha_fin', now()->endOfWeek()->format('Y-m-d'));
 
-            // 1. Intentar cargar desde archivo JSON guardado
-            $rutaArchivo = storage_path("app/offline/cronograma_{$fecha}.json");
-            
-            if (file_exists($rutaArchivo)) {
-                $datosGuardados = json_decode(file_get_contents($rutaArchivo), true);
-                
-                if ($datosGuardados && isset($datosGuardados['data'])) {
-                    Log::info('✅ Cronograma cargado desde archivo de emergencia', [
-                        'archivo' => $rutaArchivo
-                    ]);
-                    
-                    $cronogramaData = $datosGuardados['data'];
-                    $cronogramaData['source'] = 'fallback_file';
-                    $cronogramaData['isOffline'] = true;
-                    
-                    return $cronogramaData;
-                }
+            if (!$this->isValidDate($fechaInicio) || !$this->isValidDate($fechaFin)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Fechas inválidas'
+                ], 400);
             }
 
-            // 2. Crear cronograma vacío con estructura mínima
-            Log::warning('⚠️ Creando cronograma vacío de emergencia');
+            $estadisticasSemanales = [];
+            $fechaActual = Carbon::createFromFormat('Y-m-d', $fechaInicio);
+            $fechaLimite = Carbon::createFromFormat('Y-m-d', $fechaFin);
 
-            return [
-                'agendas' => [],
-                'estadisticas' => [
-                    'total_agendas' => 0,
-                    'total_cupos' => 0,
-                    'total_citas' => 0,
-                    'citas_activas' => 0,
-                    'cupos_disponibles' => 0,
-                    'porcentaje_ocupacion_global' => 0,
-                    'por_estado' => [
-                        'PROGRAMADA' => 0,
-                        'EN_ATENCION' => 0,
-                        'ATENDIDA' => 0,
-                        'CANCELADA' => 0,
-                        'NO_ASISTIO' => 0
-                    ]
-                ],
-                'resumen_citas' => $this->getResumenVacio(),
-                'fecha' => $fecha,
-                'total_agendas' => 0,
-                'isOffline' => true,
-                'source' => 'fallback_empty',
-                'timestamp' => now()->toISOString(),
-                'message' => 'No hay datos disponibles offline para esta fecha'
-            ];
+            while ($fechaActual <= $fechaLimite) {
+                $fechaStr = $fechaActual->format('Y-m-d');
+                
+                try {
+                    $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaStr, $usuario);
+                    
+                    $estadisticasSemanales[] = [
+                        'fecha' => $fechaStr,
+                        'dia_semana' => $fechaActual->locale('es')->isoFormat('dddd'),
+                        'total_citas' => $cronogramaData['estadisticas']['total_citas'],
+                        'citas_atendidas' => $cronogramaData['estadisticas']['por_estado']['ATENDIDA'],
+                        'porcentaje_ocupacion' => $cronogramaData['estadisticas']['porcentaje_ocupacion_global']
+                    ];
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error obteniendo datos para fecha', [
+                        'fecha' => $fechaStr,
+                        'error' => $e->getMessage()
+                    ]);
+                    
+                    $estadisticasSemanales[] = [
+                        'fecha' => $fechaStr,
+                        'dia_semana' => $fechaActual->locale('es')->isoFormat('dddd'),
+                        'total_citas' => 0,
+                        'citas_atendidas' => 0,
+                        'porcentaje_ocupacion' => 0
+                    ];
+                }
 
-        } catch (\Exception $e) {
-            Log::error('❌ Error en fallback de emergencia', [
-                'error' => $e->getMessage(),
-                'fecha' => $fecha
+                $fechaActual->addDay();
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $estadisticasSemanales,
+                'periodo' => [
+                    'fecha_inicio' => $fechaInicio,
+                    'fecha_fin' => $fechaFin
+                ]
             ]);
 
-            return $this->getCronogramaVacio();
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo estadísticas semanales', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo estadísticas semanales: ' . $e->getMessage()
+            ], 500);
         }
     }
-
 }
 
-
+                        

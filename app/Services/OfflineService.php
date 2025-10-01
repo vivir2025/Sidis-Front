@@ -2217,23 +2217,10 @@ public function getAgendasOffline(int $sedeId, array $filters = []): array
         return [];
     }
 }
-public function getCitasOffline(int $sedeId, array $filters = []): array
+public function getCitasOffline($sedeId, array $filters = [])
 {
     try {
-        // ✅ DEBUG ADICIONAL
-        $user = auth()->user() ?? session('usuario');
-        $loginSedeId = session('sede_id') ?? $user['sede_id'] ?? 1;
-        
-        Log::info('🧪 DEBUG: Consultando citas con información completa de sedes', [
-            'sede_consultada' => $sedeId,
-            'sede_login' => $loginSedeId,
-            'usuario_sede_id' => $user['sede_id'] ?? 'NO_SEDE_USUARIO',
-            'session_sede_id' => session('sede_id') ?? 'NO_SESSION_SEDE',
-            'usuario_nombre' => $user['nombre_completo'] ?? 'NO_NOMBRE',
-            'consulta_coincide_login' => $sedeId == $loginSedeId
-        ]);
-
-        Log::info('🔍 getCitasOffline iniciado', [
+        Log::info('📋 getCitasOffline iniciado', [
             'sede_id' => $sedeId,
             'filters' => $filters
         ]);
@@ -2241,168 +2228,218 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
         $citas = [];
 
         if ($this->isSQLiteAvailable()) {
-            Log::info('💾 Usando SQLite para obtener citas');
-            
-            $query = DB::connection('offline')->table('citas')
-                ->where('sede_id', $sedeId)
-                ->whereNull('deleted_at');
-                
-            // 🧪 DEBUG TEMPORAL - VERIFICAR TODAS LAS CITAS
-            $todasLasCitas = DB::connection('offline')->table('citas')->get();
-            $citasPorSede = [];
-            foreach ($todasLasCitas as $cita) {
-                $citasPorSede[$cita->sede_id] = ($citasPorSede[$cita->sede_id] ?? 0) + 1;
-            }
-            
-            Log::info('🧪 DEBUG: Verificando todas las citas en SQLite', [
-                'sede_consultada' => $sedeId,
-                'total_citas_sede_consultada' => DB::connection('offline')->table('citas')->where('sede_id', $sedeId)->count(),
-                'total_citas_todas_sedes' => $todasLasCitas->count(),
-                'citas_por_sede' => $citasPorSede
-            ]);
+            $query = DB::connection('offline')
+                ->table('citas')
+                ->leftJoin('pacientes', 'citas.paciente_uuid', '=', 'pacientes.uuid')
+                ->where('citas.sede_id', $sedeId)
+                ->whereNull('citas.deleted_at');
 
-            // Ver las últimas 3 citas guardadas DE CUALQUIER SEDE
-            $ultimasCitasTodasSedes = DB::connection('offline')->table('citas')
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get()
-                ->toArray();
-
-            Log::info('🧪 DEBUG: Últimas citas guardadas (todas las sedes)', [
-                'ultimas_citas' => array_map(function($cita) {
-                    return [
-                        'uuid' => $cita->uuid ?? 'N/A',
-                        'sede_id' => $cita->sede_id ?? 'N/A',
-                        'agenda_uuid' => $cita->agenda_uuid ?? 'N/A',
-                        'fecha' => $cita->fecha ?? 'N/A',
-                        'created_at' => $cita->created_at ?? 'N/A'
-                    ];
-                }, $ultimasCitasTodasSedes)
-            ]);
-
-            // ✅ APLICAR FILTROS CON LOGGING DETALLADO
-            if (!empty($filters['fecha'])) {
-                $fechaFiltro = $filters['fecha'];
-                if (strpos($fechaFiltro, 'T') !== false) {
-                    $fechaFiltro = explode('T', $fechaFiltro)[0];
-                }
-                $query->where('fecha', $fechaFiltro);
-                
-                Log::info('📅 Filtro de fecha aplicado', [
-                    'fecha_original' => $filters['fecha'],
-                    'fecha_limpia' => $fechaFiltro
+            // ✅ APLICAR FILTROS
+            if (!empty($filters['agenda_uuid'])) {
+                $query->where('citas.agenda_uuid', $filters['agenda_uuid']);
+                Log::info('🔍 Filtro agenda_uuid aplicado', [
+                    'agenda_uuid' => $filters['agenda_uuid']
                 ]);
             }
-            
-            if (!empty($filters['estado'])) {
-                $query->where('estado', $filters['estado']);
-                Log::info('🏷️ Filtro de estado aplicado', ['estado' => $filters['estado']]);
-            }
-            
-            if (!empty($filters['agenda_uuid'])) {
-                $query->where('agenda_uuid', $filters['agenda_uuid']);
-                Log::info('📋 Filtro de agenda aplicado', ['agenda_uuid' => $filters['agenda_uuid']]);
+
+            if (!empty($filters['fecha'])) {
+                // ✅ LIMPIAR FECHA
+                $fechaLimpia = $filters['fecha'];
+                if (strpos($fechaLimpia, 'T') !== false) {
+                    $fechaLimpia = explode('T', $fechaLimpia)[0];
+                }
+                
+                // ✅ USAR MÚLTIPLES MÉTODOS DE FILTRADO PARA ASEGURAR COMPATIBILIDAD
+                $query->where(function($q) use ($fechaLimpia) {
+                    $q->whereDate('citas.fecha', $fechaLimpia)
+                      ->orWhere('citas.fecha', $fechaLimpia)
+                      ->orWhere('citas.fecha', 'LIKE', $fechaLimpia . '%');
+                });
+                
+                Log::info('🔍 Filtro fecha aplicado', [
+                    'fecha_original' => $filters['fecha'],
+                    'fecha_limpia' => $fechaLimpia
+                ]);
             }
 
-            // ✅ OBTENER RESULTADOS CON ORDEN
-            $results = $query->orderBy('fecha', 'desc')
-                ->orderBy('fecha_inicio', 'desc')
-                ->get();
-            
-            Log::info('📊 Resultados SQLite obtenidos', [
-                'total_encontradas' => $results->count(),
-                'filtros_aplicados' => array_keys(array_filter($filters))
+            if (!empty($filters['estado'])) {
+                $query->where('citas.estado', $filters['estado']);
+            }
+
+            if (!empty($filters['paciente_documento'])) {
+                $query->where('pacientes.documento', 'LIKE', '%' . $filters['paciente_documento'] . '%');
+            }
+
+            $query->select(
+                'citas.*',
+                'pacientes.nombre_completo as paciente_nombre_completo',
+                'pacientes.documento as paciente_documento',
+                'pacientes.telefono as paciente_telefono',
+                'pacientes.fecha_nacimiento as paciente_fecha_nacimiento',
+                'pacientes.sexo as paciente_sexo'
+            )->orderBy('citas.fecha_inicio');
+
+            $results = $query->get();
+
+            Log::info('📊 Consulta SQLite ejecutada', [
+                'total_resultados' => $results->count(),
+                'sql_filters_aplicados' => array_keys($filters)
             ]);
 
-            // ✅ CONVERTIR Y ENRIQUECER DATOS
-            $citas = $results->map(function($cita) {
+            $citas = $results->map(function ($cita) {
                 $citaArray = (array) $cita;
                 
-                // ✅ AGREGAR INFORMACIÓN DEL PACIENTE
-                if (!empty($citaArray['paciente_uuid'])) {
-                    $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
-                    if ($paciente) {
-                        $citaArray['paciente'] = $paciente;
+              // ✅ CONSTRUIR OBJETO PACIENTE CON FALLBACK
+if ($citaArray['paciente_nombre_completo']) {
+    $citaArray['paciente'] = [
+        'uuid' => $citaArray['paciente_uuid'],
+        'nombre_completo' => $citaArray['paciente_nombre_completo'],
+        'documento' => $citaArray['paciente_documento'],
+        'telefono' => $citaArray['paciente_telefono'],
+        'fecha_nacimiento' => $citaArray['paciente_fecha_nacimiento'],
+        'sexo' => $citaArray['paciente_sexo']
+    ];
+} else {
+    // ✅ FALLBACK: BUSCAR PACIENTE SI EL JOIN FALLÓ
+    if (!empty($citaArray['paciente_uuid'])) {
+        $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
+        if ($paciente) {
+            $citaArray['paciente'] = [
+                'uuid' => $paciente['uuid'],
+                'nombre_completo' => $paciente['nombre_completo'],
+                'documento' => $paciente['documento'] ?? 'N/A',
+                'telefono' => $paciente['telefono'] ?? 'N/A',
+                'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? null,
+                'sexo' => $paciente['sexo'] ?? 'M'
+            ];
+            Log::info('✅ Paciente cargado via fallback', [
+                'cita_uuid' => $citaArray['uuid'],
+                'paciente_nombre' => $paciente['nombre_completo']
+            ]);
+        } else {
+            // ✅ PACIENTE POR DEFECTO SI NO SE ENCUENTRA
+            $citaArray['paciente'] = [
+                'uuid' => $citaArray['paciente_uuid'],
+                'nombre_completo' => 'Paciente no encontrado',
+                'documento' => 'N/A',
+                'telefono' => 'N/A',
+                'fecha_nacimiento' => null,
+                'sexo' => 'M'
+            ];
+            Log::warning('⚠️ Paciente no encontrado, usando datos por defecto', [
+                'paciente_uuid' => $citaArray['paciente_uuid']
+            ]);
+        }
+    }
+}
+
+
+                // ✅ LIMPIAR CAMPOS DUPLICADOS
+                unset(
+                    $citaArray['paciente_nombre_completo'], 
+                    $citaArray['paciente_documento'],
+                    $citaArray['paciente_telefono'], 
+                    $citaArray['paciente_fecha_nacimiento'], 
+                    $citaArray['paciente_sexo']
+                );
+
+                // ✅ AGREGAR HORA EXTRAÍDA DE fecha_inicio
+                if (isset($citaArray['fecha_inicio'])) {
+                    $fechaInicio = $citaArray['fecha_inicio'];
+                    if (strpos($fechaInicio, 'T') !== false) {
+                        $hora = explode('T', $fechaInicio)[1];
+                        $citaArray['hora'] = substr($hora, 0, 5); // "09:00:00" -> "09:00"
                     } else {
-                        // Paciente por defecto si no se encuentra
-                        $citaArray['paciente'] = [
-                            'uuid' => $citaArray['paciente_uuid'],
-                            'nombre_completo' => 'Paciente no encontrado',
-                            'documento' => 'N/A'
-                        ];
+                        $citaArray['hora'] = date('H:i', strtotime($fechaInicio));
                     }
                 }
-                
-                // ✅ AGREGAR INFORMACIÓN DE LA AGENDA
-                if (!empty($citaArray['agenda_uuid'])) {
-                    $agenda = $this->getAgendaOffline($citaArray['agenda_uuid']);
-                    if ($agenda) {
-                        $citaArray['agenda'] = $agenda;
-                    }
-                }
-                
+
                 return $citaArray;
             })->toArray();
-            
+
+            Log::info('✅ Citas SQLite procesadas', [
+                'total_procesadas' => count($citas),
+                'primera_cita_uuid' => $citas[0]['uuid'] ?? 'N/A',
+                'primera_cita_hora' => $citas[0]['hora'] ?? 'N/A'
+            ]);
+
         } else {
-            Log::info('📁 Usando archivos JSON como fallback');
+            // ✅ FALLBACK A JSON
+            Log::info('📱 Usando fallback JSON');
             
-            // ✅ FALLBACK A JSON MEJORADO
             $citasPath = $this->getStoragePath() . '/citas';
             if (is_dir($citasPath)) {
                 $files = glob($citasPath . '/*.json');
-                Log::info('📂 Archivos de citas encontrados', ['count' => count($files)]);
-                
                 foreach ($files as $file) {
                     $data = json_decode(file_get_contents($file), true);
-                    if (!$data || $data['sede_id'] != $sedeId || $data['deleted_at']) {
-                        continue;
-                    }
-                    
-                    // ✅ APLICAR FILTROS EN JSON
-                    if (!empty($filters['fecha'])) {
-                        $fechaFiltro = $filters['fecha'];
-                        if (strpos($fechaFiltro, 'T') !== false) {
-                            $fechaFiltro = explode('T', $fechaFiltro)[0];
+                    if ($data && 
+                        $data['sede_id'] == $sedeId &&
+                        empty($data['deleted_at'])) {
+                        
+                        // ✅ APLICAR FILTROS JSON
+                        $cumpleFiltros = true;
+                        
+                        if (!empty($filters['agenda_uuid']) && 
+                            $data['agenda_uuid'] !== $filters['agenda_uuid']) {
+                            $cumpleFiltros = false;
                         }
                         
-                        $fechaCita = $data['fecha'];
-                        if (strpos($fechaCita, 'T') !== false) {
-                            $fechaCita = explode('T', $fechaCita)[0];
+                        if (!empty($filters['fecha'])) {
+                            $fechaLimpia = $filters['fecha'];
+                            if (strpos($fechaLimpia, 'T') !== false) {
+                                $fechaLimpia = explode('T', $fechaLimpia)[0];
+                            }
+                            
+                            $fechaCita = $data['fecha'] ?? '';
+                            if (strpos($fechaCita, 'T') !== false) {
+                                $fechaCita = explode('T', $fechaCita)[0];
+                            }
+                            
+                            if ($fechaCita !== $fechaLimpia) {
+                                $cumpleFiltros = false;
+                            }
                         }
                         
-                        if ($fechaCita !== $fechaFiltro) {
-                            continue;
+                        if ($cumpleFiltros) {
+                            // ✅ ENRIQUECER CON PACIENTE SI NO ESTÁ
+                            if (!isset($data['paciente']) && !empty($data['paciente_uuid'])) {
+                                $paciente = $this->getPacienteOffline($data['paciente_uuid']);
+                                if ($paciente) {
+                                    $data['paciente'] = $paciente;
+                                }
+                            }
+                            
+                            // ✅ AGREGAR HORA
+                            if (isset($data['fecha_inicio']) && !isset($data['hora'])) {
+                                $fechaInicio = $data['fecha_inicio'];
+                                if (strpos($fechaInicio, 'T') !== false) {
+                                    $hora = explode('T', $fechaInicio)[1];
+                                    $data['hora'] = substr($hora, 0, 5);
+                                } else {
+                                    $data['hora'] = date('H:i', strtotime($fechaInicio));
+                                }
+                            }
+                            
+                            $citas[] = $data;
                         }
                     }
-                    
-                    if (!empty($filters['agenda_uuid']) && $data['agenda_uuid'] !== $filters['agenda_uuid']) {
-                        continue;
-                    }
-                    
-                    if (!empty($filters['estado']) && $data['estado'] !== $filters['estado']) {
-                        continue;
-                    }
-                    
-                    $citas[] = $data;
                 }
-                
-                // Ordenar por fecha
-                usort($citas, function($a, $b) {
-                    return strtotime($b['fecha_inicio']) - strtotime($a['fecha_inicio']);
+
+                // ✅ ORDENAR POR HORA
+                usort($citas, function ($a, $b) {
+                    return strcmp($a['fecha_inicio'] ?? '', $b['fecha_inicio'] ?? '');
                 });
             }
+
+            Log::info('✅ Citas JSON procesadas', [
+                'total_procesadas' => count($citas)
+            ]);
         }
 
         Log::info('✅ getCitasOffline completado', [
             'sede_id' => $sedeId,
-            'total_citas' => count($citas),
-            'filtros_aplicados' => $filters,
-            'primera_cita' => !empty($citas) ? [
-                'uuid' => $citas[0]['uuid'] ?? 'N/A',
-                'fecha' => $citas[0]['fecha'] ?? 'N/A',
-                'paciente' => $citas[0]['paciente']['nombre_completo'] ?? 'N/A'
-            ] : 'No hay citas'
+            'total_citas_retornadas' => count($citas),
+            'filters_aplicados' => $filters
         ]);
 
         return $citas;
@@ -2418,6 +2455,583 @@ public function getCitasOffline(int $sedeId, array $filters = []): array
     }
 }
 
+/**
+ * ✅ MÉTODO CORREGIDO: ACTUALIZAR ESTADO DE CITA OFFLINE
+ */
+public function actualizarEstadoCitaOffline($citaUuid, $nuevoEstado, $sedeId)
+{
+    try {
+        // ✅ VALIDAR UUID ANTES DE PROCESAR
+        if (empty($citaUuid) || !is_string($citaUuid) || strlen(trim($citaUuid)) === 0) {
+            Log::error('❌ UUID de cita vacío en actualizarEstadoCitaOffline', [
+                'cita_uuid' => $citaUuid,
+                'nuevo_estado' => $nuevoEstado,
+                'type' => gettype($citaUuid),
+                'length' => is_string($citaUuid) ? strlen($citaUuid) : 'N/A'
+            ]);
+            return false;
+        }
+
+        // ✅ LIMPIAR UUID
+        $citaUuid = trim($citaUuid);
+
+        Log::info('📱 Actualizando estado de cita offline', [
+            'cita_uuid' => $citaUuid,
+            'nuevo_estado' => $nuevoEstado,
+            'sede_id' => $sedeId
+        ]);
+
+        $actualizado = false;
+
+        if ($this->isSQLiteAvailable()) {
+            $updated = DB::connection('offline')
+                ->table('citas')
+                ->where('uuid', $citaUuid)
+                ->where('sede_id', $sedeId)
+                ->update([
+                    'estado' => $nuevoEstado,
+                    'updated_at' => now()->toISOString(),
+                    'offline_modificado' => true
+                ]);
+
+            if ($updated) {
+                Log::info('✅ Estado actualizado en SQLite', [
+                    'filas_afectadas' => $updated
+                ]);
+                $actualizado = true;
+            }
+        }
+
+        // ✅ FALLBACK A JSON
+        $citasPath = $this->getStoragePath() . '/citas';
+        if (is_dir($citasPath)) {
+            $files = glob($citasPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && 
+                    $data['uuid'] === $citaUuid && 
+                    $data['sede_id'] == $sedeId) {
+                    
+                    $data['estado'] = $nuevoEstado;
+                    $data['updated_at'] = now()->toISOString();
+                    $data['offline_modificado'] = true;
+                    
+                    if (file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT))) {
+                        Log::info('✅ Estado actualizado en JSON', [
+                            'archivo' => basename($file)
+                        ]);
+                        $actualizado = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // ✅ GUARDAR EN COLA DE SINCRONIZACIÓN CON UUID VALIDADO
+        if ($actualizado) {
+            $this->registrarCambioPendiente([
+                'tipo_operacion' => 'estado_actualizado',
+                'entidad_tipo' => 'cita',
+                'entidad_uuid' => $citaUuid, // ✅ UUID YA VALIDADO
+                'datos' => [
+                    'nuevo_estado' => $nuevoEstado,
+                    'timestamp' => now()->toISOString()
+                ],
+                'sede_id' => $sedeId
+            ]);
+        }
+
+        return $actualizado;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando estado offline', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid ?? 'NULL',
+            'nuevo_estado' => $nuevoEstado,
+            'trace' => $e->getTraceAsString()
+        ]);
+        return false;
+    }
+}
+/**
+ * ✅ MÉTODO FALTANTE: REGISTRAR CAMBIO PENDIENTE
+ */
+public function registrarCambioPendiente(array $cambioData)
+{
+    try {
+        // ✅ VALIDAR DATOS OBLIGATORIOS
+        if (empty($cambioData['entidad_uuid']) || empty($cambioData['tipo_operacion'])) {
+            Log::error('❌ Datos incompletos para registrar cambio pendiente', [
+                'cambio_data' => $cambioData
+            ]);
+            return false;
+        }
+
+        $cambio = [
+            'uuid' => \Str::uuid()->toString(),
+            'entidad_uuid' => trim($cambioData['entidad_uuid']),
+            'entidad_tipo' => $cambioData['entidad_tipo'] ?? 'cita',
+            'tipo_operacion' => $cambioData['tipo_operacion'],
+            'datos' => json_encode($cambioData['datos'] ?? []),
+            'sede_id' => $cambioData['sede_id'] ?? 1,
+            'timestamp' => now()->toISOString(),
+            'sincronizado' => false,
+            'intentos' => 0,
+            'created_at' => now()->toISOString(),
+            'updated_at' => now()->toISOString()
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            // ✅ CREAR TABLA SI NO EXISTE
+            $this->createCambiosPendientesTable();
+            
+            DB::connection('offline')
+                ->table('cambios_pendientes')
+                ->insert($cambio);
+                
+            Log::info('✅ Cambio registrado en SQLite', [
+                'cambio_uuid' => $cambio['uuid'],
+                'entidad_uuid' => $cambio['entidad_uuid']
+            ]);
+        } else {
+            // ✅ GUARDAR EN JSON
+            $cambiosPath = $this->getStoragePath() . '/cambios_pendientes';
+            if (!is_dir($cambiosPath)) {
+                mkdir($cambiosPath, 0755, true);
+            }
+            
+            $archivo = $cambiosPath . '/' . $cambio['uuid'] . '.json';
+            file_put_contents($archivo, json_encode($cambio, JSON_PRETTY_PRINT));
+            
+            Log::info('✅ Cambio registrado en JSON', [
+                'cambio_uuid' => $cambio['uuid'],
+                'archivo' => basename($archivo)
+            ]);
+        }
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error registrando cambio pendiente', [
+            'error' => $e->getMessage(),
+            'cambio_data' => $cambioData
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ MÉTODO 2: GUARDAR CAMBIO PARA SINCRONIZAR
+ */
+private function guardarCambioParaSincronizar($entidadUuid, $tipoOperacion, $datos)
+{
+    try {
+        $cambio = [
+            'uuid' => \Str::uuid()->toString(),
+            'entidad_uuid' => $entidadUuid,
+            'tipo_operacion' => $tipoOperacion,
+            'datos' => $datos,
+            'timestamp' => now()->toISOString(),
+            'sincronizado' => false
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            // ✅ CREAR TABLA SI NO EXISTE
+            $this->createCambiosPendientesTable();
+            
+            DB::connection('offline')
+                ->table('cambios_pendientes')
+                ->insert($cambio);
+        } else {
+            // ✅ GUARDAR EN JSON
+            $cambiosPath = $this->getStoragePath() . '/cambios_pendientes';
+            if (!is_dir($cambiosPath)) {
+                mkdir($cambiosPath, 0755, true);
+            }
+            
+            $archivo = $cambiosPath . '/' . $cambio['uuid'] . '.json';
+            file_put_contents($archivo, json_encode($cambio, JSON_PRETTY_PRINT));
+        }
+
+        Log::info('✅ Cambio guardado para sincronización', [
+            'cambio_uuid' => $cambio['uuid'],
+            'entidad_uuid' => $entidadUuid,
+            'tipo' => $tipoOperacion
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error guardando cambio para sincronizar', [
+            'error' => $e->getMessage(),
+            'entidad_uuid' => $entidadUuid
+        ]);
+    }
+}
+
+/**
+ * ✅ MÉTODO 3: CREAR TABLA DE CAMBIOS PENDIENTES
+ */
+private function createCambiosPendientesTable(): void
+{
+    try {
+        DB::connection('offline')->statement('
+            CREATE TABLE IF NOT EXISTS cambios_pendientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE NOT NULL,
+                entidad_uuid TEXT NOT NULL,
+                tipo_operacion TEXT NOT NULL,
+                datos TEXT,
+                timestamp DATETIME NOT NULL,
+                sincronizado BOOLEAN DEFAULT FALSE,
+                fecha_sincronizacion DATETIME NULL,
+                intentos INTEGER DEFAULT 0,
+                ultimo_error TEXT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        
+        // Crear índices
+        DB::connection('offline')->statement('
+            CREATE INDEX IF NOT EXISTS idx_cambios_pendientes_entidad ON cambios_pendientes(entidad_uuid)
+        ');
+        
+        DB::connection('offline')->statement('
+            CREATE INDEX IF NOT EXISTS idx_cambios_pendientes_sincronizado ON cambios_pendientes(sincronizado)
+        ');
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error creando tabla cambios_pendientes', [
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * ✅ MÉTODO 4: OBTENER CAMBIOS PENDIENTES DE SINCRONIZACIÓN
+ */
+public function getCambiosPendientesSincronizacion()
+{
+    try {
+        $cambios = [];
+
+        if ($this->isSQLiteAvailable()) {
+            $results = DB::connection('offline')
+                ->table('cambios_pendientes')
+                ->where('sincronizado', false)
+                ->orderBy('timestamp')
+                ->get();
+                
+            $cambios = $results->map(function($item) {
+                $cambio = (array) $item;
+                if (isset($cambio['datos']) && is_string($cambio['datos'])) {
+                    $cambio['datos'] = json_decode($cambio['datos'], true);
+                }
+                return $cambio;
+            })->toArray();
+        } else {
+            // ✅ LEER DESDE JSON
+            $cambiosPath = $this->getStoragePath() . '/cambios_pendientes';
+            if (is_dir($cambiosPath)) {
+                $files = glob($cambiosPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && !($data['sincronizado'] ?? false)) {
+                        $cambios[] = $data;
+                    }
+                }
+                
+                // ✅ ORDENAR POR TIMESTAMP
+                usort($cambios, function($a, $b) {
+                    return strcmp($a['timestamp'] ?? '', $b['timestamp'] ?? '');
+                });
+            }
+        }
+
+        Log::info('📋 Cambios pendientes obtenidos', [
+            'total' => count($cambios)
+        ]);
+
+        return $cambios;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo cambios pendientes', [
+            'error' => $e->getMessage()
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ MÉTODO 5: MARCAR CAMBIO COMO SINCRONIZADO
+ */
+public function marcarCambioComoSincronizado($cambioUuid)
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')
+                ->table('cambios_pendientes')
+                ->where('uuid', $cambioUuid)
+                ->update([
+                    'sincronizado' => true,
+                    'fecha_sincronizacion' => now()->toISOString(),
+                    'updated_at' => now()->toISOString()
+                ]);
+        } else {
+            // ✅ ACTUALIZAR JSON
+            $cambiosPath = $this->getStoragePath() . '/cambios_pendientes';
+            $archivo = $cambiosPath . '/' . $cambioUuid . '.json';
+            
+            if (file_exists($archivo)) {
+                $data = json_decode(file_get_contents($archivo), true);
+                $data['sincronizado'] = true;
+                $data['fecha_sincronizacion'] = now()->toISOString();
+                file_put_contents($archivo, json_encode($data, JSON_PRETTY_PRINT));
+            }
+        }
+
+        Log::info('✅ Cambio marcado como sincronizado', [
+            'cambio_uuid' => $cambioUuid
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error marcando cambio como sincronizado', [
+            'error' => $e->getMessage(),
+            'cambio_uuid' => $cambioUuid
+        ]);
+    }
+}
+
+/**
+ * ✅ MÉTODO CORREGIDO: SINCRONIZAR CAMBIOS DE ESTADO PENDIENTES
+ */
+public function sincronizarCambiosEstadoPendientes(): array
+{
+    try {
+        Log::info('🔄 Iniciando sincronización de cambios de estado');
+        
+        $results = [
+            'success' => 0,
+            'errors' => 0,
+            'details' => []
+        ];
+
+        $cambiosPendientes = $this->getCambiosPendientesSincronizacion();
+        
+        if (empty($cambiosPendientes)) {
+            return [
+                'success' => true,
+                'message' => 'No hay cambios pendientes',
+                'synced_count' => 0,
+                'failed_count' => 0
+            ];
+        }
+
+        $apiService = app(ApiService::class);
+        
+        foreach ($cambiosPendientes as $cambio) {
+            try {
+                if ($cambio['tipo_operacion'] === 'estado_actualizado') {
+                    $citaUuid = $cambio['entidad_uuid'];
+                    
+                    // ✅ VALIDAR UUID CRÍTICO
+                    if (empty($citaUuid) || !is_string($citaUuid) || strlen(trim($citaUuid)) === 0) {
+                        Log::error('❌ UUID de cita vacío o inválido en sincronización', [
+                            'cambio_uuid' => $cambio['uuid'] ?? 'N/A',
+                            'cita_uuid' => $citaUuid,
+                            'type' => gettype($citaUuid),
+                            'length' => is_string($citaUuid) ? strlen($citaUuid) : 'N/A'
+                        ]);
+                        
+                        $results['errors']++;
+                        $results['details'][] = [
+                            'cambio_uuid' => $cambio['uuid'] ?? 'N/A',
+                            'cita_uuid' => $citaUuid,
+                            'status' => 'error',
+                            'error' => 'UUID de cita vacío o inválido'
+                        ];
+                        continue;
+                    }
+                    
+                    // ✅ LIMPIAR UUID
+                    $citaUuid = trim($citaUuid);
+                    
+                    // ✅ OBTENER DATOS DEL CAMBIO
+                    $datos = $cambio['datos'];
+                    if (is_string($datos)) {
+                        $datos = json_decode($datos, true) ?? [];
+                    }
+                    
+                    $nuevoEstado = $datos['nuevo_estado'] ?? null;
+                    
+                    if (empty($nuevoEstado)) {
+                        Log::error('❌ Estado nuevo vacío en sincronización', [
+                            'cambio_uuid' => $cambio['uuid'],
+                            'datos' => $datos
+                        ]);
+                        
+                        $results['errors']++;
+                        continue;
+                    }
+                    
+                    Log::info('📡 Sincronizando cambio de estado', [
+                        'cita_uuid' => $citaUuid,
+                        'nuevo_estado' => $nuevoEstado,
+                        'cambio_uuid' => $cambio['uuid']
+                    ]);
+
+                    // ✅ INTENTAR SINCRONIZAR CON DIFERENTES ENDPOINTS
+                    $success = false;
+                    $lastError = null;
+                    
+                    // ✅ ENDPOINT 1: PUT /citas/{uuid}/estado
+                    try {
+                        Log::info('🔄 Probando endpoint PUT /citas/{uuid}/estado');
+                        
+                        $response = $apiService->put("/citas/{$citaUuid}/estado", [
+                            'estado' => $nuevoEstado
+                        ]);
+
+                        if ($response['success']) {
+                            $success = true;
+                            Log::info('✅ Sincronización exitosa con PUT /estado');
+                        } else {
+                            $lastError = $response['error'] ?? 'Error desconocido';
+                            Log::warning('⚠️ PUT /estado falló', ['error' => $lastError]);
+                        }
+                        
+                    } catch (\Exception $e) {
+                        $lastError = $e->getMessage();
+                        Log::warning('⚠️ Excepción en PUT /estado', ['error' => $lastError]);
+                    }
+                    
+                    // ✅ ENDPOINT 2: PATCH /citas/{uuid}
+                    if (!$success) {
+                        try {
+                            Log::info('🔄 Probando endpoint PATCH /citas/{uuid}');
+                            
+                            $response = $apiService->patch("/citas/{$citaUuid}", [
+                                'estado' => $nuevoEstado
+                            ]);
+
+                            if ($response['success']) {
+                                $success = true;
+                                Log::info('✅ Sincronización exitosa con PATCH /citas');
+                            } else {
+                                $lastError = $response['error'] ?? 'Error desconocido';
+                                Log::warning('⚠️ PATCH /citas falló', ['error' => $lastError]);
+                            }
+                            
+                        } catch (\Exception $e) {
+                            $lastError = $e->getMessage();
+                            Log::warning('⚠️ Excepción en PATCH /citas', ['error' => $lastError]);
+                        }
+                    }
+
+                    if ($success) {
+                        $this->marcarCambioComoSincronizado($cambio['uuid']);
+                        $results['success']++;
+                        $results['details'][] = [
+                            'cambio_uuid' => $cambio['uuid'],
+                            'cita_uuid' => $citaUuid,
+                            'status' => 'success'
+                        ];
+                        
+                        Log::info('✅ Cambio de estado sincronizado', [
+                            'cita_uuid' => $citaUuid,
+                            'estado' => $nuevoEstado
+                        ]);
+                    } else {
+                        $results['errors']++;
+                        $results['details'][] = [
+                            'cambio_uuid' => $cambio['uuid'],
+                            'cita_uuid' => $citaUuid,
+                            'status' => 'error',
+                            'error' => $lastError ?? 'Todos los endpoints fallaron'
+                        ];
+                        
+                        Log::error('❌ Error sincronizando cambio de estado', [
+                            'cita_uuid' => $citaUuid,
+                            'error' => $lastError ?? 'Todos los endpoints fallaron'
+                        ]);
+                    }
+                }
+
+            } catch (\Exception $e) {
+                $results['errors']++;
+                $results['details'][] = [
+                    'cambio_uuid' => $cambio['uuid'] ?? 'unknown',
+                    'status' => 'error',
+                    'error' => $e->getMessage()
+                ];
+                
+                Log::error('❌ Excepción sincronizando cambio', [
+                    'cambio_uuid' => $cambio['uuid'] ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => "Sincronización completada: {$results['success']} exitosas, {$results['errors']} errores",
+            'synced_count' => $results['success'],
+            'failed_count' => $results['errors'],
+            'details' => $results['details']
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error crítico en sincronización de cambios', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error crítico: ' . $e->getMessage(),
+            'synced_count' => 0,
+            'failed_count' => 0
+        ];
+    }
+}
+
+/**
+ * ✅ MÉTODO 7: OBTENER CONTEO DE CAMBIOS PENDIENTES
+ */
+public function getConteoEstadosPendientes(): int
+{
+    try {
+        $count = 0;
+
+        if ($this->isSQLiteAvailable()) {
+            $count = DB::connection('offline')
+                ->table('cambios_pendientes')
+                ->where('sincronizado', false)
+                ->where('tipo_operacion', 'estado_actualizado')
+                ->count();
+        } else {
+            $cambiosPath = $this->getStoragePath() . '/cambios_pendientes';
+            if (is_dir($cambiosPath)) {
+                $files = glob($cambiosPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && 
+                        !($data['sincronizado'] ?? false) && 
+                        ($data['tipo_operacion'] ?? '') === 'estado_actualizado') {
+                        $count++;
+                    }
+                }
+            }
+        }
+
+        return $count;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo conteo de estados pendientes', [
+            'error' => $e->getMessage()
+        ]);
+        return 0;
+    }
+}
 /**
  * ✅ CORREGIDO: Obtener agenda offline por UUID
  */
@@ -4862,54 +5476,381 @@ public function syncCupsContratadosFromApi(): bool
         return false;
     }
 }
-
+// app/Services/OfflineService.php - MÉTODO CORREGIDO
+/**
+ * ✅ OBTENER AGENDAS DEL DÍA - VERSIÓN CORREGIDA SIN DEPENDENCIA
+ */
 public function getAgendasDelDia($usuarioUuid, $fecha)
 {
     try {
-        return DB::connection('offline')
-            ->table('agendas')
-            ->where('usuario_medico_uuid', $usuarioUuid)
-            ->where('fecha', $fecha)
-            ->where('estado', 'ACTIVO')
-            ->get()
-            ->toArray();
+        Log::info('📅 getAgendasDelDia iniciado', [
+            'usuario_uuid' => $usuarioUuid,
+            'fecha' => $fecha,
+            'sqlite_available' => $this->isSQLiteAvailable()
+        ]);
+
+        $agendas = [];
+
+        if ($this->isSQLiteAvailable()) {
+            // ✅ LIMPIAR FECHA
+            $fechaLimpia = $fecha;
+            if (strpos($fechaLimpia, 'T') !== false) {
+                $fechaLimpia = explode('T', $fechaLimpia)[0];
+            }
+
+            Log::info('🔍 Preparando consulta SQLite', [
+                'fecha_original' => $fecha,
+                'fecha_limpia' => $fechaLimpia,
+                'usuario_uuid' => $usuarioUuid
+            ]);
+
+            // ✅ VERIFICAR DATOS DISPONIBLES
+            $totalAgendas = DB::connection('offline')->table('agendas')->count();
+            Log::info('📊 Total agendas en SQLite', ['total' => $totalAgendas]);
+
+            if ($totalAgendas > 0) {
+                // ✅ VERIFICAR ESTRUCTURA DE DATOS
+                $muestra = DB::connection('offline')
+                    ->table('agendas')
+                    ->select('uuid', 'fecha', 'usuario_medico_uuid', 'usuario_medico_id', 'etiqueta', 'medico_uuid')
+                    ->whereNull('deleted_at')
+                    ->limit(3)
+                    ->get();
+                
+                Log::info('🔍 Muestra de agendas disponibles', [
+                    'total_muestra' => $muestra->count(),
+                    'campos_disponibles' => $muestra->first() ? array_keys((array)$muestra->first()) : [],
+                    'primera_agenda' => $muestra->first() ? [
+                        'uuid' => $muestra->first()->uuid,
+                        'fecha' => $muestra->first()->fecha,
+                        'usuario_medico_uuid' => $muestra->first()->usuario_medico_uuid ?? 'NULL',
+                        'usuario_medico_id' => $muestra->first()->usuario_medico_id ?? 'NULL',
+                        'medico_uuid' => $muestra->first()->medico_uuid ?? 'NULL',
+                        'etiqueta' => $muestra->first()->etiqueta ?? 'NULL'
+                    ] : 'N/A'
+                ]);
+
+                // ✅ ESTRATEGIA MÚLTIPLE DE BÚSQUEDA
+                $results = collect();
+
+                // ESTRATEGIA 1: Por usuario_medico_uuid
+                if (!$results->count()) {
+                    $results = DB::connection('offline')
+                        ->table('agendas')
+                        ->whereNull('deleted_at')
+                        ->where('usuario_medico_uuid', $usuarioUuid)
+                        ->where(function($q) use ($fechaLimpia) {
+                            $q->whereDate('fecha', $fechaLimpia)
+                              ->orWhere('fecha', $fechaLimpia)
+                              ->orWhere('fecha', 'LIKE', $fechaLimpia . '%');
+                        })
+                        ->get();
+                    
+                    Log::info('🔍 Estrategia 1 (usuario_medico_uuid)', [
+                        'resultados' => $results->count(),
+                        'usuario_uuid' => $usuarioUuid
+                    ]);
+                }
+
+                // ESTRATEGIA 2: Por medico_uuid (campo alternativo)
+                if (!$results->count()) {
+                    $results = DB::connection('offline')
+                        ->table('agendas')
+                        ->whereNull('deleted_at')
+                        ->where('medico_uuid', $usuarioUuid)
+                        ->where(function($q) use ($fechaLimpia) {
+                            $q->whereDate('fecha', $fechaLimpia)
+                              ->orWhere('fecha', $fechaLimpia)
+                              ->orWhere('fecha', 'LIKE', $fechaLimpia . '%');
+                        })
+                        ->get();
+                    
+                    Log::info('🔍 Estrategia 2 (medico_uuid)', [
+                        'resultados' => $results->count()
+                    ]);
+                }
+
+                // ESTRATEGIA 3: Solo por fecha (si hay pocas agendas ese día)
+                if (!$results->count()) {
+                    $agendasDelDia = DB::connection('offline')
+                        ->table('agendas')
+                        ->whereNull('deleted_at')
+                        ->where(function($q) use ($fechaLimpia) {
+                            $q->whereDate('fecha', $fechaLimpia)
+                              ->orWhere('fecha', $fechaLimpia)
+                              ->orWhere('fecha', 'LIKE', $fechaLimpia . '%');
+                        })
+                        ->get();
+                    
+                    Log::info('🔍 Estrategia 3 (solo fecha)', [
+                        'resultados' => $agendasDelDia->count(),
+                        'fecha' => $fechaLimpia
+                    ]);
+
+                    // Si hay pocas agendas ese día, usar todas (probablemente son del usuario)
+                    if ($agendasDelDia->count() <= 5) {
+                        $results = $agendasDelDia;
+                        Log::info('✅ Usando todas las agendas del día (pocas encontradas)');
+                    }
+                }
+
+                // ESTRATEGIA 4: Búsqueda flexible por UUID parcial
+                if (!$results->count() && strlen($usuarioUuid) > 8) {
+                    $uuidParcial = substr($usuarioUuid, -12); // Últimos 12 caracteres
+                    
+                    $results = DB::connection('offline')
+                        ->table('agendas')
+                        ->whereNull('deleted_at')
+                        ->where(function($q) use ($uuidParcial) {
+                            $q->where('usuario_medico_uuid', 'LIKE', '%' . $uuidParcial)
+                              ->orWhere('medico_uuid', 'LIKE', '%' . $uuidParcial);
+                        })
+                        ->where(function($q) use ($fechaLimpia) {
+                            $q->whereDate('fecha', $fechaLimpia)
+                              ->orWhere('fecha', $fechaLimpia)
+                              ->orWhere('fecha', 'LIKE', $fechaLimpia . '%');
+                        })
+                        ->get();
+                    
+                    Log::info('🔍 Estrategia 4 (UUID parcial)', [
+                        'resultados' => $results->count(),
+                        'uuid_parcial' => $uuidParcial
+                    ]);
+                }
+
+                Log::info('📊 Resultado final de búsqueda', [
+                    'total_encontradas' => $results->count(),
+                    'estrategia_exitosa' => $results->count() > 0 ? 'SÍ' : 'NO'
+                ]);
+
+                $agendas = $results->map(function ($agenda) {
+                    return (array) $agenda;
+                })->toArray();
+
+            } else {
+                Log::warning('⚠️ No hay agendas en SQLite');
+            }
+
+        } else {
+            // ✅ FALLBACK A JSON
+            Log::info('📱 Usando fallback JSON para agendas');
+            
+            $agendasPath = $this->getStoragePath() . '/agendas';
+            if (is_dir($agendasPath)) {
+                $files = glob($agendasPath . '/*.json');
+                Log::info('📁 Archivos JSON encontrados', ['total' => count($files)]);
+                
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && empty($data['deleted_at'])) {
+                        // ✅ FILTROS JSON FLEXIBLES
+                        $fechaAgenda = $data['fecha'] ?? '';
+                        if (strpos($fechaAgenda, 'T') !== false) {
+                            $fechaAgenda = explode('T', $fechaAgenda)[0];
+                        }
+                        
+                        $cumpleFecha = ($fechaAgenda === $fecha || 
+                                      strpos($fechaAgenda, $fecha) !== false);
+                        
+                        $cumpleUsuario = (
+                            ($data['usuario_medico_uuid'] ?? '') === $usuarioUuid ||
+                            ($data['medico_uuid'] ?? '') === $usuarioUuid ||
+                            strpos($data['usuario_medico_uuid'] ?? '', substr($usuarioUuid, -12)) !== false
+                        );
+                        
+                        if ($cumpleFecha && $cumpleUsuario) {
+                            $agendas[] = $data;
+                        }
+                    }
+                }
+
+                Log::info('✅ Agendas JSON procesadas', [
+                    'total_final' => count($agendas)
+                ]);
+            }
+        }
+
+        Log::info('✅ getAgendasDelDia completado', [
+            'usuario_uuid' => $usuarioUuid,
+            'fecha' => $fecha,
+            'total_agendas_retornadas' => count($agendas),
+            'primera_agenda_uuid' => $agendas[0]['uuid'] ?? 'N/A'
+        ]);
+
+        return $agendas;
+
     } catch (\Exception $e) {
-        Log::error('Error obteniendo agendas offline', ['error' => $e->getMessage()]);
+        Log::error('❌ Error en getAgendasDelDia', [
+            'error' => $e->getMessage(),
+            'usuario_uuid' => $usuarioUuid,
+            'fecha' => $fecha,
+            'trace' => $e->getTraceAsString()
+        ]);
         return [];
     }
 }
 
+/**
+ * ✅ OBTENER CITAS POR AGENDA Y FECHA
+ */
 public function getCitasPorAgenda($agendaUuid, $fecha)
 {
     try {
-        return DB::connection('offline')
-            ->table('citas')
-            ->leftJoin('pacientes', 'citas.paciente_uuid', '=', 'pacientes.uuid')
-            ->where('citas.agenda_uuid', $agendaUuid)
-            ->whereDate('citas.fecha_inicio', $fecha)
-            ->select('citas.*', 'pacientes.nombre_completo', 'pacientes.documento', 'pacientes.telefono')
-            ->get()
-            ->toArray();
+        Log::info('📋 Obteniendo citas por agenda offline', [
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha
+        ]);
+
+        $citas = [];
+
+        if ($this->isSQLiteAvailable()) {
+            $query = DB::connection('offline')
+                ->table('citas')
+                ->leftJoin('pacientes', 'citas.paciente_uuid', '=', 'pacientes.uuid')
+                ->where('citas.agenda_uuid', $agendaUuid)
+                ->whereDate('citas.fecha_inicio', $fecha)
+                ->whereNull('citas.deleted_at')
+                ->select(
+                    'citas.*',
+                    'pacientes.nombre_completo',
+                    'pacientes.documento',
+                    'pacientes.telefono',
+                    'pacientes.fecha_nacimiento',
+                    'pacientes.sexo'
+                )
+                ->orderBy('citas.fecha_inicio');
+
+            $results = $query->get();
+
+            $citas = $results->map(function ($cita) {
+                $citaArray = (array) $cita;
+                
+                // Construir objeto paciente
+                if ($citaArray['nombre_completo']) {
+                    $citaArray['paciente'] = [
+                        'uuid' => $citaArray['paciente_uuid'],
+                        'nombre_completo' => $citaArray['nombre_completo'],
+                        'documento' => $citaArray['documento'],
+                        'telefono' => $citaArray['telefono'],
+                        'fecha_nacimiento' => $citaArray['fecha_nacimiento'],
+                        'sexo' => $citaArray['sexo']
+                    ];
+                }
+
+                // Limpiar campos duplicados
+                unset($citaArray['nombre_completo'], $citaArray['documento'], 
+                      $citaArray['telefono'], $citaArray['fecha_nacimiento'], $citaArray['sexo']);
+
+                return $citaArray;
+            })->toArray();
+
+            Log::info('✅ Citas obtenidas desde SQLite con JOIN', [
+                'total' => count($citas)
+            ]);
+        } else {
+            // Fallback a JSON
+            $citasPath = $this->getStoragePath() . '/citas';
+            if (is_dir($citasPath)) {
+                $files = glob($citasPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && 
+                        $data['agenda_uuid'] === $agendaUuid &&
+                        date('Y-m-d', strtotime($data['fecha_inicio'])) === $fecha &&
+                        empty($data['deleted_at'])) {
+                        
+                        // Enriquecer con datos del paciente si no están presentes
+                        if (!isset($data['paciente']) && !empty($data['paciente_uuid'])) {
+                            $paciente = $this->getPacienteOffline($data['paciente_uuid']);
+                            if ($paciente) {
+                                $data['paciente'] = $paciente;
+                            }
+                        }
+                        
+                        $citas[] = $data;
+                    }
+                }
+
+                // Ordenar por hora
+                usort($citas, function ($a, $b) {
+                    return strcmp($a['fecha_inicio'] ?? '', $b['fecha_inicio'] ?? '');
+                });
+            }
+
+            Log::info('✅ Citas obtenidas desde JSON', [
+                'total' => count($citas)
+            ]);
+        }
+
+        return $citas;
+
     } catch (\Exception $e) {
-        Log::error('Error obteniendo citas offline', ['error' => $e->getMessage()]);
+        Log::error('❌ Error obteniendo citas por agenda offline', [
+            'error' => $e->getMessage(),
+            'agenda_uuid' => $agendaUuid,
+            'fecha' => $fecha
+        ]);
         return [];
     }
 }
 
+/**
+ * ✅ ACTUALIZAR ESTADO DE CITA OFFLINE
+ */
 public function actualizarEstadoCita($uuid, $estado)
 {
     try {
-        $affected = DB::connection('offline')
-            ->table('citas')
-            ->where('uuid', $uuid)
-            ->update([
-                'estado' => $estado,
-                'updated_at' => now()
-            ]);
+        Log::info('🔄 Actualizando estado de cita offline', [
+            'cita_uuid' => $uuid,
+            'nuevo_estado' => $estado
+        ]);
+
+        $updated = false;
+
+        if ($this->isSQLiteAvailable()) {
+            $affected = DB::connection('offline')
+                ->table('citas')
+                ->where('uuid', $uuid)
+                ->update([
+                    'estado' => $estado,
+                    'updated_at' => now()->toISOString()
+                ]);
+                
+            $updated = $affected > 0;
             
-        return $affected > 0;
+            if ($updated) {
+                Log::info('✅ Estado actualizado en SQLite', [
+                    'cita_uuid' => $uuid,
+                    'nuevo_estado' => $estado
+                ]);
+            }
+        }
+
+        // También actualizar en JSON si existe
+        $jsonPath = $this->getStoragePath() . "/citas/{$uuid}.json";
+        if (file_exists($jsonPath)) {
+            $citaData = json_decode(file_get_contents($jsonPath), true);
+            if ($citaData) {
+                $citaData['estado'] = $estado;
+                $citaData['updated_at'] = now()->toISOString();
+                file_put_contents($jsonPath, json_encode($citaData, JSON_PRETTY_PRINT));
+                $updated = true;
+                
+                Log::info('✅ Estado actualizado en JSON', [
+                    'cita_uuid' => $uuid,
+                    'nuevo_estado' => $estado
+                ]);
+            }
+        }
+
+        return $updated;
+
     } catch (\Exception $e) {
-        Log::error('Error actualizando estado cita offline', ['error' => $e->getMessage()]);
+        Log::error('❌ Error actualizando estado de cita offline', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $uuid,
+            'estado' => $estado
+        ]);
         return false;
     }
 }

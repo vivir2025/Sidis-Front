@@ -1,13 +1,11 @@
 {{-- resources/views/cronograma/index.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Cronograma - Profesional en Salud')
+@section('title', 'Mi Cronograma - ' . ($usuario['nombre_completo'] ?? 'Profesional'))
 
 @push('styles')
 <style>
-/* ✅ ESTILOS MEJORADOS Y OPTIMIZADOS */
-
-/* Variables CSS personalizadas */
+/* ✅ ESTILOS ESPECÍFICOS DEL CRONOGRAMA */
 :root {
     --primary-gradient: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
     --success-gradient: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
@@ -19,16 +17,16 @@
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Header del cronograma */
 .card-header.bg-primary {
     background: var(--primary-gradient) !important;
     border-radius: var(--border-radius) var(--border-radius) 0 0;
 }
 
-/* Tarjetas de estadísticas */
 .card-stat {
     transition: var(--transition);
     cursor: pointer;
+    border: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .card-stat:hover {
@@ -36,24 +34,12 @@
     box-shadow: var(--shadow-lg);
 }
 
-.card-stat .rounded-circle {
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-}
-
-.card-stat:hover .rounded-circle {
-    transform: scale(1.1);
-}
-
-/* Tarjetas de agendas */
 .agenda-card {
     transition: var(--transition);
     border-radius: var(--border-radius);
     overflow: hidden;
+    border: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .agenda-card:hover {
@@ -61,11 +47,12 @@
     box-shadow: var(--shadow-lg);
 }
 
-/* Tarjetas de citas */
 .cita-card {
     transition: var(--transition);
     border-radius: var(--border-radius);
     height: 100%;
+    border: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .cita-card:hover {
@@ -73,282 +60,56 @@
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
 }
 
-/* Bordes de estado */
+/* ✅ ESTILOS PARA CAMBIOS PENDIENTES */
+.cita-card.cambios-pendientes {
+    border-left: 4px solid #17a2b8 !important;
+    background: linear-gradient(135deg, rgba(23, 162, 184, 0.05) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+.badge.cambios-pendientes {
+    position: relative;
+    overflow: visible;
+}
+
+.badge.cambios-pendientes::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    background: #ffc107;
+    border-radius: 50%;
+    border: 2px solid white;
+    animation: pulse-pending 2s infinite;
+}
+
+@keyframes pulse-pending {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.text-info.cambios-pendientes {
+    font-weight: 600;
+    animation: fade-in-out 3s infinite;
+}
+
+@keyframes fade-in-out {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
 .border-start.border-4 {
     border-left-width: 4px !important;
 }
 
-.border-primary { border-color: #007bff !important; }
-.border-warning { border-color: #ffc107 !important; }
-.border-success { border-color: #28a745 !important; }
-.border-danger { border-color: #dc3545 !important; }
-.border-secondary { border-color: #6c757d !important; }
-
-/* Badges mejorados */
 .badge-sm {
     font-size: 0.75em;
     padding: 0.35em 0.6em;
     border-radius: 0.375rem;
 }
 
-.badge {
-    font-weight: 500;
-    letter-spacing: 0.025em;
-}
-
-/* Botones mejorados */
-.btn-sm {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.25;
-    border-radius: 0.375rem;
-    transition: var(--transition);
-}
-
-.btn:hover {
-    transform: translateY(-1px);
-}
-
-.btn:active {
-    transform: translateY(0);
-}
-
-/* Barras de progreso */
-.progress {
-    height: 6px;
-    border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-.progress-bar {
-    border-radius: 3px;
-    transition: width 0.6s ease;
-}
-
-/* Loading overlay mejorado */
-#loading-overlay {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-}
-
-#loading-overlay .spinner-border {
-    width: 3rem;
-    height: 3rem;
-    border-width: 0.3em;
-}
-
-/* Modales mejorados */
-.modal-content {
-    border-radius: var(--border-radius);
-    border: none;
-    box-shadow: var(--shadow-lg);
-}
-
-.modal-header {
-    border-radius: var(--border-radius) var(--border-radius) 0 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.modal-body .card {
-    border: 1px solid rgba(0, 0, 0, 0.125);
-    border-radius: var(--border-radius);
-}
-
-.modal-body .card-header {
-    background-color: #f8f9fa;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
-    border-radius: var(--border-radius) var(--border-radius) 0 0;
-}
-
-/* Tablas mejoradas */
-.table-hover tbody tr:hover {
-    background-color: rgba(0, 123, 255, 0.05);
-}
-
-.table thead th {
-    border-bottom: 2px solid #dee2e6;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.875rem;
-    letter-spacing: 0.05em;
-}
-
-/* Alertas de debug */
-.alert-info {
-    border-left: 4px solid #0dcaf0;
-    background-color: rgba(13, 202, 240, 0.1);
-}
-
-.alert-info a {
-    color: #0dcaf0;
-    text-decoration: underline;
-    font-weight: 500;
-}
-
-.alert-info a:hover {
-    color: #0a97b0;
-    text-decoration: none;
-}
-
-/* Toasts mejorados */
-.toast-container {
-    z-index: 9999;
-}
-
-.toast {
-    min-width: 350px;
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-lg);
-}
-
-/* Animaciones */
-@keyframes fadeIn {
-    from { 
-        opacity: 0; 
-        transform: translateY(20px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    }
-}
-
-@keyframes slideInRight {
-    from { 
-        opacity: 0; 
-        transform: translateX(30px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateX(0); 
-    }
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-.card {
-    animation: fadeIn 0.5s ease-out;
-}
-
-.toast {
-    animation: slideInRight 0.3s ease-out;
-}
-
-.badge {
-    animation: pulse 2s infinite;
-}
-
-/* Responsive design mejorado */
-@media (max-width: 1200px) {
-    .col-lg-4 {
-        margin-bottom: 1rem;
-    }
-}
-
-@media (max-width: 992px) {
-    .d-flex.gap-2 {
-        flex-direction: column;
-        gap: 0.75rem !important;
-    }
-    
-    .input-group {
-        width: 100% !important;
-    }
-    
-    .card-header .row {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .card-header .col-md-4 {
-        text-align: left !important;
-    }
-}
-
-@media (max-width: 768px) {
-    .container-fluid {
-        padding-left: 0.75rem;
-        padding-right: 0.75rem;
-    }
-    
-    .card-body {
-        padding: 1rem;
-    }
-    
-    .btn-sm {
-        font-size: 0.75rem;
-        padding: 0.25rem 0.5rem;
-    }
-    
-    .badge {
-        font-size: 0.7em;
-    }
-    
-    .modal-dialog {
-        margin: 0.5rem;
-    }
-    
-    .table-responsive {
-        font-size: 0.875rem;
-    }
-}
-
-@media (max-width: 576px) {
-    .col-md-2 {
-        margin-bottom: 0.75rem;
-    }
-    
-    .card-title {
-        font-size: 0.9rem;
-    }
-    
-    .text-truncate-2 {
-        -webkit-line-clamp: 1;
-    }
-    
-    .d-flex.gap-1 {
-        gap: 0.25rem !important;
-    }
-    
-    .btn-group-sm > .btn {
-        padding: 0.2rem 0.4rem;
-        font-size: 0.7rem;
-    }
-}
-
-/* Mejoras de accesibilidad */
-.btn:focus,
-.form-control:focus {
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-    outline: none;
-}
-
-.btn:focus-visible {
-    outline: 2px solid #007bff;
-    outline-offset: 2px;
-}
-
-/* Estados de carga */
-.btn[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none !important;
-}
-
-.btn .fa-spinner {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* Mejoras visuales adicionales */
 .text-truncate-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -359,111 +120,11 @@
     max-height: 2.8em;
 }
 
-.bg-opacity-10 {
-    background-color: rgba(var(--bs-primary-rgb), 0.1) !important;
+#loading-overlay {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
-.shadow-sm {
-    box-shadow: var(--shadow-sm) !important;
-}
-
-/* Efectos de hover mejorados */
-.card-stat:hover .rounded-circle {
-    background-color: rgba(var(--bs-primary-rgb), 0.2) !important;
-}
-
-.cita-card:hover .border-start {
-    border-left-width: 6px !important;
-}
-
-/* Indicadores de tiempo */
-.text-danger {
-    color: #dc3545 !important;
-    font-weight: 500;
-}
-
-.text-info {
-    color: #0dcaf0 !important;
-    font-weight: 500;
-}
-
-/* Estilos para elementos vacíos */
-.text-center.py-5 {
-    padding: 3rem 1rem !important;
-}
-
-.text-center.py-4 {
-    padding: 2rem 1rem !important;
-}
-
-/* Optimizaciones de rendimiento */
-* {
-    box-sizing: border-box;
-}
-
-.card,
-.btn,
-.badge {
-    will-change: transform;
-}
-
-/* Print styles */
-@media print {
-    .btn,
-    .dropdown,
-    #loading-overlay,
-    .toast-container,
-    .modal,
-    .navbar,
-    .sidebar {
-        display: none !important;
-    }
-    
-    .container-fluid {
-        max-width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    
-    .card {
-        border: 1px solid #000 !important;
-        box-shadow: none !important;
-        page-break-inside: avoid;
-        margin-bottom: 1rem !important;
-    }
-    
-    .card-header {
-        background: #f8f9fa !important;
-        color: #000 !important;
-        -webkit-print-color-adjust: exact;
-    }
-    
-    .badge {
-        border: 1px solid #000 !important;
-        color: #000 !important;
-        background: transparent !important;
-    }
-    
-    .text-primary,
-    .text-success,
-    .text-warning,
-    .text-danger {
-        color: #000 !important;
-    }
-    
-    .page-break {
-        page-break-before: always;
-    }
-}
-
-/* Optimizaciones finales */
-.gpu-accelerated {
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    perspective: 1000px;
-}
-
-/* Estados de conectividad */
 .connection-indicator {
     transition: var(--transition);
 }
@@ -480,126 +141,59 @@
     border: 1px solid #f5c6cb;
 }
 
-/* Mejoras de performance */
-.card-body {
-    contain: layout style;
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-.table-responsive {
-    contain: layout;
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
 }
 
-/* Estados de loading específicos */
-.loading-skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: loading 1.5s infinite;
+.card {
+    animation: fadeIn 0.5s ease-out;
 }
 
-@keyframes loading {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+.badge {
+    animation: pulse 2s infinite;
 }
 
-/* Estilos para elementos específicos del cronograma médico */
-.agenda-profesional {
-    border-left: 4px solid var(--bs-primary);
-    background: linear-gradient(135deg, rgba(0, 123, 255, 0.05) 0%, rgba(0, 123, 255, 0.02) 100%);
-}
-
-.cita-urgente {
-    border-left: 4px solid var(--bs-danger);
-    background: linear-gradient(135deg, rgba(220, 53, 69, 0.05) 0%, rgba(220, 53, 69, 0.02) 100%);
-}
-
-.cita-completada {
-    border-left: 4px solid var(--bs-success);
-    background: linear-gradient(135deg, rgba(40, 167, 69, 0.05) 0%, rgba(40, 167, 69, 0.02) 100%);
-}
-
-/* Indicadores de tiempo real */
-.tiempo-real {
-    position: relative;
-}
-
-.tiempo-real::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 8px;
-    height: 8px;
-    background: #28a745;
-    border-radius: 50%;
-    animation: pulse-dot 2s infinite;
-}
-
-@keyframes pulse-dot {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.2); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-/* Estilos para diferentes tipos de modalidad médica */
-.modalidad-presencial {
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-    border-left: 4px solid #2196f3;
-}
-
-.modalidad-virtual {
-    background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
-    border-left: 4px solid #9c27b0;
-}
-
-.modalidad-domicilio {
-    background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
-    border-left: 4px solid #4caf50;
-}
-
-/* Tooltips mejorados */
-.tooltip-inner {
-    background-color: rgba(0, 0, 0, 0.9);
-    border-radius: var(--border-radius);
-    font-size: 0.875rem;
-    padding: 0.5rem 0.75rem;
-}
-
-/* Scrollbars personalizados */
-.custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
 }
 </style>
 @endpush
 
 @section('content')
 <div class="container-fluid">
-    <!-- Header del Cronograma -->
+    <!-- ✅ HEADER DEL CRONOGRAMA -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h1 class="h3 mb-0">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div class="mb-2 mb-md-0">
+                    <h1 class="h3 mb-1">
                         <i class="fas fa-calendar-check text-primary me-2"></i>
                         Mi Cronograma
                     </h1>
-                    <p class="text-muted mb-0">
-                        Dr(a). <strong>{{ $usuario['nombre_completo'] ?? 'Profesional' }}</strong>
-                        - {{ $usuario['especialidad']['nombre'] ?? 'Medicina General' }}
+                    <p class="text-muted mb-1">
+                        <strong>{{ $usuario['nombre_completo'] ?? 'Profesional' }}</strong>
+                        @if(isset($usuario['especialidad']['nombre']))
+                            - {{ $usuario['especialidad']['nombre'] }}
+                        @endif
                     </p>
                     <small class="text-muted">
                         <i class="fas fa-clock me-1"></i>
@@ -607,15 +201,15 @@
                     </small>
                 </div>
                 
-                <!-- Controles de Fecha -->
-                <div class="d-flex align-items-center gap-2">
+                <!-- ✅ CONTROLES -->
+                <div class="d-flex align-items-center gap-2 flex-wrap">
                     <!-- Estado de Conexión -->
                     @if($isOffline)
-                        <span class="badge bg-warning me-2 connection-indicator offline">
+                        <span class="badge bg-warning connection-indicator offline" id="badge-conexion">
                             <i class="fas fa-database"></i> Datos Locales
                         </span>
                     @else
-                        <span class="badge bg-success me-2 connection-indicator online">
+                        <span class="badge bg-success connection-indicator online" id="badge-conexion">
                             <i class="fas fa-wifi"></i> Conectado
                         </span>
                     @endif
@@ -642,7 +236,7 @@
         </div>
     </div>
 
-    <!-- ✅ ESTADÍSTICAS GLOBALES MEJORADAS -->
+    <!-- ✅ ESTADÍSTICAS GLOBALES -->
     <div class="row mb-4" id="estadisticas-globales">
         <div class="col-md-2 col-sm-6 mb-3">
             <div class="card border-0 shadow-sm h-100 card-stat">
@@ -729,7 +323,7 @@
         </div>
     </div>
 
-    <!-- ✅ AGENDAS DEL DÍA CON CITAS INTEGRADAS -->
+    <!-- ✅ AGENDAS DEL DÍA CON CITAS -->
     <div class="row" id="cronograma-content">
         @if(empty($cronogramaData['agendas']))
             <div class="col-12">
@@ -739,9 +333,9 @@
                         <h4 class="text-muted">No hay agendas programadas</h4>
                         <p class="text-muted">No tienes agendas asignadas para el {{ \Carbon\Carbon::parse($fechaSeleccionada)->format('d/m/Y') }}</p>
                         @if(!$isOffline)
-                            <button type="button" class="btn btn-primary" onclick="window.location.href='/agendas/create'">
+                            <a href="{{ route('agendas.create') }}" class="btn btn-primary">
                                 <i class="fas fa-plus me-1"></i>Crear Nueva Agenda
-                            </button>
+                            </a>
                         @else
                             <div class="alert alert-info mt-3">
                                 <i class="fas fa-info-circle me-2"></i>
@@ -755,7 +349,7 @@
             @foreach($cronogramaData['agendas'] as $agenda)
                 <div class="col-12 mb-4" data-agenda-uuid="{{ $agenda['uuid'] }}">
                     <div class="card border-0 shadow-sm agenda-card">
-                        <!-- ✅ HEADER DE AGENDA MEJORADO -->
+                        <!-- ✅ HEADER DE AGENDA -->
                         <div class="card-header bg-primary text-white">
                             <div class="row align-items-center">
                                 <div class="col-md-8">
@@ -786,11 +380,16 @@
                                     <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap">
                                         <span class="badge bg-light text-dark">
                                             <i class="fas fa-users me-1"></i>
-                                            <span class="total-citas">{{ $agenda['total_citas'] ?? 0 }}</span>/<span class="total-cupos">{{ $agenda['total_cupos'] ?? 0 }}</span>
+                                            <span class="total-citas">{{ count($agenda['citas'] ?? []) }}</span>/<span class="total-cupos">{{ $agenda['total_cupos'] ?? 0 }}</span>
                                         </span>
+                                        @php
+                                            $totalCupos = $agenda['total_cupos'] ?? 0;
+                                            $totalCitas = count($agenda['citas'] ?? []);
+                                            $porcentaje = $totalCupos > 0 ? round(($totalCitas / $totalCupos) * 100, 1) : 0;
+                                        @endphp
                                         <span class="badge bg-success">
                                             <i class="fas fa-chart-pie me-1"></i>
-                                            <span class="porcentaje-ocupacion">{{ $agenda['porcentaje_ocupacion'] ?? 0 }}</span>%
+                                            <span class="porcentaje-ocupacion">{{ $porcentaje }}</span>%
                                         </span>
                                         <div class="dropdown">
                                             <button class="btn btn-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">
@@ -806,8 +405,8 @@
                                                 @if(!$isOffline)
                                                     <li><hr class="dropdown-divider"></li>
                                                     <li>
-                                                        <a class="dropdown-item" href="/agendas/{{ $agenda['uuid'] }}/edit">
-                                                            <i class="fas fa-edit me-2"></i>Editar Agenda
+                                                        <a class="dropdown-item" href="{{ route('agendas.show', $agenda['uuid']) }}">
+                                                            <i class="fas fa-eye me-2"></i>Ver Agenda
                                                         </a>
                                                     </li>
                                                 @endif
@@ -817,13 +416,13 @@
                                 </div>
                             </div>
                             
-                            <!-- ✅ BARRA DE PROGRESO DE OCUPACIÓN -->
+                            <!-- ✅ BARRA DE PROGRESO -->
                             <div class="mt-2">
-                                                            <div class="progress" style="height: 4px;">
+                                <div class="progress" style="height: 4px;">
                                     <div class="progress-bar bg-light" 
                                          role="progressbar" 
-                                         style="width: {{ $agenda['porcentaje_ocupacion'] ?? 0 }}%"
-                                         aria-valuenow="{{ $agenda['porcentaje_ocupacion'] ?? 0 }}" 
+                                         style="width: {{ $porcentaje }}%"
+                                         aria-valuenow="{{ $porcentaje }}" 
                                          aria-valuemin="0" 
                                          aria-valuemax="100">
                                     </div>
@@ -838,10 +437,9 @@
                                     <i class="fas fa-user-times fa-2x text-muted mb-2"></i>
                                     <p class="text-muted mb-2">No hay citas programadas para esta agenda</p>
                                     @if(!$isOffline)
-                                        <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                onclick="window.location.href='/citas/create?agenda={{ $agenda['uuid'] }}'">
+                                        <a href="{{ route('citas.create') }}?agenda={{ $agenda['uuid'] }}" class="btn btn-outline-primary btn-sm">
                                             <i class="fas fa-plus me-1"></i>Agendar Cita
-                                        </button>
+                                        </a>
                                     @else
                                         <div class="alert alert-info mt-2">
                                             <i class="fas fa-info-circle me-1"></i>
@@ -850,7 +448,7 @@
                                     @endif
                                 </div>
                             @else
-                                <!-- ✅ ESTADÍSTICAS RÁPIDAS DE LA AGENDA -->
+                                <!-- ✅ ESTADÍSTICAS DE LA AGENDA -->
                                 <div class="row g-2 mb-3">
                                     <div class="col-auto">
                                         <span class="badge bg-primary">
@@ -879,17 +477,24 @@
                                         </div>
                                     @endif
                                     <div class="col-auto ms-auto">
+                                        @php
+                                            $citasActivas = array_filter($agenda['citas'], function($cita) {
+                                                return !in_array($cita['estado'] ?? '', ['CANCELADA', 'NO_ASISTIO']);
+                                            });
+                                            $cuposLibres = max(0, ($agenda['total_cupos'] ?? 0) - count($citasActivas));
+                                        @endphp
                                         <span class="badge bg-info">
                                             <i class="fas fa-chair me-1"></i>
-                                            <span class="cupos-disponibles">{{ $agenda['cupos_disponibles'] ?? 0 }}</span> Cupos Libres
+                                            <span class="cupos-disponibles">{{ $cuposLibres }}</span> Cupos Libres
                                         </span>
                                     </div>
                                 </div>
                                 
-                                <!-- ✅ GRID DE CITAS MEJORADO -->
+                                <!-- ✅ GRID DE CITAS -->
                                 <div class="row g-3">
                                     @foreach($agenda['citas'] as $cita)
                                         @php
+                                            // ✅ MEJORAR LA BÚSQUEDA DE DATOS DEL PACIENTE
                                             $paciente = $cita['paciente'] ?? [];
                                             $estado = $cita['estado'] ?? 'PROGRAMADA';
                                             $estadoInfo = [
@@ -899,52 +504,106 @@
                                                 'CANCELADA' => ['color' => 'danger', 'icon' => 'times', 'label' => 'Cancelada'],
                                                 'NO_ASISTIO' => ['color' => 'secondary', 'icon' => 'user-times', 'label' => 'No Asistió']
                                             ][$estado] ?? ['color' => 'secondary', 'icon' => 'question', 'label' => $estado];
+                                            
+                                            // ✅ BUSCAR NOMBRE EN MÚLTIPLES UBICACIONES CON MEJOR LÓGICA
+                                            $nombrePaciente = '';
+                                            if (!empty($paciente['nombre_completo'])) {
+                                                $nombrePaciente = $paciente['nombre_completo'];
+                                            } elseif (!empty($paciente['primer_nombre']) || !empty($paciente['primer_apellido'])) {
+                                                $nombrePaciente = trim(($paciente['primer_nombre'] ?? '') . ' ' . ($paciente['primer_apellido'] ?? ''));
+                                            } elseif (!empty($cita['paciente_nombre'])) {
+                                                $nombrePaciente = $cita['paciente_nombre'];
+                                            } elseif (!empty($cita['nombre_paciente'])) {
+                                                $nombrePaciente = $cita['nombre_paciente'];
+                                            } else {
+                                                $nombrePaciente = 'Paciente no identificado';
+                                            }
+                                            
+                                            // ✅ BUSCAR DOCUMENTO
+                                            $documentoPaciente = $paciente['documento'] ?? 
+                                                                $paciente['cedula'] ?? 
+                                                                $cita['paciente_documento'] ?? 
+                                                                $cita['documento_paciente'] ?? 
+                                                                'Sin documento';
+                                                                
+                                            // ✅ BUSCAR TELÉFONO
+                                            $telefonoPaciente = $paciente['telefono'] ?? 
+                                                               $paciente['celular'] ?? 
+                                                               $cita['paciente_telefono'] ?? 
+                                                               $cita['telefono_paciente'] ?? 
+                                                               null;
+                                            
+                                            // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES OFFLINE
+                                            $tieneCambiosPendientes = false;
+                                            if (isset($cita['offline_modificado']) && $cita['offline_modificado']) {
+                                                $tieneCambiosPendientes = true;
+                                            }
+                                                           
+                                            // ✅ DEBUG MEJORADO
+                                            if ($loop->first) {
+                                                \Log::info('🔍 DEBUG PACIENTE CRONOGRAMA MEJORADO:', [
+                                                    'cita_uuid' => $cita['uuid'],
+                                                    'paciente_raw' => $paciente,
+                                                    'nombre_encontrado' => $nombrePaciente,
+                                                    'documento_encontrado' => $documentoPaciente,
+                                                    'telefono_encontrado' => $telefonoPaciente,
+                                                    'tiene_cambios_pendientes' => $tieneCambiosPendientes,
+                                                    'estado_actual' => $cita['estado'] ?? 'N/A'
+                                                ]);
+                                            }
                                         @endphp
                                         
                                         <div class="col-md-6 col-lg-4" data-cita-uuid="{{ $cita['uuid'] }}">
-                                            <div class="card border-start border-4 border-{{ $estadoInfo['color'] }} h-100 cita-card">
+                                            <div class="card border-start border-4 border-{{ $estadoInfo['color'] }} h-100 cita-card {{ $tieneCambiosPendientes ? 'cambios-pendientes' : '' }}">
                                                 <div class="card-body">
-                                                    <!-- ✅ HEADER DE CITA -->
+                                                    <!-- ✅ HEADER DE CITA MEJORADO -->
                                                     <div class="d-flex justify-content-between align-items-start mb-2">
                                                         <h6 class="card-title mb-0 text-truncate" style="max-width: 70%;">
                                                             <i class="fas fa-user me-1"></i>
-                                                            {{ $paciente['nombre_completo'] ?? 'Paciente no identificado' }}
+                                                            {{ $nombrePaciente }}
+                                                            @if($tieneCambiosPendientes)
+                                                                <i class="fas fa-sync-alt text-info ms-1" title="Cambios pendientes de sincronización"></i>
+                                                            @endif
                                                         </h6>
-                                                        <span class="badge bg-{{ $estadoInfo['color'] }} badge-sm">
+                                                        <span class="badge bg-{{ $estadoInfo['color'] }} badge-sm {{ $tieneCambiosPendientes ? 'cambios-pendientes' : '' }}">
                                                             <i class="fas fa-{{ $estadoInfo['icon'] }} me-1"></i>
                                                             {{ $estadoInfo['label'] }}
+                                                            @if($tieneCambiosPendientes)
+                                                                <i class="fas fa-clock ms-1" title="Pendiente de sincronizar"></i>
+                                                            @endif
                                                         </span>
                                                     </div>
-                                                    
-                                                    <!-- ✅ INFORMACIÓN DE LA CITA -->
+
+                                                    <!-- ✅ INFORMACIÓN DE LA CITA MEJORADA -->
                                                     <div class="text-muted small mb-2">
                                                         <div class="mb-1">
                                                             <i class="fas fa-id-card me-1"></i> 
-                                                            {{ $paciente['documento'] ?? 'Sin documento' }}
+                                                            {{ $documentoPaciente }}
                                                         </div>
                                                         <div class="mb-1">
                                                             <i class="fas fa-clock me-1"></i> 
-                                                            {{ isset($cita['fecha_inicio']) ? \Carbon\Carbon::parse($cita['fecha_inicio'])->format('H:i') : 'N/A' }} - 
+                                                            {{ isset($cita['fecha_inicio']) ? \Carbon\Carbon::parse($cita['fecha_inicio'])->format('H:i') : ($cita['hora'] ?? 'N/A') }} - 
                                                             {{ isset($cita['fecha_final']) ? \Carbon\Carbon::parse($cita['fecha_final'])->format('H:i') : 'N/A' }}
                                                         </div>
-                                                        @if(!empty($paciente['telefono']))
+                                                        @if($telefonoPaciente)
                                                             <div class="mb-1">
-                                                                <i class="fas fa-phone me-1"></i> 
-                                                                {{ $paciente['telefono'] }}
+                                                                <i class="fas fa-phone me-1"></i>
+                                                                                                                                {{ $telefonoPaciente }}
                                                             </div>
                                                         @endif
-                                                        @if(isset($cita['tiempo_info']))
-                                                            <div class="mb-1">
-                                                                <i class="fas fa-hourglass-half me-1"></i>
-                                                                <span class="text-{{ $cita['tiempo_info']['tipo'] === 'pasado' ? 'danger' : 'info' }}">
-                                                                    {{ $cita['tiempo_info']['texto'] }}
-                                                                </span>
-                                                            </div>
-                                                        @endif
+                                                        
+                                                        <!-- ✅ INDICADORES DE ESTADO -->
                                                         @if(isset($cita['source']) && $cita['source'] === 'offline')
                                                             <div class="mb-1">
                                                                 <i class="fas fa-database me-1"></i>
                                                                 <span class="text-warning">Datos locales</span>
+                                                            </div>
+                                                        @endif
+                                                        
+                                                        @if($tieneCambiosPendientes)
+                                                            <div class="mb-1">
+                                                                <i class="fas fa-sync-alt me-1"></i>
+                                                                <span class="text-info cambios-pendientes">Cambios pendientes</span>
                                                             </div>
                                                         @endif
                                                     </div>
@@ -957,76 +616,80 @@
                                                         </p>
                                                     @endif
                                                     
-                                                    <!-- ✅ BOTONES DE ACCIÓN -->
-                                                    <div class="d-flex gap-1 mt-auto">
+                                                    <!-- ✅ BOTONES DE ACCIÓN MEJORADOS -->
+                                                    <div class="d-flex gap-1 mt-auto position-relative">
                                                         <button type="button" 
                                                                 class="btn btn-outline-primary btn-sm flex-fill btn-detalle-cita"
                                                                 data-cita-uuid="{{ $cita['uuid'] }}">
                                                             <i class="fas fa-eye"></i> Ver
                                                         </button>
                                                         
-                                                        @if(!$isOffline)
-                                                            @switch($estado)
-                                                                @case('PROGRAMADA')
-                                                                    <button type="button" 
-                                                                            class="btn btn-success btn-sm btn-estado-cita"
-                                                                            data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                            data-estado="EN_ATENCION"
-                                                                            title="Iniciar atención">
-                                                                        <i class="fas fa-play"></i>
+                                                        <!-- ✅ BOTONES QUE FUNCIONAN TANTO ONLINE COMO OFFLINE -->
+                                                        @switch($estado)
+                                                            @case('PROGRAMADA')
+                                                                <button type="button" 
+                                                                        class="btn btn-success btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="EN_ATENCION"
+                                                                        title="Iniciar atención">
+                                                                    <i class="fas fa-play"></i>
+                                                                </button>
+                                                                <div class="dropdown">
+                                                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
+                                                                            data-bs-toggle="dropdown">
+                                                                        <i class="fas fa-ellipsis-v"></i>
                                                                     </button>
-                                                                    <div class="dropdown">
-                                                                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
-                                                                                data-bs-toggle="dropdown">
-                                                                            <i class="fas fa-ellipsis-v"></i>
-                                                                        </button>
-                                                                        <ul class="dropdown-menu">
-                                                                            <li>
-                                                                                <a class="dropdown-item btn-estado-cita" 
-                                                                                   data-cita-uuid="{{ $cita['uuid'] }}" 
-                                                                                   data-estado="CANCELADA">
-                                                                                    <i class="fas fa-times text-danger me-2"></i>Cancelar
-                                                                                </a>
-                                                                            </li>
-                                                                            <li>
-                                                                                <a class="dropdown-item btn-estado-cita" 
-                                                                                   data-cita-uuid="{{ $cita['uuid'] }}" 
-                                                                                   data-estado="NO_ASISTIO">
-                                                                                    <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
-                                                                                </a>
-                                                                            </li>
-                                                                        </ul>
-                                                                    </div>
-                                                                    @break
-                                                                    
-                                                                @case('EN_ATENCION')
-                                                                    <button type="button" 
-                                                                            class="btn btn-success btn-sm btn-estado-cita"
-                                                                            data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                            data-estado="ATENDIDA"
-                                                                            title="Marcar como atendida">
-                                                                        <i class="fas fa-check"></i>
-                                                                    </button>
-                                                                    @break
-                                                                    
-                                                                @case('ATENDIDA')
-                                                                    <span class="badge bg-success flex-fill text-center py-2">
-                                                                        <i class="fas fa-check-circle"></i> Completada
-                                                                    </span>
-                                                                    @break
-                                                                    
-                                                                @default
-                                                                    <button type="button" 
-                                                                            class="btn btn-outline-primary btn-sm btn-estado-cita"
-                                                                            data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                            data-estado="PROGRAMADA"
-                                                                            title="Reprogramar">
-                                                                        <i class="fas fa-redo"></i>
-                                                                    </button>
-                                                            @endswitch
-                                                        @else
-                                                            <div class="alert alert-warning p-1 mb-0 flex-fill text-center">
-                                                                <small><i class="fas fa-database me-1"></i>Modo Offline</small>
+                                                                    <ul class="dropdown-menu">
+                                                                        <li>
+                                                                            <a class="dropdown-item btn-estado-cita" 
+                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
+                                                                               data-estado="CANCELADA">
+                                                                                <i class="fas fa-times text-danger me-2"></i>Cancelar
+                                                                            </a>
+                                                                        </li>
+                                                                        <li>
+                                                                            <a class="dropdown-item btn-estado-cita" 
+                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
+                                                                               data-estado="NO_ASISTIO">
+                                                                                <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
+                                                                            </a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                                @break
+                                                                
+                                                            @case('EN_ATENCION')
+                                                                <button type="button" 
+                                                                        class="btn btn-success btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="ATENDIDA"
+                                                                        title="Marcar como atendida">
+                                                                    <i class="fas fa-check"></i>
+                                                                </button>
+                                                                @break
+                                                                
+                                                            @case('ATENDIDA')
+                                                                <span class="badge bg-success flex-fill text-center py-2">
+                                                                    <i class="fas fa-check-circle"></i> Completada
+                                                                </span>
+                                                                @break
+                                                                
+                                                            @default
+                                                                <button type="button" 
+                                                                        class="btn btn-outline-primary btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="PROGRAMADA"
+                                                                        title="Reprogramar">
+                                                                    <i class="fas fa-redo"></i>
+                                                                </button>
+                                                        @endswitch
+                                                        
+                                                        <!-- ✅ INDICADOR DE MODO OFFLINE (OPCIONAL) -->
+                                                        @if($isOffline)
+                                                            <div class="position-absolute top-0 end-0 mt-1 me-1">
+                                                                <span class="badge bg-warning badge-sm" title="Modo offline - Los cambios se sincronizarán">
+                                                                    <i class="fas fa-database"></i>
+                                                                </span>
                                                             </div>
                                                         @endif
                                                     </div>
@@ -1043,9 +706,9 @@
         @endif
     </div>
 
-    <!-- ✅ LOADING OVERLAY MEJORADO -->
+    <!-- ✅ LOADING OVERLAY -->
     <div id="loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" 
-         style="background: rgba(0,0,0,0.5); z-index: 9999; backdrop-filter: blur(2px);">
+         style="background: rgba(0,0,0,0.5); z-index: 9999;">
         <div class="d-flex justify-content-center align-items-center h-100">
             <div class="text-center text-white">
                 <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
@@ -1058,7 +721,7 @@
     </div>
 </div>
 
-<!-- ✅ MODAL DETALLE DE CITA MEJORADO -->
+<!-- ✅ MODAL DETALLE DE CITA -->
 <div class="modal fade" id="modal-detalle-cita" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -1117,54 +780,52 @@
         </div>
     </div>
 </div>
-
 @endsection
 
 @push('scripts')
 <script>
-// ✅ VARIABLES GLOBALES INTEGRADAS
+// ✅ INTERCEPTAR TODAS LAS LLAMADAS FETCH PARA DEBUG
+const originalFetch = window.fetch;
+window.fetch = function(...args) {
+    console.log('🌐 FETCH INTERCEPTADO:', args[0], args[1]);
+    if (args[0].includes('/estado')) {
+        console.log('🚨 LLAMADA A ESTADO DETECTADA:', {
+            url: args[0],
+            options: args[1]
+        });
+    }
+    return originalFetch.apply(this, args);
+};
+
+// ✅ VARIABLES GLOBALES
 let fechaActual = '{{ $fechaSeleccionada }}';
 let cronogramaData = @json($cronogramaData ?? []);
 let isOffline = {{ $isOffline ? 'true' : 'false' }};
 
-// ✅ DEBUGGING INICIAL
-console.log('🏥 Iniciando cronograma profesional integrado');
-console.log('📊 Datos del cronograma:', cronogramaData);
-console.log('📅 Fecha actual:', fechaActual);
-console.log('🌐 Estado offline:', isOffline);
+console.log('🏥 Cronograma iniciado', {
+    fecha: fechaActual,
+    agendas: cronogramaData.agendas?.length || 0,
+    offline: isOffline
+});
 
 // ✅ INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 DOM cargado, inicializando cronograma integrado...');
-    
-    // Verificar datos
-    if (!cronogramaData || !cronogramaData.estadisticas) {
-        console.error('❌ No hay datos de cronograma disponibles');
-        mostrarAlerta('error', 'No se pudieron cargar los datos del cronograma');
-        return;
-    }
-    
-    // Event listeners
     initEventListeners();
     
-    // Auto-actualizar cada 5 minutos solo si está online
     if (!isOffline) {
         setInterval(actualizarCronogramaAuto, 5 * 60 * 1000);
+        setTimeout(sincronizarCambiosPendientes, 2000);
     }
     
-    // Inicializar detector de conectividad
     initDetectorConectividad();
-    
-    console.log('✅ Cronograma integrado inicializado correctamente');
 });
 
-// ✅ INICIALIZAR EVENT LISTENERS
+// ✅ EVENT LISTENERS CORREGIDOS
 function initEventListeners() {
     // Selector de fecha
     const fechaSelector = document.getElementById('fecha-selector');
     if (fechaSelector) {
         fechaSelector.addEventListener('change', function() {
-            console.log('📅 Fecha cambiada de', fechaActual, 'a', this.value);
             fechaActual = this.value;
             cambiarFecha(this.value);
         });
@@ -1182,21 +843,53 @@ function initEventListeners() {
         });
     }
     
-    // Event delegation para botones dinámicos
+    // ✅ EVENT DELEGATION CORREGIDO CON DEBUG COMPLETO
     document.addEventListener('click', function(e) {
         // Botones de estado de citas
         if (e.target.classList.contains('btn-estado-cita') || e.target.closest('.btn-estado-cita')) {
-            if (isOffline) {
-                mostrarAlerta('warning', 'Modo offline: Los cambios de estado se sincronizarán cuando tengas conexión');
-                return;
-            }
+            e.preventDefault(); // ✅ PREVENIR COMPORTAMIENTO DEFAULT
+            e.stopPropagation(); // ✅ EVITAR PROPAGACIÓN
             
             const btn = e.target.classList.contains('btn-estado-cita') ? e.target : e.target.closest('.btn-estado-cita');
             const citaUuid = btn.dataset.citaUuid;
             const nuevoEstado = btn.dataset.estado;
-            if (citaUuid && nuevoEstado) {
-                cambiarEstadoCita(citaUuid, nuevoEstado);
+            
+            // ✅ DEBUG CRÍTICO COMPLETO
+            console.log('🔍 DEBUG COMPLETO: Botón clickeado', {
+                citaUuid: citaUuid,
+                nuevoEstado: nuevoEstado,
+                citaUuidType: typeof citaUuid,
+                citaUuidLength: citaUuid ? citaUuid.length : 0,
+                btnElement: btn,
+                btnDataset: btn.dataset,
+                btnOuterHTML: btn.outerHTML.substring(0, 200) + '...',
+                targetElement: e.target,
+                targetOuterHTML: e.target.outerHTML.substring(0, 200) + '...'
+            });
+            
+            // ✅ VALIDACIÓN ESTRICTA
+            if (!citaUuid || citaUuid.trim() === '') {
+                console.error('❌ ERROR: UUID vacío o inválido', {
+                    citaUuid: citaUuid,
+                    btn: btn,
+                    dataset: btn.dataset
+                });
+                mostrarAlerta('error', 'Error: ID de cita no válido');
+                return;
             }
+            
+            if (!nuevoEstado || nuevoEstado.trim() === '') {
+                console.error('❌ ERROR: Estado vacío o inválido', {
+                    nuevoEstado: nuevoEstado,
+                    btn: btn
+                });
+                mostrarAlerta('error', 'Error: Estado no válido');
+                return;
+            }
+            
+            // ✅ LLAMAR A LA FUNCIÓN
+            cambiarEstadoCita(citaUuid.trim(), nuevoEstado.trim());
+            return; // ✅ SALIR AQUÍ
         }
         
         // Botones de detalle de cita
@@ -1219,18 +912,32 @@ function initEventListeners() {
     });
 }
 
-// ✅ CAMBIAR FECHA (REDIRIGIR A NUEVA FECHA)
+// ✅ DEBUG: Verificar event listeners
+console.log('🔍 DEBUG: Event listeners registrados:', {
+    totalListeners: document.querySelectorAll('*').length,
+    botonesEstado: document.querySelectorAll('.btn-estado-cita').length
+});
+
+// ✅ Verificar si hay múltiples event listeners
+document.querySelectorAll('.btn-estado-cita').forEach((btn, index) => {
+    console.log(`🔍 Botón ${index}:`, {
+        uuid: btn.dataset.citaUuid,
+        estado: btn.dataset.estado,
+        element: btn.outerHTML.substring(0, 100) + '...'
+    });
+});
+
+// ✅ CAMBIAR FECHA
 function cambiarFecha(fecha) {
     if (fecha === fechaActual) return;
     
     console.log('🔄 Cambiando a fecha:', fecha);
     mostrarLoading(true);
     
-    // Redirigir con la nueva fecha
     window.location.href = `/cronograma?fecha=${fecha}`;
 }
 
-// ✅ ACTUALIZAR CRONOGRAMA VÍA AJAX
+// ✅ ACTUALIZAR CRONOGRAMA
 function actualizarCronograma() {
     if (isOffline) {
         mostrarAlerta('warning', 'Modo offline: No se puede actualizar desde el servidor');
@@ -1240,7 +947,6 @@ function actualizarCronograma() {
     console.log('🔄 Actualizando cronograma para fecha:', fechaActual);
     
     if (document.getElementById('btn-actualizar').disabled) {
-        console.log('⏳ Actualización ya en progreso...');
         return;
     }
     
@@ -1265,27 +971,15 @@ function actualizarCronograma() {
         console.log('📥 Respuesta del servidor:', data);
         
         if (data.success) {
-            console.log('✅ Datos actualizados correctamente');
-            
-            // Actualizar datos globales
             cronogramaData = data.data;
             isOffline = data.offline || false;
             
-            // Actualizar contenido
             actualizarContenidoCronograma(data.data);
-            
-            // Mostrar mensaje de éxito
             mostrarAlerta('success', 'Cronograma actualizado correctamente');
-            
-            // Actualizar timestamp
             actualizarTimestamp();
-            
-            // Actualizar badge de conexión
             actualizarBadgeConexion(!isOffline);
-            
         } else {
-            console.error('❌ Error en la respuesta:', data.error);
-            mostrarAlerta('error', data.error || 'Error cargando cronograma');
+            throw new Error(data.error || 'Error cargando cronograma');
         }
     })
     .catch(error => {
@@ -1299,10 +993,9 @@ function actualizarCronograma() {
     });
 }
 
-// ✅ ACTUALIZACIÓN AUTOMÁTICA SILENCIOSA
+// ✅ ACTUALIZACIÓN AUTOMÁTICA
 function actualizarCronogramaAuto() {
     if (isOffline) {
-        console.log('⏭️ Saltando actualización automática - modo offline');
         return;
     }
     
@@ -1332,15 +1025,12 @@ function actualizarCronogramaAuto() {
     });
 }
 
-// ✅ ACTUALIZAR CONTENIDO DEL CRONOGRAMA
+// ✅ ACTUALIZAR CONTENIDO
 function actualizarContenidoCronograma(data) {
     try {
         console.log('🔄 Actualizando contenido del cronograma');
         
-        // Actualizar estadísticas globales
         actualizarEstadisticasGlobales(data.estadisticas);
-        
-        // Actualizar agendas existentes
         actualizarAgendasExistentes(data.agendas);
         
         console.log('✅ Contenido actualizado correctamente');
@@ -1351,7 +1041,7 @@ function actualizarContenidoCronograma(data) {
     }
 }
 
-// ✅ ACTUALIZAR ESTADÍSTICAS GLOBALES
+// ✅ ACTUALIZAR ESTADÍSTICAS
 function actualizarEstadisticasGlobales(estadisticas) {
     const elementos = {
         'total-agendas': estadisticas.total_agendas || 0,
@@ -1365,13 +1055,12 @@ function actualizarEstadisticasGlobales(estadisticas) {
     Object.entries(elementos).forEach(([id, valor]) => {
         const elemento = document.getElementById(id);
         if (elemento) {
-            // Animación de cambio de número
             animarCambioNumero(elemento, valor);
         }
     });
 }
 
-// ✅ ACTUALIZAR AGENDAS EXISTENTES
+// ✅ ACTUALIZAR AGENDAS
 function actualizarAgendasExistentes(agendas) {
     agendas.forEach(agenda => {
         const agendaCard = document.querySelector(`[data-agenda-uuid="${agenda.uuid}"]`);
@@ -1384,34 +1073,33 @@ function actualizarAgendasExistentes(agendas) {
 // ✅ ACTUALIZAR TARJETA DE AGENDA
 function actualizarTarjetaAgenda(tarjeta, agenda) {
     try {
-        // Actualizar contadores en el header
         const totalCitas = tarjeta.querySelector('.total-citas');
-        if (totalCitas) totalCitas.textContent = agenda.total_citas || 0;
+        if (totalCitas) totalCitas.textContent = agenda.citas?.length || 0;
         
         const totalCupos = tarjeta.querySelector('.total-cupos');
         if (totalCupos) totalCupos.textContent = agenda.total_cupos || 0;
         
         const cuposDisponibles = tarjeta.querySelector('.cupos-disponibles');
-        if (cuposDisponibles) cuposDisponibles.textContent = agenda.cupos_disponibles || 0;
-        
-        const porcentajeOcupacion = tarjeta.querySelector('.porcentaje-ocupacion');
-        if (porcentajeOcupacion) porcentajeOcupacion.textContent = agenda.porcentaje_ocupacion || 0;
-        
-        // Actualizar barra de progreso
-        const barraProgreso = tarjeta.querySelector('.progress-bar');
-        if (barraProgreso) {
-            barraProgreso.style.width = (agenda.porcentaje_ocupacion || 0) + '%';
-            barraProgreso.setAttribute('aria-valuenow', agenda.porcentaje_ocupacion || 0);
+        if (cuposDisponibles) {
+            const citasActivas = agenda.citas?.filter(c => !['CANCELADA', 'NO_ASISTIO'].includes(c.estado)) || [];
+            const libres = Math.max(0, (agenda.total_cupos || 0) - citasActivas.length);
+            cuposDisponibles.textContent = libres;
         }
         
-        // Actualizar badges de estadísticas
-        const estadisticas = agenda.estadisticas || {};
-        Object.entries(estadisticas).forEach(([estado, cantidad]) => {
-            const badge = tarjeta.querySelector(`[data-estado="${estado}"]`);
-            if (badge) {
-                badge.textContent = cantidad;
-            }
-        });
+        const porcentajeOcupacion = tarjeta.querySelector('.porcentaje-ocupacion');
+        if (porcentajeOcupacion) {
+            const totalCupos = agenda.total_cupos || 0;
+            const totalCitas = agenda.citas?.length || 0;
+            const porcentaje = totalCupos > 0 ? Math.round((totalCitas / totalCupos) * 100) : 0;
+            porcentajeOcupacion.textContent = porcentaje;
+        }
+        
+        const barraProgreso = tarjeta.querySelector('.progress-bar');
+        if (barraProgreso && porcentajeOcupacion) {
+            const porcentaje = parseInt(porcentajeOcupacion.textContent) || 0;
+            barraProgreso.style.width = porcentaje + '%';
+            barraProgreso.setAttribute('aria-valuenow', porcentaje);
+        }
         
     } catch (error) {
         console.error('❌ Error actualizando tarjeta de agenda:', error);
@@ -1424,9 +1112,7 @@ function verDetalleCita(citaUuid) {
     
     mostrarLoading(true);
     
-    const endpoint = isOffline ? `/cronograma/cita/${citaUuid}/offline` : `/cronograma/cita/${citaUuid}`;
-    
-    fetch(endpoint, {
+    fetch(`/cronograma/cita/${citaUuid}`, {
         method: 'GET',
         headers: {
             'X-Requested-With': 'XMLHttpRequest',
@@ -1449,20 +1135,19 @@ function verDetalleCita(citaUuid) {
     })
     .catch(error => {
         console.error('❌ Error cargando detalle:', error);
-               mostrarAlerta('error', 'Error cargando detalle de cita');
+        mostrarAlerta('error', 'Error cargando detalle de cita');
     })
     .finally(() => {
         mostrarLoading(false);
     });
 }
 
-// ✅ MOSTRAR MODAL DETALLE DE CITA
+// ✅ MOSTRAR MODAL DETALLE
 function mostrarModalDetalleCita(cita) {
     const modal = new bootstrap.Modal(document.getElementById('modal-detalle-cita'));
     const modalBody = document.getElementById('modal-detalle-cita-body');
     const botonesModal = document.getElementById('botones-estado-modal');
     
-    // Construir HTML del detalle
     const paciente = cita.paciente || {};
     const agenda = cita.agenda || {};
     
@@ -1505,10 +1190,10 @@ function mostrarModalDetalleCita(cita) {
                     <span class="badge bg-${getEstadoColor(cita.estado)}">${cita.estado || 'N/A'}</span>
                 </div>
                 <div class="mb-2">
-                    <strong>Profesional:</strong> ${agenda.profesional_nombre || 'N/A'}
+                    <strong>Consultorio:</strong> ${agenda.consultorio || 'N/A'}
                 </div>
                 <div class="mb-2">
-                    <strong>Especialidad:</strong> ${agenda.especialidad_nombre || 'N/A'}
+                    <strong>Modalidad:</strong> ${agenda.modalidad || 'N/A'}
                 </div>
             </div>
         </div>
@@ -1522,16 +1207,16 @@ function mostrarModalDetalleCita(cita) {
             </div>
         ` : ''}
         
-        ${cita.observaciones ? `
+        ${cita.nota ? `
             <div class="mt-3">
                 <h6 class="text-primary mb-2">
-                    <i class="fas fa-comment me-2"></i>Observaciones
+                    <i class="fas fa-comment me-2"></i>Notas
                 </h6>
-                <p class="mb-0">${cita.observaciones}</p>
+                <p class="mb-0">${cita.nota}</p>
             </div>
         ` : ''}
         
-        ${cita.source === 'offline' ? `
+        ${cita.offline ? `
             <div class="alert alert-warning mt-3">
                 <i class="fas fa-database me-2"></i>
                 Esta información proviene del almacenamiento local
@@ -1553,7 +1238,6 @@ function mostrarModalDetalleCita(cita) {
 function verCitasAgenda(agendaUuid) {
     console.log('📋 Viendo citas de agenda:', agendaUuid);
     
-    // Buscar la agenda en los datos
     const agenda = cronogramaData.agendas?.find(a => a.uuid === agendaUuid);
     if (!agenda) {
         mostrarAlerta('error', 'Agenda no encontrada');
@@ -1563,16 +1247,13 @@ function verCitasAgenda(agendaUuid) {
     const modal = new bootstrap.Modal(document.getElementById('modal-citas-agenda'));
     const tabla = document.getElementById('tabla-citas-agenda').getElementsByTagName('tbody')[0];
     
-    // Limpiar tabla
     tabla.innerHTML = '';
     
-    // Mostrar título con información de la agenda
     document.querySelector('#modal-citas-agenda .modal-title').innerHTML = `
         <i class="fas fa-list me-2"></i>
-        Citas de ${agenda.profesional_nombre} - ${agenda.especialidad_nombre}
+        Citas - ${agenda.etiqueta || 'Agenda'} (${agenda.hora_inicio} - ${agenda.hora_fin})
     `;
     
-    // Llenar tabla con citas
     if (agenda.citas && agenda.citas.length > 0) {
         agenda.citas.forEach(cita => {
             const paciente = cita.paciente || {};
@@ -1582,7 +1263,7 @@ function verCitasAgenda(agendaUuid) {
                 <td>${cita.fecha_inicio ? new Date(cita.fecha_inicio).toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'}) : 'N/A'}</td>
                 <td>${paciente.nombre_completo || 'N/A'}</td>
                 <td>${paciente.documento || 'N/A'}</td>
-                <td>${paciente.telefono || 'N/A'}</td>
+                               <td>${paciente.telefono || 'N/A'}</td>
                 <td>
                     <span class="badge bg-${getEstadoColor(cita.estado)}">${cita.estado || 'N/A'}</span>
                 </td>
@@ -1616,45 +1297,90 @@ function verCitasAgenda(agendaUuid) {
     modal.show();
 }
 
-// ✅ CAMBIAR ESTADO DE CITA
+// ✅ FUNCIÓN CRÍTICA CORREGIDA PARA CAMBIAR ESTADO
 function cambiarEstadoCita(citaUuid, nuevoEstado) {
-    if (isOffline) {
-        mostrarAlerta('warning', 'Modo offline: Los cambios se sincronizarán cuando tengas conexión');
+    // ✅ VALIDACIÓN CRÍTICA DEL UUID
+    if (!citaUuid || typeof citaUuid !== 'string' || citaUuid.trim() === '') {
+        console.error('❌ ERROR CRÍTICO: UUID de cita inválido', {
+            citaUuid: citaUuid,
+            type: typeof citaUuid,
+            length: citaUuid ? citaUuid.length : 0
+        });
+        mostrarAlerta('error', 'Error: ID de cita no válido');
         return;
     }
     
-    console.log('🔄 Cambiando estado de cita:', citaUuid, 'a', nuevoEstado);
+    // ✅ LIMPIAR UUID
+    citaUuid = citaUuid.trim();
+    
+    // ✅ VALIDAR QUE EL UUID TENGA FORMATO CORRECTO
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(citaUuid)) {
+        console.error('❌ ERROR: UUID con formato inválido', {
+            citaUuid: citaUuid,
+            length: citaUuid.length
+        });
+        mostrarAlerta('error', 'Error: Formato de ID de cita inválido');
+        return;
+    }
+    
+    console.log('🔄 Cambiando estado de cita:', {
+        citaUuid: citaUuid,
+        nuevoEstado: nuevoEstado,
+        uuidLength: citaUuid.length
+    });
     
     mostrarLoading(true);
     
-    fetch(`/cronograma/cita/${citaUuid}/estado`, {
+    // ✅ MODO OFFLINE
+    if (isOffline || !navigator.onLine) {
+        console.log('📱 Modo offline: Guardando cambio localmente');
+        guardarCambioEstadoOffline(citaUuid, nuevoEstado);
+        actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
+        mostrarAlerta('warning', `Estado cambiado a ${nuevoEstado.toLowerCase()} (se sincronizará cuando tengas conexión)`);
+        mostrarLoading(false);
+        return;
+    }
+    
+    // ✅ CONSTRUIR URL CORRECTAMENTE
+    const url = `/cronograma/cita/${citaUuid}/cambiar-estado`;
+    console.log('🌐 URL construida:', url);
+    
+    // ✅ HACER PETICIÓN
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest'
         },
         body: JSON.stringify({
-            estado: nuevoEstado,
-            fecha: fechaActual
+            estado: nuevoEstado
         })
     })
     .then(response => {
+        console.log('🔍 DEBUG: Status de respuesta:', response.status);
+        console.log('🔍 DEBUG: URL final:', response.url);
+        
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            return response.text().then(text => {
+                console.log('🔍 DEBUG: Texto de error:', text);
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
         }
         return response.json();
     })
     .then(data => {
+        console.log('✅ DEBUG: Respuesta exitosa:', data);
+        
         if (data.success) {
             console.log('✅ Estado cambiado correctamente');
             mostrarAlerta('success', `Cita marcada como ${nuevoEstado.toLowerCase()}`);
             
-            // Actualizar la interfaz
-            actualizarCitaEnInterfaz(citaUuid, nuevoEstado, data.data);
+            actualizarCitaEnInterfaz(citaUuid, nuevoEstado, data);
             
-            // Cerrar modales si están abiertos
+            // Cerrar modales
             const modales = document.querySelectorAll('.modal.show');
             modales.forEach(modal => {
                 bootstrap.Modal.getInstance(modal)?.hide();
@@ -1666,11 +1392,119 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
     })
     .catch(error => {
         console.error('❌ Error cambiando estado:', error);
-        mostrarAlerta('error', 'Error cambiando estado de la cita');
+        
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            console.log('🔄 Error de red, guardando offline como fallback');
+            guardarCambioEstadoOffline(citaUuid, nuevoEstado);
+            actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
+            mostrarAlerta('warning', `Estado cambiado offline (se sincronizará cuando tengas conexión)`);
+        } else {
+            mostrarAlerta('error', 'Error cambiando estado de la cita: ' + error.message);
+        }
     })
     .finally(() => {
         mostrarLoading(false);
     });
+}
+
+// ✅ NUEVA FUNCIÓN: GUARDAR CAMBIO OFFLINE
+function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
+    try {
+        // ✅ OBTENER CAMBIOS PENDIENTES DEL LOCALSTORAGE
+        let cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        
+        // ✅ AGREGAR O ACTUALIZAR EL CAMBIO
+        const cambioExistente = cambiosPendientes.findIndex(c => c.cita_uuid === citaUuid);
+        
+        const nuevoCambio = {
+            cita_uuid: citaUuid,
+            nuevo_estado: nuevoEstado,
+            timestamp: new Date().toISOString(),
+            sincronizado: false
+        };
+        
+        if (cambioExistente >= 0) {
+            cambiosPendientes[cambioExistente] = nuevoCambio;
+        } else {
+            cambiosPendientes.push(nuevoCambio);
+        }
+        
+        // ✅ GUARDAR EN LOCALSTORAGE
+        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
+        
+        console.log('💾 Cambio guardado offline:', nuevoCambio);
+        
+        // ✅ ACTUALIZAR TAMBIÉN EN EL CRONOGRAMA DATA LOCAL
+        if (cronogramaData && cronogramaData.agendas) {
+            for (let agenda of cronogramaData.agendas) {
+                if (agenda.citas) {
+                    const cita = agenda.citas.find(c => c.uuid === citaUuid);
+                    if (cita) {
+                        cita.estado = nuevoEstado;
+                        cita.offline_modificado = true;
+                        console.log('✅ Cita actualizada en cronogramaData local');
+                        break;
+                    }
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error guardando cambio offline:', error);
+    }
+}
+
+// ✅ NUEVA FUNCIÓN: SINCRONIZAR CAMBIOS PENDIENTES
+function sincronizarCambiosPendientes() {
+    try {
+        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
+        
+        if (cambiosNoSincronizados.length === 0) {
+            console.log('✅ No hay cambios pendientes para sincronizar');
+            return;
+        }
+        
+        console.log('🔄 Sincronizando cambios pendientes:', cambiosNoSincronizados.length);
+        
+        cambiosNoSincronizados.forEach(cambio => {
+            // ✅ USAR LA MISMA RUTA QUE FUNCIONA
+            fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    estado: cambio.nuevo_estado
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // ✅ MARCAR COMO SINCRONIZADO
+                    cambio.sincronizado = true;
+                    cambio.fecha_sincronizacion = new Date().toISOString();
+                    
+                    console.log('✅ Cambio sincronizado:', cambio.cita_uuid);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error sincronizando cambio:', error);
+            });
+        });
+        
+        // ✅ ACTUALIZAR LOCALSTORAGE
+        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
+        
+        // ✅ MOSTRAR NOTIFICACIÓN
+        mostrarAlerta('success', `${cambiosNoSincronizados.length} cambios sincronizados con el servidor`);
+        
+    } catch (error) {
+        console.error('❌ Error en sincronización:', error);
+    }
 }
 
 // ✅ ACTUALIZAR CITA EN INTERFAZ
@@ -1696,14 +1530,87 @@ function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
     // Actualizar botones de acción
     const botonesContainer = citaCard.querySelector('.d-flex.gap-1');
     if (botonesContainer) {
-        const nuevosbotones = generarBotonesAccion(citaUuid, nuevoEstado);
+        const nuevosBotones = generarBotonesAccion(citaUuid, nuevoEstado);
         const botonesDinamicos = botonesContainer.querySelectorAll('.btn-estado-cita, .dropdown');
         botonesDinamicos.forEach(btn => btn.remove());
-        botonesContainer.insertAdjacentHTML('beforeend', nuevosbotones);
+        botonesContainer.insertAdjacentHTML('beforeend', nuevosBotones);
     }
     
-    // Actualizar datos globales
-    actualizarDatosGlobalesCita(citaUuid, nuevoEstado, datosActualizados);
+    // Actualizar estadísticas globales si vienen
+    if (datosActualizados && datosActualizados.estadisticas_globales) {
+        actualizarEstadisticasGlobales(datosActualizados.estadisticas_globales);
+    }
+}
+
+// ✅ DETECTOR DE CONECTIVIDAD MEJORADO
+function initDetectorConectividad() {
+    window.addEventListener('online', function() {
+        console.log('🌐 Conexión restaurada');
+        isOffline = false;
+        actualizarBadgeConexion(true);
+        mostrarAlerta('success', 'Conexión restaurada. Sincronizando datos...');
+        
+        // ✅ SINCRONIZAR CAMBIOS PENDIENTES
+        setTimeout(() => {
+            sincronizarCambiosPendientes();
+            actualizarCronograma();
+        }, 1000);
+    });
+    
+    window.addEventListener('offline', function() {
+        console.log('📵 Conexión perdida');
+        isOffline = true;
+        actualizarBadgeConexion(false);
+        mostrarAlerta('warning', 'Sin conexión. Los cambios se guardarán localmente.');
+    });
+    
+    // Verificar conectividad cada 30 segundos
+    setInterval(verificarConectividad, 30000);
+}
+
+function verificarConectividad() {
+    if (!navigator.onLine) {
+        if (!isOffline) {
+            isOffline = true;
+            actualizarBadgeConexion(false);
+        }
+        return;
+    }
+    
+    fetch('/api/ping', {
+        method: 'HEAD',
+        cache: 'no-cache'
+    })
+    .then(response => {
+        if (response.ok && isOffline) {
+            isOffline = false;
+            actualizarBadgeConexion(true);
+        }
+    })
+    .catch(() => {
+        if (!isOffline) {
+            isOffline = true;
+            actualizarBadgeConexion(false);
+        }
+    });
+}
+
+function actualizarBadgeConexion(online) {
+    const badge = document.getElementById('badge-conexion');
+    if (badge) {
+        if (online) {
+            badge.className = 'badge bg-success connection-indicator online';
+            badge.innerHTML = '<i class="fas fa-wifi me-1"></i>Conectado';
+        } else {
+            badge.className = 'badge bg-warning connection-indicator offline';
+            badge.innerHTML = '<i class="fas fa-database me-1"></i>Datos Locales';
+        }
+    }
+}
+
+function manejarErrorConexion() {
+    isOffline = true;
+    actualizarBadgeConexion(false);
 }
 
 // ✅ FUNCIONES AUXILIARES
@@ -1847,108 +1754,6 @@ function generarBotonesAccion(citaUuid, estado) {
     return botones;
 }
 
-// ✅ ACTUALIZAR DATOS GLOBALES CUANDO CAMBIA UNA CITA
-function actualizarDatosGlobalesCita(citaUuid, nuevoEstado, datosActualizados) {
-    // Buscar y actualizar la cita en cronogramaData
-    if (cronogramaData.agendas) {
-        cronogramaData.agendas.forEach(agenda => {
-            if (agenda.citas) {
-                const citaIndex = agenda.citas.findIndex(c => c.uuid === citaUuid);
-                if (citaIndex !== -1) {
-                    agenda.citas[citaIndex].estado = nuevoEstado;
-                    
-                    // Actualizar estadísticas de la agenda si vienen en la respuesta
-                    if (datosActualizados && datosActualizados.estadisticas_agenda) {
-                        agenda.estadisticas = datosActualizados.estadisticas_agenda;
-                    }
-                }
-            }
-        });
-    }
-    
-    // Actualizar estadísticas globales si vienen en la respuesta
-    if (datosActualizados && datosActualizados.estadisticas_globales) {
-        cronogramaData.estadisticas = datosActualizados.estadisticas_globales;
-        actualizarEstadisticasGlobales(datosActualizados.estadisticas_globales);
-    }
-}
-
-// ✅ DETECTOR DE CONECTIVIDAD
-function initDetectorConectividad() {
-    // Detectar cambios en el estado de conexión
-    window.addEventListener('online', function() {
-        console.log('🌐 Conexión restaurada');
-        isOffline = false;
-        actualizarBadgeConexion(true);
-        mostrarAlerta('success', 'Conexión restaurada. Sincronizando datos...');
-        
-        // Auto-actualizar cuando se restaura la conexión
-        setTimeout(() => {
-            actualizarCronograma();
-        }, 1000);
-    });
-    
-    window.addEventListener('offline', function() {
-        console.log('📵 Conexión perdida');
-        isOffline = true;
-        actualizarBadgeConexion(false);
-        mostrarAlerta('warning', 'Sin conexión. Trabajando con datos locales.');
-    });
-    
-    // Verificación periódica de conectividad
-    setInterval(verificarConectividad, 30000); // Cada 30 segundos
-}
-
-function verificarConectividad() {
-    if (!navigator.onLine) {
-        if (!isOffline) {
-            isOffline = true;
-            actualizarBadgeConexion(false);
-            console.log('📵 Conexión perdida detectada');
-        }
-        return;
-    }
-    
-    // Ping al servidor para verificar conectividad real
-    fetch('/api/ping', {
-        method: 'HEAD',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        if (response.ok && isOffline) {
-            isOffline = false;
-            actualizarBadgeConexion(true);
-            console.log('🌐 Conexión restaurada detectada');
-        }
-    })
-    .catch(() => {
-        if (!isOffline) {
-            isOffline = true;
-            actualizarBadgeConexion(false);
-            console.log('📵 Sin conectividad al servidor');
-        }
-    });
-}
-
-function actualizarBadgeConexion(online) {
-    const badge = document.getElementById('badge-conexion');
-    if (badge) {
-        if (online) {
-            badge.className = 'badge bg-success ms-2';
-            badge.innerHTML = '<i class="fas fa-wifi me-1"></i>Online';
-        } else {
-            badge.className = 'badge bg-warning ms-2';
-            badge.innerHTML = '<i class="fas fa-database me-1"></i>Offline';
-        }
-    }
-}
-
-function manejarErrorConexion() {
-    isOffline = true;
-    actualizarBadgeConexion(false);
-    console.log('⚠️ Error de conexión manejado, modo offline activado');
-}
-
 // ✅ UTILIDADES DE INTERFAZ
 function mostrarLoading(mostrar) {
     const overlay = document.getElementById('loading-overlay');
@@ -1980,7 +1785,6 @@ function setButtonLoading(buttonId, loading) {
 }
 
 function mostrarAlerta(tipo, mensaje) {
-    // Crear alerta dinámica
     const alertaId = 'alerta-' + Date.now();
     const alertaHtml = `
         <div id="${alertaId}" class="alert alert-${tipo === 'error' ? 'danger' : tipo} alert-dismissible fade show position-fixed" 
@@ -1993,7 +1797,6 @@ function mostrarAlerta(tipo, mensaje) {
     
     document.body.insertAdjacentHTML('beforeend', alertaHtml);
     
-    // Auto-remover después de 5 segundos
     setTimeout(() => {
         const alerta = document.getElementById(alertaId);
         if (alerta) {
@@ -2003,7 +1806,7 @@ function mostrarAlerta(tipo, mensaje) {
 }
 
 function actualizarTimestamp() {
-    const timestamp = document.getElementById('ultimo-update');
+    const timestamp = document.getElementById('ultima-actualizacion');
     if (timestamp) {
         const ahora = new Date();
         timestamp.textContent = ahora.toLocaleTimeString('es-ES');
@@ -2018,7 +1821,6 @@ function animarCambioNumero(elemento, nuevoValor) {
     
     if (valorActual === valorNuevo) return;
     
-    // Animación simple de cambio
     elemento.style.transform = 'scale(1.1)';
     elemento.style.transition = 'transform 0.2s ease';
     
@@ -2028,7 +1830,7 @@ function animarCambioNumero(elemento, nuevoValor) {
     }, 100);
 }
 
-// ✅ EXPORTAR FUNCIONES GLOBALES PARA DEBUGGING
+// ✅ DEBUGGING
 window.cronogramaDebug = {
     cronogramaData,
     fechaActual,
@@ -2036,124 +1838,13 @@ window.cronogramaDebug = {
     actualizarCronograma,
     verDetalleCita,
     cambiarEstadoCita,
-    verificarConectividad
+    verificarConectividad,
+    sincronizarCambiosPendientes,
+    guardarCambioEstadoOffline
 };
 
 console.log('✅ Cronograma JavaScript cargado completamente');
 </script>
-
-<!-- ✅ ESTILOS CSS ADICIONALES -->
-<style>
-.cita-card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.cita-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.text-truncate-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.badge-sm {
-    font-size: 0.75em;
-}
-
-.card-header-stats {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.agenda-card {
-    transition: all 0.3s ease;
-}
-
-.agenda-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-}
-
-.progress {
-    background-color: rgba(0,0,0,0.1);
-}
-
-.alert-dismissible {
-    animation: slideInRight 0.3s ease;
-}
-
-@keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-
-.spinner-border {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .col-lg-4 {
-        margin-bottom: 1rem;
-    }
-    
-    .btn-group .btn {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
-    }
-    
-    .card-title {
-        font-size: 1rem;
-    }
-}
-
-/* Loading overlay */
-#loading-overlay {
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-}
-
-/* Modal improvements */
-.modal-content {
-    border-radius: 0.5rem;
-    border: none;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-}
-
-.modal-header {
-    border-bottom: 1px solid rgba(255,255,255,0.2);
-}
-
-/* Tabla responsive */
-.table-responsive {
-    border-radius: 0.375rem;
-}
-
-.table th {
-    border-top: none;
-    font-weight: 600;
-    font-size: 0.875rem;
-}
-
-/* Badge de conexión */
-#badge-conexion {
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.7; }
-    100% { opacity: 1; }
-}
-</style>
 @endpush
 
 
