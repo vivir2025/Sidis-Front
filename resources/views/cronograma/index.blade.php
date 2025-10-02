@@ -28,6 +28,34 @@
     border: none;
     box-shadow: var(--shadow-sm);
 }
+/* ✅ ESTILOS PARA CAMBIOS PENDIENTES */
+.cambios-pendientes {
+    position: relative;
+    border-left: 4px solid #17a2b8 !important;
+}
+
+.cambios-pendientes::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    background: #17a2b8;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.cambios-pendientes-text {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
 
 .card-stat:hover {
     transform: translateY(-4px);
@@ -808,15 +836,19 @@ console.log('🏥 Cronograma iniciado', {
     offline: isOffline
 });
 
-// ✅ INICIALIZACIÓN
+// ✅ INICIALIZACIÓN INTELIGENTE
 document.addEventListener('DOMContentLoaded', function() {
     initEventListeners();
-    
+
     if (!isOffline) {
         setInterval(actualizarCronogramaAuto, 5 * 60 * 1000);
-        setTimeout(sincronizarCambiosPendientes, 2000);
+        
+        // ✅ SINCRONIZACIÓN INTELIGENTE: Solo si hay cambios pendientes
+        setTimeout(() => {
+            verificarYSincronizarCambiosPendientes();
+        }, 3000); // Esperar 3 segundos para que cargue todo
     }
-    
+
     initDetectorConectividad();
 });
 
@@ -1407,52 +1439,41 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
     });
 }
 
-// ✅ NUEVA FUNCIÓN: GUARDAR CAMBIO OFFLINE
+// ✅ GUARDAR CAMBIO OFFLINE MEJORADO
 function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
     try {
-        // ✅ OBTENER CAMBIOS PENDIENTES DEL LOCALSTORAGE
-        let cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const cambiosExistentes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
         
-        // ✅ AGREGAR O ACTUALIZAR EL CAMBIO
-        const cambioExistente = cambiosPendientes.findIndex(c => c.cita_uuid === citaUuid);
+        // ✅ REMOVER CAMBIOS ANTERIORES DE LA MISMA CITA (evitar duplicados)
+        const cambiosFiltrados = cambiosExistentes.filter(c => c.cita_uuid !== citaUuid);
         
         const nuevoCambio = {
             cita_uuid: citaUuid,
             nuevo_estado: nuevoEstado,
             timestamp: new Date().toISOString(),
-            sincronizado: false
+            sincronizado: false,
+            intentos_sincronizacion: 0
         };
         
-        if (cambioExistente >= 0) {
-            cambiosPendientes[cambioExistente] = nuevoCambio;
-        } else {
-            cambiosPendientes.push(nuevoCambio);
-        }
+        cambiosFiltrados.push(nuevoCambio);
+        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosFiltrados));
         
-        // ✅ GUARDAR EN LOCALSTORAGE
-        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
+        console.log(`💾 Cambio offline guardado: ${citaUuid} -> ${nuevoEstado}`);
         
-        console.log('💾 Cambio guardado offline:', nuevoCambio);
+        // ✅ ACTUALIZAR INTERFAZ INMEDIATAMENTE
+        actualizarCitaEnInterfaz(citaUuid, nuevoEstado, null);
         
-        // ✅ ACTUALIZAR TAMBIÉN EN EL CRONOGRAMA DATA LOCAL
-        if (cronogramaData && cronogramaData.agendas) {
-            for (let agenda of cronogramaData.agendas) {
-                if (agenda.citas) {
-                    const cita = agenda.citas.find(c => c.uuid === citaUuid);
-                    if (cita) {
-                        cita.estado = nuevoEstado;
-                        cita.offline_modificado = true;
-                        console.log('✅ Cita actualizada en cronogramaData local');
-                        break;
-                    }
-                }
-            }
-        }
+        // ✅ APLICAR INDICADORES VISUALES
+        aplicarIndicadoresCambiosPendientes([nuevoCambio]);
+        
+        return true;
         
     } catch (error) {
         console.error('❌ Error guardando cambio offline:', error);
+        return false;
     }
 }
+
 
 // ✅ NUEVA FUNCIÓN: SINCRONIZAR CAMBIOS PENDIENTES
 function sincronizarCambiosPendientes() {
@@ -1544,18 +1565,18 @@ function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
 
 // ✅ DETECTOR DE CONECTIVIDAD MEJORADO
 function initDetectorConectividad() {
-    window.addEventListener('online', function() {
-        console.log('🌐 Conexión restaurada');
-        isOffline = false;
-        actualizarBadgeConexion(true);
-        mostrarAlerta('success', 'Conexión restaurada. Sincronizando datos...');
-        
-        // ✅ SINCRONIZAR CAMBIOS PENDIENTES
-        setTimeout(() => {
-            sincronizarCambiosPendientes();
-            actualizarCronograma();
-        }, 1000);
-    });
+   window.addEventListener('online', function() {
+    console.log('🌐 Conexión restaurada');
+    isOffline = false;
+    actualizarBadgeConexion(true);
+    mostrarAlerta('success', 'Conexión restaurada. Sincronizando datos...');
+
+    // ✅ SINCRONIZAR CAMBIOS PENDIENTES DE FORMA INTELIGENTE
+    setTimeout(() => {
+        verificarYSincronizarCambiosPendientes();
+        actualizarCronograma();
+    }, 1000);
+});
     
     window.addEventListener('offline', function() {
         console.log('📵 Conexión perdida');
@@ -1566,6 +1587,227 @@ function initDetectorConectividad() {
     
     // Verificar conectividad cada 30 segundos
     setInterval(verificarConectividad, 30000);
+}
+// ✅ NUEVA FUNCIÓN: VERIFICAR Y SINCRONIZAR CAMBIOS PENDIENTES
+function verificarYSincronizarCambiosPendientes() {
+    try {
+        // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES
+        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
+        
+        if (cambiosNoSincronizados.length === 0) {
+            console.log('✅ No hay cambios pendientes para sincronizar');
+            return;
+        }
+        
+        console.log(`🔄 Encontrados ${cambiosNoSincronizados.length} cambios pendientes para sincronizar`);
+        
+        // ✅ PROTECCIÓN CONTRA BUCLES: Verificar que no se esté ejecutando ya
+        if (window.sincronizacionEnProceso) {
+            console.log('⚠️ Sincronización ya en proceso, saltando...');
+            return;
+        }
+        
+        // ✅ MARCAR COMO EN PROCESO
+        window.sincronizacionEnProceso = true;
+        
+        // ✅ EJECUTAR SINCRONIZACIÓN
+        sincronizarCambiosPendientesInteligente(cambiosNoSincronizados);
+        
+    } catch (error) {
+        console.error('❌ Error verificando cambios pendientes:', error);
+        window.sincronizacionEnProceso = false;
+    }
+}
+
+// ✅ SINCRONIZACIÓN INTELIGENTE CON PROTECCIÓN CONTRA BUCLES
+function sincronizarCambiosPendientesInteligente(cambiosNoSincronizados) {
+    let cambiosSincronizados = 0;
+    let errores = 0;
+    
+    console.log(`🔄 Iniciando sincronización de ${cambiosNoSincronizados.length} cambios`);
+    
+    // ✅ PROCESAR CADA CAMBIO CON DELAY PARA EVITAR SATURAR EL SERVIDOR
+    cambiosNoSincronizados.forEach((cambio, index) => {
+        setTimeout(() => {
+            console.log(`📤 Sincronizando cambio ${index + 1}/${cambiosNoSincronizados.length}:`, cambio.cita_uuid);
+            
+            fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    estado: cambio.nuevo_estado
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // ✅ MARCAR COMO SINCRONIZADO EN LOCALSTORAGE
+                    cambio.sincronizado = true;
+                    cambio.fecha_sincronizacion = new Date().toISOString();
+                    cambiosSincronizados++;
+                    
+                    console.log(`✅ Cambio sincronizado: ${cambio.cita_uuid} -> ${cambio.nuevo_estado}`);
+                    
+                    // ✅ ACTUALIZAR LOCALSTORAGE
+                    const todosCambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+                    const indice = todosCambios.findIndex(c => c.cita_uuid === cambio.cita_uuid && c.timestamp === cambio.timestamp);
+                    if (indice >= 0) {
+                        todosCambios[indice] = cambio;
+                        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(todosCambios));
+                    }
+                    
+                    // ✅ REMOVER INDICADORES VISUALES DE CAMBIOS PENDIENTES
+                    const citaCard = document.querySelector(`[data-cita-uuid="${cambio.cita_uuid}"]`);
+                    if (citaCard) {
+                        const card = citaCard.querySelector('.card');
+                        if (card) {
+                            card.classList.remove('cambios-pendientes');
+                        }
+                        
+                        // Remover iconos de sincronización
+                        const iconoSync = citaCard.querySelector('.fa-sync-alt');
+                        if (iconoSync) {
+                            iconoSync.remove();
+                        }
+                        
+                        // Remover texto de cambios pendientes
+                        const textoPendiente = citaCard.querySelector('.cambios-pendientes');
+                        if (textoPendiente && textoPendiente.parentElement) {
+                            textoPendiente.parentElement.remove();
+                        }
+                    }
+                    
+                } else {
+                    throw new Error(data.error || 'Error en respuesta del servidor');
+                }
+            })
+            .catch(error => {
+                console.error(`❌ Error sincronizando cambio ${cambio.cita_uuid}:`, error);
+                errores++;
+            })
+            .finally(() => {
+                // ✅ VERIFICAR SI ES EL ÚLTIMO CAMBIO
+                if (index === cambiosNoSincronizados.length - 1) {
+                    // ✅ FINALIZAR PROCESO
+                    setTimeout(() => {
+                        window.sincronizacionEnProceso = false;
+                        
+                        if (cambiosSincronizados > 0) {
+                            mostrarAlerta('success', `✅ ${cambiosSincronizados} cambios sincronizados correctamente`);
+                        }
+                        
+                        if (errores > 0) {
+                            mostrarAlerta('warning', `⚠️ ${errores} cambios no pudieron sincronizarse`);
+                        }
+                        
+                        console.log(`🏁 Sincronización completada: ${cambiosSincronizados} exitosos, ${errores} errores`);
+                        
+                        // ✅ LIMPIAR CAMBIOS SINCRONIZADOS DEL LOCALSTORAGE
+                        limpiarCambiosSincronizados();
+                        
+                    }, 500);
+                }
+            });
+            
+        }, index * 500); // ✅ DELAY DE 500ms ENTRE CADA PETICIÓN
+    });
+}
+// ✅ LIMPIAR CAMBIOS SINCRONIZADOS DEL LOCALSTORAGE
+function limpiarCambiosSincronizados() {
+    try {
+        const todosCambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const cambiosNoSincronizados = todosCambios.filter(c => !c.sincronizado);
+        
+        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosNoSincronizados));
+        
+        console.log(`🧹 LocalStorage limpiado. Cambios restantes: ${cambiosNoSincronizados.length}`);
+        
+    } catch (error) {
+        console.error('❌ Error limpiando localStorage:', error);
+    }
+}
+// ✅ FUNCIÓN: RESOLVER CONFLICTOS ENTRE API Y CAMBIOS OFFLINE
+function resolverConflictosDatos(citaApi, cambiosOffline) {
+    // Si no hay cambios offline, usar datos de API
+    if (!cambiosOffline || cambiosOffline.length === 0) {
+        return citaApi;
+    }
+    
+    // Buscar cambios pendientes para esta cita
+    const cambiosPendientes = cambiosOffline.filter(c => 
+        c.cita_uuid === citaApi.uuid && !c.sincronizado
+    );
+    
+    if (cambiosPendientes.length === 0) {
+        return citaApi;
+    }
+    
+    // Obtener el cambio más reciente
+    const cambioMasReciente = cambiosPendientes.sort((a, b) => 
+        new Date(b.timestamp) - new Date(a.timestamp)
+    )[0];
+    
+    console.log(`🔄 Aplicando cambio offline pendiente: ${citaApi.uuid} -> ${cambioMasReciente.nuevo_estado}`);
+    
+    // Aplicar el cambio offline sobre los datos de la API
+    const citaConCambios = { ...citaApi };
+    citaConCambios.estado = cambioMasReciente.nuevo_estado;
+    citaConCambios._tiene_cambios_pendientes = true;
+    citaConCambios._cambio_timestamp = cambioMasReciente.timestamp;
+    
+    return citaConCambios;
+}
+// ✅ APLICAR INDICADORES VISUALES A CAMBIOS PENDIENTES
+function aplicarIndicadoresCambiosPendientes(cambiosPendientes) {
+    cambiosPendientes.forEach(cambio => {
+        const citaCard = document.querySelector(`[data-cita-uuid="${cambio.cita_uuid}"]`);
+        if (citaCard) {
+            console.log(`🎨 Aplicando indicadores visuales a: ${cambio.cita_uuid}`);
+            
+            // ✅ ACTUALIZAR ESTADO VISUAL
+            actualizarCitaEnInterfaz(cambio.cita_uuid, cambio.nuevo_estado, null);
+            
+            // ✅ AGREGAR INDICADORES DE CAMBIOS PENDIENTES
+            const card = citaCard.querySelector('.card');
+            if (card) {
+                card.classList.add('cambios-pendientes');
+                
+                // Agregar borde especial
+                card.style.borderLeft = '4px solid #17a2b8';
+                
+                // Agregar badge de cambios pendientes
+                const titulo = citaCard.querySelector('.card-title');
+                if (titulo && !titulo.querySelector('.fa-sync-alt')) {
+                    titulo.insertAdjacentHTML('beforeend', `
+                        <i class="fas fa-sync-alt text-info ms-1" 
+                           title="Cambios pendientes de sincronización"></i>
+                    `);
+                }
+                
+                // Agregar texto informativo
+                const infoContainer = citaCard.querySelector('.text-muted.small');
+                if (infoContainer && !infoContainer.querySelector('.cambios-pendientes-text')) {
+                    infoContainer.insertAdjacentHTML('beforeend', `
+                        <div class="mb-1 cambios-pendientes-text">
+                            <i class="fas fa-sync-alt me-1 text-info"></i>
+                            <span class="text-info">Cambios pendientes</span>
+                        </div>
+                    `);
+                }
+            }
+        }
+    });
 }
 
 function verificarConectividad() {

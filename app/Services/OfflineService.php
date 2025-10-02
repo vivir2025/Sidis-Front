@@ -2455,101 +2455,57 @@ if ($citaArray['paciente_nombre_completo']) {
     }
 }
 
-/**
- * ✅ MÉTODO CORREGIDO: ACTUALIZAR ESTADO DE CITA OFFLINE
- */
-public function actualizarEstadoCitaOffline($citaUuid, $nuevoEstado, $sedeId)
+public function actualizarEstadoCitaOffline(string $uuid, string $nuevoEstado, int $sedeId): bool
 {
     try {
-        // ✅ VALIDAR UUID ANTES DE PROCESAR
-        if (empty($citaUuid) || !is_string($citaUuid) || strlen(trim($citaUuid)) === 0) {
-            Log::error('❌ UUID de cita vacío en actualizarEstadoCitaOffline', [
-                'cita_uuid' => $citaUuid,
-                'nuevo_estado' => $nuevoEstado,
-                'type' => gettype($citaUuid),
-                'length' => is_string($citaUuid) ? strlen($citaUuid) : 'N/A'
-            ]);
-            return false;
-        }
-
-        // ✅ LIMPIAR UUID
-        $citaUuid = trim($citaUuid);
-
         Log::info('📱 Actualizando estado de cita offline', [
-            'cita_uuid' => $citaUuid,
+            'uuid' => $uuid,
             'nuevo_estado' => $nuevoEstado,
             'sede_id' => $sedeId
         ]);
 
-        $actualizado = false;
+        // ✅ USAR SOLO CAMPOS QUE EXISTEN EN LA TABLA
+        $affected = DB::connection('offline')
+            ->table('citas')
+            ->where('uuid', $uuid)
+            ->where('sede_id', $sedeId)
+            ->update([
+                'estado' => $nuevoEstado,
+                'updated_at' => now()->toISOString()
+                // ✅ NO USAR 'offline_modificado' - NO EXISTE EN LA TABLA
+            ]);
 
-        if ($this->isSQLiteAvailable()) {
-            $updated = DB::connection('offline')
-                ->table('citas')
-                ->where('uuid', $citaUuid)
-                ->where('sede_id', $sedeId)
-                ->update([
-                    'estado' => $nuevoEstado,
-                    'updated_at' => now()->toISOString(),
-                    'offline_modificado' => true
-                ]);
+        if ($affected > 0) {
+            Log::info('✅ Estado actualizado en SQLite', [
+                'uuid' => $uuid,
+                'nuevo_estado' => $nuevoEstado,
+                'filas_afectadas' => $affected
+            ]);
 
-            if ($updated) {
-                Log::info('✅ Estado actualizado en SQLite', [
-                    'filas_afectadas' => $updated
-                ]);
-                $actualizado = true;
+            // ✅ TAMBIÉN ACTUALIZAR EL ARCHIVO JSON
+            $cita = $this->getCitaOffline($uuid);
+            if ($cita) {
+                $cita['estado'] = $nuevoEstado;
+                $cita['updated_at'] = now()->toISOString();
+                $this->storeCitaOffline($cita, false); // ✅ NO MARCAR COMO PENDIENTE
             }
-        }
 
-        // ✅ FALLBACK A JSON
-        $citasPath = $this->getStoragePath() . '/citas';
-        if (is_dir($citasPath)) {
-            $files = glob($citasPath . '/*.json');
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
-                if ($data && 
-                    $data['uuid'] === $citaUuid && 
-                    $data['sede_id'] == $sedeId) {
-                    
-                    $data['estado'] = $nuevoEstado;
-                    $data['updated_at'] = now()->toISOString();
-                    $data['offline_modificado'] = true;
-                    
-                    if (file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT))) {
-                        Log::info('✅ Estado actualizado en JSON', [
-                            'archivo' => basename($file)
-                        ]);
-                        $actualizado = true;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // ✅ GUARDAR EN COLA DE SINCRONIZACIÓN CON UUID VALIDADO
-        if ($actualizado) {
-            $this->registrarCambioPendiente([
-                'tipo_operacion' => 'estado_actualizado',
-                'entidad_tipo' => 'cita',
-                'entidad_uuid' => $citaUuid, // ✅ UUID YA VALIDADO
-                'datos' => [
-                    'nuevo_estado' => $nuevoEstado,
-                    'timestamp' => now()->toISOString()
-                ],
+            return true;
+        } else {
+            Log::warning('⚠️ No se encontró la cita para actualizar', [
+                'uuid' => $uuid,
                 'sede_id' => $sedeId
             ]);
+            return false;
         }
-
-        return $actualizado;
 
     } catch (\Exception $e) {
         Log::error('❌ Error actualizando estado offline', [
             'error' => $e->getMessage(),
-            'cita_uuid' => $citaUuid ?? 'NULL',
-            'nuevo_estado' => $nuevoEstado,
-            'trace' => $e->getTraceAsString()
+            'uuid' => $uuid,
+            'nuevo_estado' => $nuevoEstado
         ]);
+        
         return false;
     }
 }
