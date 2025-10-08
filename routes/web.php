@@ -10,7 +10,8 @@ use App\Http\Controllers\{
     CitaController,
     AgendaController,
     CronogramaController,
-    CupsController
+    CupsController,
+    HistoriaClinicaController
 };
 
 // Rutas públicas (para usuarios no autenticados)
@@ -267,6 +268,15 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         Route::post('/sincronizar', [CronogramaController::class, 'sincronizarCambios'])
               ->name('sincronizar');
     });
+        // ✅ RUTAS AJAX PARA BÚSQUEDAS
+    Route::get('/historia-clinica/buscar-medicamentos', [HistoriaClinicaController::class, 'buscarMedicamentos'])
+        ->name('historia-clinica.buscar-medicamentos');
+    Route::get('/historia-clinica/buscar-diagnosticos', [HistoriaClinicaController::class, 'buscarDiagnosticos'])
+        ->name('historia-clinica.buscar-diagnosticos');
+    Route::get('/historia-clinica/buscar-remisiones', [HistoriaClinicaController::class, 'buscarRemisiones'])
+        ->name('historia-clinica.buscar-remisiones');
+    Route::get('/historia-clinica/buscar-cups', [HistoriaClinicaController::class, 'buscarCups'])
+        ->name('historia-clinica.buscar-cups');
 
     // ✅ OTRAS RUTAS ESPECÍFICAS PARA PROFESIONALES DE SALUD
     Route::prefix('profesional')->name('profesional.')->group(function () {
@@ -278,6 +288,19 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         
         // Estadísticas personales
         Route::get('/estadisticas-personales', [CronogramaController::class, 'estadisticasPersonales'])->name('estadisticas-personales');
+    });
+
+     // ✅ RUTAS DE HISTORIA CLÍNICA
+    Route::prefix('historia-clinica')->name('historia-clinica.')->group(function () {
+        Route::get('/crear/{citaUuid}', [HistoriaClinicaController::class, 'create'])->name('create');
+        Route::post('/guardar', [HistoriaClinicaController::class, 'store'])->name('store');
+        Route::get('/{uuid}', [HistoriaClinicaController::class, 'show'])->name('show');
+        
+        // ✅ RUTAS AJAX PARA BÚSQUEDAS
+        Route::get('/ajax/medicamentos/buscar', [HistoriaClinicaController::class, 'buscarMedicamentos'])->name('buscar-medicamentos');
+        Route::get('/ajax/diagnosticos/buscar', [HistoriaClinicaController::class, 'buscarDiagnosticos'])->name('buscar-diagnosticos');
+        Route::get('/ajax/cups/buscar', [HistoriaClinicaController::class, 'buscarCups'])->name('buscar-cups');
+        Route::get('/ajax/remisiones/buscar', [HistoriaClinicaController::class, 'buscarRemisiones'])->name('buscar-remisiones');
     });
 });
 // ✅ NUEVA: Ruta de fallback para SPA (si usas Vue/React)

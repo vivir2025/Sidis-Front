@@ -290,6 +290,45 @@ protected function makeRequest(string $method, string $endpoint, array $data = [
             'error' => $errorMessage
         ]);
 
+        // ✅ AGREGAR PARSING DE ERRORES DE VALIDACIÓN DETALLADOS CON MÁS DEBUG
+        try {
+            $errorData = $response->json();
+            
+            Log::error('🔍 DEBUG: Estructura completa del error JSON', [
+                'error_data' => $errorData,
+                'has_errors_key' => isset($errorData['errors']),
+                'has_data_key' => isset($errorData['data']),
+                'all_keys' => array_keys($errorData),
+                'endpoint' => $endpoint,
+                'method' => $method
+            ]);
+            
+            // Buscar errores en diferentes ubicaciones posibles
+            $validationErrors = null;
+            
+            if (isset($errorData['errors'])) {
+                $validationErrors = $errorData['errors'];
+                Log::error('❌ ERRORES DE VALIDACIÓN ENCONTRADOS EN errors', [
+                    'validation_errors' => $validationErrors
+                ]);
+            } elseif (isset($errorData['data']['errors'])) {
+                $validationErrors = $errorData['data']['errors'];
+                Log::error('❌ ERRORES DE VALIDACIÓN ENCONTRADOS EN data.errors', [
+                    'validation_errors' => $validationErrors
+                ]);
+            } else {
+                Log::warning('⚠️ No se encontraron errores de validación en la respuesta', [
+                    'available_keys' => array_keys($errorData)
+                ]);
+            }
+            
+        } catch (\Exception $jsonError) {
+            Log::warning('⚠️ No se pudo parsear JSON de error', [
+                'raw_error' => $errorBody,
+                'json_error' => $jsonError->getMessage()
+            ]);
+        }
+
         // ✅ DEVOLVER ERROR ESPECÍFICO CON STATUS CODE
         return [
             'success' => false,
@@ -311,6 +350,45 @@ protected function makeRequest(string $method, string $endpoint, array $data = [
                 'status_code' => $statusCode,
                 'error' => $errorMessage
             ]);
+
+            // ✅ AGREGAR PARSING DE ERRORES DE VALIDACIÓN DETALLADOS TAMBIÉN AQUÍ CON MÁS DEBUG
+            try {
+                $errorData = $e->response->json();
+                
+                Log::error('🔍 DEBUG: Estructura completa del error JSON (RequestException)', [
+                    'error_data' => $errorData,
+                    'has_errors_key' => isset($errorData['errors']),
+                    'has_data_key' => isset($errorData['data']),
+                    'all_keys' => array_keys($errorData),
+                    'endpoint' => $endpoint,
+                    'method' => $method
+                ]);
+                
+                // Buscar errores en diferentes ubicaciones posibles
+                $validationErrors = null;
+                
+                if (isset($errorData['errors'])) {
+                    $validationErrors = $errorData['errors'];
+                    Log::error('❌ ERRORES DE VALIDACIÓN ENCONTRADOS EN errors (RequestException)', [
+                        'validation_errors' => $validationErrors
+                    ]);
+                } elseif (isset($errorData['data']['errors'])) {
+                    $validationErrors = $errorData['data']['errors'];
+                    Log::error('❌ ERRORES DE VALIDACIÓN ENCONTRADOS EN data.errors (RequestException)', [
+                        'validation_errors' => $validationErrors
+                    ]);
+                } else {
+                    Log::warning('⚠️ No se encontraron errores de validación en la respuesta (RequestException)', [
+                        'available_keys' => array_keys($errorData)
+                    ]);
+                }
+                
+            } catch (\Exception $jsonError) {
+                Log::warning('⚠️ No se pudo parsear JSON de error (RequestException)', [
+                    'raw_error' => $errorBody,
+                    'json_error' => $jsonError->getMessage()
+                ]);
+            }
 
             return [
                 'success' => false,

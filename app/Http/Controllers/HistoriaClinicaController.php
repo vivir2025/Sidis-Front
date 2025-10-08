@@ -1,0 +1,1437 @@
+<?php
+// app/Http/Controllers/HistoriaClinicaController.php
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Services\{AuthService, ApiService, OfflineService, PacienteService, CitaService};
+use Illuminate\Support\Facades\Log;
+
+class HistoriaClinicaController extends Controller
+{
+    protected $authService;
+    protected $apiService;
+    protected $offlineService;
+    protected $pacienteService;
+    protected $citaService;
+
+    public function __construct(
+        AuthService $authService,
+        ApiService $apiService,
+        OfflineService $offlineService,
+        PacienteService $pacienteService,
+        CitaService $citaService
+    ) {
+        $this->middleware('custom.auth');
+        $this->authService = $authService;
+        $this->apiService = $apiService;
+        $this->offlineService = $offlineService;
+        $this->pacienteService = $pacienteService;
+        $this->citaService = $citaService;
+    }
+
+    /**
+     * ✅ MOSTRAR FORMULARIO DE HISTORIA CLÍNICA
+     */
+    public function create(Request $request, string $citaUuid)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            $isOffline = $this->authService->isOffline();
+
+            Log::info('🩺 Creando historia clínica', [
+                'cita_uuid' => $citaUuid,
+                'usuario' => $usuario['nombre_completo']
+            ]);
+
+            // ✅ OBTENER DATOS DE LA CITA
+            $citaResult = $this->citaService->show($citaUuid);
+            
+            if (!$citaResult['success']) {
+                return back()->with('error', 'Cita no encontrada');
+            }
+
+            $cita = $citaResult['data'];
+
+            // ✅ VERIFICAR QUE LA CITA NO TENGA HISTORIA CLÍNICA
+            if (isset($cita['historia_clinica_uuid'])) {
+                return redirect()->route('historia-clinica.show', $cita['historia_clinica_uuid'])
+                    ->with('info', 'Esta cita ya tiene una historia clínica asociada');
+            }
+
+            // ✅ OBTENER DATOS MAESTROS PARA SELECTS
+            $masterData = $this->getMasterDataForForm();
+
+            return view('historia-clinica.create', compact(
+                'cita',
+                'usuario',
+                'isOffline',
+                'masterData'
+            ));
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error creando historia clínica', [
+                'error' => $e->getMessage(),
+                'cita_uuid' => $citaUuid
+            ]);
+
+            return back()->with('error', 'Error cargando formulario de historia clínica');
+        }
+    }
+
+    /**
+     * ✅ GUARDAR HISTORIA CLÍNICA
+     */
+    public function store(Request $request)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            
+            Log::info('💾 Guardando historia clínica', [
+                'cita_uuid' => $request->cita_uuid,
+                'usuario' => $usuario['nombre_completo']
+            ]);
+
+            // ✅ VALIDAR DATOS BÁSICOS
+            $validatedData = $this->validateHistoriaClinica($request);
+
+            // ✅ PREPARAR DATOS PARA ENVÍO
+            $historiaData = $this->prepareHistoriaData($validatedData, $usuario);
+
+            // ✅ INTENTAR GUARDAR ONLINE PRIMERO
+            if ($this->apiService->isOnline()) {
+                $result = $this->saveOnline($historiaData);
+                
+                if ($result['success']) {
+                    // ✅ GUARDAR OFFLINE COMO BACKUP
+                    $this->saveOffline($historiaData, false);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Historia clínica guardada exitosamente',
+                        'redirect_url' => route('historia-clinica.show', $result['data']['uuid'])
+                    ]);
+                }
+            }
+
+            // ✅ GUARDAR OFFLINE
+            $result = $this->saveOffline($historiaData, true);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Historia clínica guardada offline (se sincronizará cuando vuelva la conexión)',
+                'redirect_url' => route('cronograma.index')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error guardando historia clínica', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error guardando historia clínica: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+/**
+ * ✅ OBTENER DATOS DE LA CITA PARA EXTRAER PACIENTE_ID
+ */
+private function getCitaData(string $citaUuid): ?array
+{
+    try {
+        Log::info('🔍 Obteniendo datos de cita para historia clínica', [
+            'cita_uuid' => $citaUuid
+        ]);
+        
+        // ✅ USAR EL SERVICIO DE CITAS QUE YA TIENES
+        $citaResult = $this->citaService->show($citaUuid);
+        
+        if ($citaResult['success']) {
+            $citaData = $citaResult['data'];
+            
+            Log::info('✅ Datos de cita obtenidos correctamente', [
+                'cita_uuid' => $citaUuid,
+                'tiene_paciente_id' => isset($citaData['paciente_id']),
+                'tiene_paciente_uuid' => isset($citaData['paciente_uuid']),
+                'tiene_paciente_objeto' => isset($citaData['paciente']['id'])
+            ]);
+            
+            return $citaData;
+        }
+        
+        Log::warning('⚠️ No se pudo obtener datos de la cita', [
+            'cita_uuid' => $citaUuid,
+            'error' => $citaResult['error'] ?? 'Error desconocido'
+        ]);
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo datos de la cita', [
+            'cita_uuid' => $citaUuid,
+            'error' => $e->getMessage()
+        ]);
+        
+        return null;
+    }
+}
+
+ /**
+ * ✅ VALIDAR DATOS DE HISTORIA CLÍNICA - CORREGIDO
+ */
+private function validateHistoriaClinica(Request $request): array
+{
+    return $request->validate([
+        // ✅ DATOS BÁSICOS OBLIGATORIOS
+        'cita_uuid' => 'required|string',
+        'motivo' => 'required|string|max:1000',
+        'enfermedad_actual' => 'required|string|max:2000',
+        
+        // ✅ DIAGNÓSTICO PRINCIPAL OBLIGATORIO
+        'idDiagnostico' => 'required|string|uuid',
+        'tipo_diagnostico' => 'required|string',
+        
+        // ✅ ACUDIENTE
+        'acompanante' => 'nullable|string|max:200',
+        'parentesco' => 'nullable|string|max:100',
+        'telefono_acudiente' => 'nullable|string|max:20',
+        
+        // ✅ DISCAPACIDADES
+        'discapacidad_fisica' => 'nullable|in:SI,NO',
+        'discapacidad_visual' => 'nullable|in:SI,NO',
+        'discapacidad_mental' => 'nullable|in:SI,NO',
+        'discapacidad_auditiva' => 'nullable|in:SI,NO',
+        'discapacidad_intelectual' => 'nullable|in:SI,NO',
+        
+        // ✅ DROGODEPENDENCIA
+        'drogodependiente' => 'nullable|in:SI,NO',
+        'drogodependiente_cual' => 'nullable|string|max:200',
+        
+        // ✅ MEDIDAS ANTROPOMÉTRICAS
+        'peso' => 'nullable|numeric|min:0|max:300',
+        'talla' => 'nullable|numeric|min:0|max:250',
+        'perimetro_abdominal' => 'nullable|numeric|min:0|max:200',
+        'obs_perimetro_abdominal' => 'nullable|string|max:500',
+        
+        // ✅ ANTECEDENTES FAMILIARES
+        'hipertension_arterial' => 'nullable|in:SI,NO',
+        'parentesco_hipertension' => 'nullable|string|max:300',
+        'diabetes_mellitus' => 'nullable|in:SI,NO',
+        'parentesco_diabetes_mellitus' => 'nullable|string|max:300',
+        'artritis' => 'nullable|in:SI,NO',
+        'parentesco_artritis' => 'nullable|string|max:300',
+        'enfermedad_cardiovascular' => 'nullable|in:SI,NO',
+        'parentesco_enfermedad_cardiovascular' => 'nullable|string|max:300',
+        'antecedentes_metabolico' => 'nullable|in:SI,NO',
+        'parentesco_antecedentes_metabolico' => 'nullable|string|max:300',
+        'cancer' => 'nullable|in:SI,NO',
+        'parentesco_cancer' => 'nullable|string|max:300',
+        'lucemia' => 'nullable|in:SI,NO',
+        'parentesco_lucemia' => 'nullable|string|max:300',
+        'vih' => 'nullable|in:SI,NO',
+        'parentesco_vih' => 'nullable|string|max:300',
+        'otro' => 'nullable|in:SI,NO',
+        'parentesco_otro' => 'nullable|string|max:300',
+        
+        // ✅ ANTECEDENTES PERSONALES
+        'enfermedad_cardiovascular_personal' => 'nullable|in:SI,NO',
+        'obs_enfermedad_cardiovascular_personal' => 'nullable|string|max:500',
+        'arterial_periferica_personal' => 'nullable|in:SI,NO',
+        'obs_arterial_periferica_personal' => 'nullable|string|max:500',
+        'carotidea_personal' => 'nullable|in:SI,NO',
+        'obs_carotidea_personal' => 'nullable|string|max:500',
+        'aneurisma_aorta_peronal' => 'nullable|in:SI,NO',
+        'obs_aneurisma_aorta_peronal' => 'nullable|string|max:500',
+        'coronario_personal' => 'nullable|in:SI,NO',
+        'obs_coronario_personal' => 'nullable|string|max:500',
+        'artritis_personal' => 'nullable|in:SI,NO',
+        'obs_artritis_personal' => 'nullable|string|max:500',
+        'iam_personal' => 'nullable|in:SI,NO',
+        'obs_iam_personal' => 'nullable|string|max:500',
+        'revascul_coronaria_personal' => 'nullable|in:SI,NO',
+        'obs_revascul_coronaria_personal' => 'nullable|string|max:500',
+        'insuficiencia_cardiaca_personal' => 'nullable|in:SI,NO',
+        'obs_insuficiencia_cardiaca_personal' => 'nullable|string|max:500',
+        'amputacion_pie_diabetico_personal' => 'nullable|in:SI,NO',
+        'obs_amputacion_pie_diabetico_personal' => 'nullable|string|max:500',
+        'enfermedad_pulmonar_personal' => 'nullable|in:SI,NO',
+        'obs_enfermedad_pulmonar_personal' => 'nullable|string|max:500',
+        'victima_maltrato_personal' => 'nullable|in:SI,NO',
+        'obs_victima_maltrato_personal' => 'nullable|string|max:500',
+        'antecedentes_quirurgicos_personal' => 'nullable|in:SI,NO',
+        'obs_antecedentes_quirurgicos_personal' => 'nullable|string|max:500',
+        'acontosis_personal' => 'nullable|in:SI,NO',
+        'obs_acontosis_personal' => 'nullable|string|max:500',
+        'otro_personal' => 'nullable|in:SI,NO',
+        'obs_otro_personal' => 'nullable|string|max:500',
+        'insulina_requiriente' => 'nullable|in:SI,NO',
+        
+        // ✅ TEST MORISKY
+        'test_morisky_olvida_tomar_medicamentos' => 'nullable|in:SI,NO',
+        'test_morisky_toma_medicamentos_hora_indicada' => 'nullable|in:SI,NO',
+        'test_morisky_cuando_esta_bien_deja_tomar_medicamentos' => 'nullable|in:SI,NO',
+        'test_morisky_siente_mal_deja_tomarlos' => 'nullable|in:SI,NO',
+        'test_morisky_valoracio_psicologia' => 'nullable|in:SI,NO',
+        'adherente' => 'nullable|in:SI,NO',
+        
+        // ✅ OTROS TRATAMIENTOS
+        'recibe_tratamiento_alternativo' => 'nullable|in:SI,NO',
+        'recibe_tratamiento_plantas_medicinales' => 'nullable|in:SI,NO',
+        'recibe_ritual_medicina_tradicional' => 'nullable|in:SI,NO',
+        
+        // ✅ REVISIÓN POR SISTEMAS
+        'general' => 'nullable|string|max:1000',
+        'cabeza' => 'nullable|string|max:1000',
+        'respiratorio' => 'nullable|string|max:1000',
+        'cardiovascular' => 'nullable|string|max:1000',
+        'gastrointestinal' => 'nullable|string|max:1000',
+        'osteoatromuscular' => 'nullable|string|max:1000',
+        'snc' => 'nullable|string|max:1000',
+        
+        // ✅ EXAMEN FÍSICO - SIGNOS VITALES
+        'ef_pa_sistolica_sentado_pie' => 'nullable|numeric|min:50|max:300',
+        'ef_pa_distolica_sentado_pie' => 'nullable|numeric|min:30|max:200',
+        'ef_frecuencia_fisica' => 'nullable|numeric|min:30|max:200',
+        'ef_frecuencia_respiratoria' => 'nullable|numeric|min:8|max:50',
+        
+        // ✅ EXAMEN FÍSICO - SISTEMAS
+        'ef_cabeza' => 'nullable|string|max:500',
+        'ef_obs_cabeza' => 'nullable|string|max:500',
+        'ef_agudeza_visual' => 'nullable|string|max:500',
+        'ef_obs_agudeza_visual' => 'nullable|string|max:500',
+        'ef_cuello' => 'nullable|string|max:500',
+        'ef_obs_cuello' => 'nullable|string|max:500',
+        'ef_torax' => 'nullable|string|max:500',
+        'ef_obs_torax' => 'nullable|string|max:500',
+        'ef_mamas' => 'nullable|string|max:500',
+        'ef_obs_mamas' => 'nullable|string|max:500',
+        'ef_abdomen' => 'nullable|string|max:500',
+        'ef_obs_abdomen' => 'nullable|string|max:500',
+        'ef_genito_urinario' => 'nullable|string|max:500',
+        'ef_obs_genito_urinario' => 'nullable|string|max:500',
+        'ef_extremidades' => 'nullable|string|max:500',
+        'ef_obs_extremidades' => 'nullable|string|max:500',
+        'ef_piel_anexos_pulsos' => 'nullable|string|max:500',
+        'ef_obs_piel_anexos_pulsos' => 'nullable|string|max:500',
+        'ef_sistema_nervioso' => 'nullable|string|max:500',
+        'ef_obs_sistema_nervioso' => 'nullable|string|max:500',
+        'ef_orientacion' => 'nullable|string|max:500',
+        'ef_obs_orientacion' => 'nullable|string|max:500',
+        'ef_hallazco_positivo_examen_fisico' => 'nullable|string|max:1000',
+        
+        // ✅ FACTORES DE RIESGO
+        'numero_frutas_diarias' => 'nullable|integer|min:0|max:20',
+        'elevado_consumo_grasa_saturada' => 'nullable|in:SI,NO',
+        'adiciona_sal_despues_preparar_alimentos' => 'nullable|in:SI,NO',
+        'dislipidemia' => 'nullable|in:SI,NO',
+        'condicion_clinica_asociada' => 'nullable|in:SI,NO',
+        'lesion_organo_blanco' => 'nullable|in:SI,NO',
+        'descripcion_lesion_organo_blanco' => 'nullable|string|max:500',
+        
+        // ✅ EXÁMENES
+        'fex_es' => 'nullable|date',
+        'hcElectrocardiograma' => 'nullable|string|max:1000',
+        'fex_es1' => 'nullable|date',
+        'hcEcocardiograma' => 'nullable|string|max:1000',
+        'fex_es2' => 'nullable|date',
+        'hcEcografiaRenal' => 'nullable|string|max:1000',
+        
+        // ✅ CLASIFICACIÓN
+        'ClasificacionEstadoMetabolico' => 'nullable|string|max:200',
+        'hipertension_arterial_personal' => 'nullable|in:SI,NO',
+        'obs_hipertension_arterial_personal' => 'nullable|string|max:500',
+        'clasificacion_hta' => 'nullable|string|max:200',
+        'diabetes_mellitus_personal' => 'nullable|in:SI,NO',
+        'obs_diabetes_mellitus_personal' => 'nullable|string|max:500',
+        'clasificacion_dm' => 'nullable|string|max:200',
+        'clasificacion_erc_estado' => 'nullable|string|max:200',
+        'clasificacion_erc_categoria_ambulatoria_persistente' => 'nullable|string|max:200',
+        'clasificacion_rcv' => 'nullable|string|max:200',
+        'tasa_filtracion_glomerular_ckd_epi' => 'nullable|numeric|min:0|max:200',
+        'tasa_filtracion_glomerular_gockcroft_gault' => 'nullable|numeric|min:0|max:200',
+        
+        // ✅ EDUCACIÓN
+        'alimentacion' => 'nullable|in:SI,NO',
+        'disminucion_consumo_sal_azucar' => 'nullable|in:SI,NO',
+        'fomento_actividad_fisica' => 'nullable|in:SI,NO',
+        'importancia_adherencia_tratamiento' => 'nullable|in:SI,NO',
+        'consumo_frutas_verduras' => 'nullable|in:SI,NO',
+        'manejo_estres' => 'nullable|in:SI,NO',
+        'disminucion_consumo_cigarrillo' => 'nullable|in:SI,NO',
+        'disminucion_peso' => 'nullable|in:SI,NO',
+        
+        // ✅ OTROS
+        'observaciones_generales' => 'nullable|string|max:2000',
+        'finalidad' => 'nullable|string|max:100',
+        'causa_externa' => 'nullable|string|max:200',
+        
+         'medicamentos' => 'nullable|array',
+        'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'medicamentos.*.cantidad' => 'required|string|max:50',
+        'medicamentos.*.dosis' => 'required|string|max:200',
+        
+         'remisiones' => 'nullable|array',
+        'remisiones.*.idRemision' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'remisiones.*.remObservacion' => 'nullable|string|max:500',
+        
+        
+         'cups' => 'nullable|array',
+        'cups.*.idCups' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'cups.*.cupObservacion' => 'nullable|string|max:500',
+        
+        'diagnosticos_adicionales' => 'nullable|array',
+        'diagnosticos_adicionales.*.idDiagnostico' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'diagnosticos_adicionales.*.tipo_diagnostico' => 'required|string',
+    ]);
+}
+
+/**
+ * ✅ FILTRAR ELEMENTOS VACÍOS DE ARRAYS - CORREGIDO PARA UUIDs
+ */
+private function filterEmptyArrayElements(Request $request): void
+{
+    // ✅ FILTRAR CUPS VACÍOS
+    if ($request->has('cups')) {
+        $cups = collect($request->input('cups', []))
+            ->filter(function ($item) {
+                return !empty($item['idCups']) && 
+                       (is_string($item['idCups']) || is_numeric($item['idCups'])); // ✅ CAMBIO: acepta string o numeric
+            })
+            ->values()
+            ->toArray();
+        
+        $request->merge(['cups' => $cups]);
+        Log::info('🔧 CUPS filtrados', ['filtrados' => count($cups)]);
+    }
+
+    // ✅ FILTRAR MEDICAMENTOS VACÍOS
+    if ($request->has('medicamentos')) {
+        $medicamentos = collect($request->input('medicamentos', []))
+            ->filter(function ($item) {
+                return !empty($item['idMedicamento']) && 
+                       (is_string($item['idMedicamento']) || is_numeric($item['idMedicamento'])); // ✅ CAMBIO
+            })
+            ->values()
+            ->toArray();
+        
+        $request->merge(['medicamentos' => $medicamentos]);
+        Log::info('🔧 Medicamentos filtrados', ['filtrados' => count($medicamentos)]);
+    }
+
+    // ✅ FILTRAR DIAGNÓSTICOS ADICIONALES VACÍOS
+    if ($request->has('diagnosticos_adicionales')) {
+        $diagnosticos = collect($request->input('diagnosticos_adicionales', []))
+            ->filter(function ($item) {
+                return !empty($item['idDiagnostico']) && 
+                       (is_string($item['idDiagnostico']) || is_numeric($item['idDiagnostico'])); // ✅ CAMBIO
+            })
+            ->values()
+            ->toArray();
+        
+        $request->merge(['diagnosticos_adicionales' => $diagnosticos]);
+        Log::info('🔧 Diagnósticos adicionales filtrados', ['filtrados' => count($diagnosticos)]);
+    }
+
+    // ✅ FILTRAR REMISIONES VACÍAS
+    if ($request->has('remisiones')) {
+        $remisiones = collect($request->input('remisiones', []))
+            ->filter(function ($item) {
+                return !empty($item['idRemision']) && 
+                       (is_string($item['idRemision']) || is_numeric($item['idRemision'])); // ✅ CAMBIO
+            })
+            ->values()
+            ->toArray();
+        
+        $request->merge(['remisiones' => $remisiones]);
+        Log::info('🔧 Remisiones filtradas', ['filtradas' => count($remisiones)]);
+    }
+}
+// ✅ MÉTODO HÍBRIDO CORREGIDO
+private function obtenerDatosMaestrosHibrido(): array
+{
+    $datos = [
+        'medicamentos' => [],
+        'diagnosticos' => [],
+        'remisiones' => [],
+        'cups' => []
+    ];
+
+    // ✅ MEDICAMENTOS - Híbrido
+    try {
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get('/medicamentos');
+            if ($response['success'] && !empty($response['data'])) {
+                $datos['medicamentos'] = $response['data'];
+                Log::info('✅ Medicamentos obtenidos desde API', ['count' => count($response['data'])]);
+            } else {
+                throw new \Exception('API sin datos');
+            }
+        } else {
+            throw new \Exception('API offline');
+        }
+    } catch (\Exception $e) {
+        Log::warning('⚠️ Medicamentos API falló, usando offline', ['error' => $e->getMessage()]);
+        $datos['medicamentos'] = $this->offlineService->buscarMedicamentosOffline('', 100);
+    }
+
+    // ✅ DIAGNÓSTICOS - Híbrido  
+    try {
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get('/diagnosticos');
+            if ($response['success'] && !empty($response['data'])) {
+                $datos['diagnosticos'] = $response['data'];
+                Log::info('✅ Diagnósticos obtenidos desde API', ['count' => count($response['data'])]);
+            } else {
+                throw new \Exception('API sin datos');
+            }
+        } else {
+            throw new \Exception('API offline');
+        }
+    } catch (\Exception $e) {
+        Log::warning('⚠️ Diagnósticos API falló, usando offline', ['error' => $e->getMessage()]);
+        $datos['diagnosticos'] = $this->offlineService->buscarDiagnosticosOffline('', 100);
+    }
+
+    // ✅ REMISIONES - Híbrido
+    try {
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get('/remisiones');
+            if ($response['success'] && !empty($response['data'])) {
+                $datos['remisiones'] = $response['data'];
+                Log::info('✅ Remisiones obtenidas desde API', ['count' => count($response['data'])]);
+            } else {
+                throw new \Exception('API sin datos');
+            }
+        } else {
+            throw new \Exception('API offline');
+        }
+    } catch (\Exception $e) {
+        Log::warning('⚠️ Remisiones API falló, usando offline', ['error' => $e->getMessage()]);
+        $datos['remisiones'] = $this->offlineService->buscarRemisionesOffline('', 100);
+    }
+
+    // ✅ CUPS - Ya funciona
+    try {
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get('/cups');
+            if ($response['success'] && !empty($response['data'])) {
+                $datos['cups'] = $response['data'];
+                Log::info('✅ CUPS obtenidos desde API', ['count' => count($response['data'])]);
+            } else {
+                throw new \Exception('API sin datos');
+            }
+        } else {
+            throw new \Exception('API offline');
+        }
+    } catch (\Exception $e) {
+        Log::warning('⚠️ CUPS API falló, usando offline', ['error' => $e->getMessage()]);
+        $datos['cups'] = $this->offlineService->getCupsActivosOffline();
+    }
+
+    return $datos;
+}
+
+  /**
+ * ✅ PREPARAR DATOS PARA ENVÍO - CORREGIDO CON PACIENTE_ID Y TIPO_CONSULTA INTELIGENTE
+ */
+private function prepareHistoriaData(array $validatedData, array $usuario): array
+{
+    // ✅ OBTENER DATOS DE LA CITA PARA PACIENTE_ID
+    $citaData = $this->getCitaData($validatedData['cita_uuid']);
+    
+    if (!$citaData) {
+        throw new \Exception('No se pudo obtener información de la cita para el paciente_id');
+    }
+    
+    // ✅ EXTRAER PACIENTE_ID DE DIFERENTES POSIBLES ESTRUCTURAS
+    $pacienteId = $citaData['paciente_id'] ?? 
+                  $citaData['paciente_uuid'] ?? 
+                  $citaData['paciente']['id'] ?? 
+                  $citaData['paciente']['uuid'] ?? 
+                  null;
+    
+    if (!$pacienteId) {
+        Log::error('❌ No se pudo extraer paciente_id de la cita', [
+            'cita_uuid' => $validatedData['cita_uuid'],
+            'cita_keys' => array_keys($citaData),
+            'paciente_data' => $citaData['paciente'] ?? 'NO_EXISTE'
+        ]);
+        
+        throw new \Exception('No se pudo obtener el paciente_id de la cita');
+    }
+    
+    // ✅ DETERMINAR TIPO DE CONSULTA INTELIGENTEMENTE
+    $tipoConsulta = $this->determinarTipoConsulta($validatedData['cita_uuid'], $pacienteId);
+    
+    Log::info('✅ Datos de cita procesados para historia clínica', [
+        'cita_uuid' => $validatedData['cita_uuid'],
+        'paciente_uuid' => $pacienteId,
+        'sede_id' => $usuario['sede_id'],
+        'usuario_id' => $usuario['id'],
+        'tipo_consulta' => $tipoConsulta // ✅ AGREGADO
+    ]);
+    
+    // ✅ CALCULAR IMC SI HAY PESO Y TALLA
+    $imc = null;
+    $clasificacionImc = null;
+    
+    if (!empty($validatedData['peso']) && !empty($validatedData['talla'])) {
+        $peso = floatval($validatedData['peso']);
+        $talla = floatval($validatedData['talla']) / 100; // Convertir cm a metros
+        
+        if ($talla > 0) {
+            $imc = round($peso / ($talla * $talla), 2);
+            $clasificacionImc = $this->clasificarIMC($imc);
+        }
+    }
+
+    return [
+        // ✅ CAMPOS OBLIGATORIOS QUE FALTABAN
+        'cita_uuid' => $validatedData['cita_uuid'],
+        'paciente_uuid' => $pacienteId, // ✅ AGREGADO - OBLIGATORIO
+        'sede_id' => $usuario['sede_id'], // ✅ AGREGADO - OBLIGATORIO  
+        'usuario_id' => $usuario['id'], // ✅ AGREGADO - OBLIGATORIO
+        'tipo_consulta' => $tipoConsulta, // ✅ AGREGADO - INTELIGENTE
+        
+        // ✅ RESTO DE CAMPOS (mantén todo lo que ya tienes)...
+        'finalidad' => $validatedData['finalidad'] ?? 'CONSULTA',
+        'acompanante' => $validatedData['acompanante'] ?? null,
+        'acu_telefono' => $validatedData['telefono_acudiente'] ?? null,
+        'acu_parentesco' => $validatedData['parentesco'] ?? null,
+        'causa_externa' => $validatedData['causa_externa'] ?? null,
+        'motivo_consulta' => $validatedData['motivo'],
+        'enfermedad_actual' => $validatedData['enfermedad_actual'],
+        
+        // ✅ DISCAPACIDADES
+        'discapacidad_fisica' => $validatedData['discapacidad_fisica'] ?? null,
+        'discapacidad_visual' => $validatedData['discapacidad_visual'] ?? null,
+        'discapacidad_mental' => $validatedData['discapacidad_mental'] ?? null,
+        'discapacidad_auditiva' => $validatedData['discapacidad_auditiva'] ?? null,
+        'discapacidad_intelectual' => $validatedData['discapacidad_intelectual'] ?? null,
+        
+        // ✅ DROGODEPENDENCIA
+        'drogo_dependiente' => $validatedData['drogodependiente'] ?? null,
+        'drogo_dependiente_cual' => $validatedData['drogodependiente_cual'] ?? null,
+        
+        // ✅ MEDIDAS ANTROPOMÉTRICAS
+        'peso' => $validatedData['peso'] ?? null,
+        'talla' => $validatedData['talla'] ?? null,
+        'imc' => $imc,
+        'clasificacion' => $clasificacionImc,
+        'perimetro_abdominal' => $validatedData['perimetro_abdominal'] ?? null,
+        'obs_perimetro_abdominal' => $validatedData['obs_perimetro_abdominal'] ?? null,
+        
+        // ✅ ANTECEDENTES FAMILIARES
+        'hipertension_arterial' => $validatedData['hipertension_arterial'] ?? null,
+        'parentesco_hipertension' => $validatedData['parentesco_hipertension'] ?? null,
+        'diabetes_mellitus' => $validatedData['diabetes_mellitus'] ?? null,
+        'parentesco_mellitus' => $validatedData['parentesco_diabetes_mellitus'] ?? null,
+        'artritis' => $validatedData['artritis'] ?? null,
+        'parentesco_artritis' => $validatedData['parentesco_artritis'] ?? null,
+        'enfermedad_cardiovascular' => $validatedData['enfermedad_cardiovascular'] ?? null,
+        'parentesco_cardiovascular' => $validatedData['parentesco_enfermedad_cardiovascular'] ?? null,
+        'antecedente_metabolico' => $validatedData['antecedentes_metabolico'] ?? null,
+        'parentesco_metabolico' => $validatedData['parentesco_antecedentes_metabolico'] ?? null,
+        'cancer_mama_estomago_prostata_colon' => $validatedData['cancer'] ?? null,
+        'parentesco_cancer' => $validatedData['parentesco_cancer'] ?? null,
+        'leucemia' => $validatedData['lucemia'] ?? null,
+        'parentesco_leucemia' => $validatedData['parentesco_lucemia'] ?? null,
+        'vih' => $validatedData['vih'] ?? null,
+        'parentesco_vih' => $validatedData['parentesco_vih'] ?? null,
+        'otro' => $validatedData['otro'] ?? null,
+        'parentesco_otro' => $validatedData['parentesco_otro'] ?? null,
+        
+        // ✅ ANTECEDENTES PERSONALES
+        'enfermedad_cardiovascular_personal' => $validatedData['enfermedad_cardiovascular_personal'] ?? null,
+        'obs_personal_enfermedad_cardiovascular' => $validatedData['obs_enfermedad_cardiovascular_personal'] ?? null,
+        'arterial_periferica_personal' => $validatedData['arterial_periferica_personal'] ?? null,
+        'obs_personal_arterial_periferica' => $validatedData['obs_arterial_periferica_personal'] ?? null,
+        'carotidea_personal' => $validatedData['carotidea_personal'] ?? null,
+        'obs_personal_carotidea' => $validatedData['obs_carotidea_personal'] ?? null,
+        'aneurisma_aorta_personal' => $validatedData['aneurisma_aorta_peronal'] ?? null,
+        'obs_personal_aneurisma_aorta' => $validatedData['obs_aneurisma_aorta_peronal'] ?? null,
+        'sindrome_coronario_agudo_angina_personal' => $validatedData['coronario_personal'] ?? null,
+        'obs_personal_sindrome_coronario' => $validatedData['obs_coronario_personal'] ?? null,
+        'artritis_personal' => $validatedData['artritis_personal'] ?? null,
+        'obs_personal_artritis' => $validatedData['obs_artritis_personal'] ?? null,
+        'iam_personal' => $validatedData['iam_personal'] ?? null,
+        'obs_personal_iam' => $validatedData['obs_iam_personal'] ?? null,
+        'revascul_coronaria_personal' => $validatedData['revascul_coronaria_personal'] ?? null,
+        'obs_personal_revascul_coronaria' => $validatedData['obs_revascul_coronaria_personal'] ?? null,
+        'insuficiencia_cardiaca_personal' => $validatedData['insuficiencia_cardiaca_personal'] ?? null,
+        'obs_personal_insuficiencia_cardiaca' => $validatedData['obs_insuficiencia_cardiaca_personal'] ?? null,
+        'amputacion_pie_diabetico_personal' => $validatedData['amputacion_pie_diabetico_personal'] ?? null,
+        'obs_personal_amputacion_pie_diabetico' => $validatedData['obs_amputacion_pie_diabetico_personal'] ?? null,
+        'enfermedad_pulmonar_personal' => $validatedData['enfermedad_pulmonar_personal'] ?? null,
+        'obs_personal_enfermedad_pulmonar' => $validatedData['obs_enfermedad_pulmonar_personal'] ?? null,
+        'victima_maltrato_personal' => $validatedData['victima_maltrato_personal'] ?? null,
+        'obs_personal_maltrato_personal' => $validatedData['obs_victima_maltrato_personal'] ?? null,
+        'antecedentes_quirurgicos' => $validatedData['antecedentes_quirurgicos_personal'] ?? null,
+        'obs_personal_antecedentes_quirurgicos' => $validatedData['obs_antecedentes_quirurgicos_personal'] ?? null,
+        'acontosis_personal' => $validatedData['acontosis_personal'] ?? null,
+        'obs_personal_acontosis' => $validatedData['obs_acontosis_personal'] ?? null,
+        'otro_personal' => $validatedData['otro_personal'] ?? null,
+        'obs_personal_otro' => $validatedData['obs_otro_personal'] ?? null,
+        'insulina_requiriente' => $validatedData['insulina_requiriente'] ?? null,
+        
+        // ✅ TEST MORISKY
+        'olvida_tomar_medicamentos' => $validatedData['test_morisky_olvida_tomar_medicamentos'] ?? null,
+        'toma_medicamentos_hora_indicada' => $validatedData['test_morisky_toma_medicamentos_hora_indicada'] ?? null,
+        'cuando_esta_bien_deja_tomar_medicamentos' => $validatedData['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? null,
+        'siente_mal_deja_tomarlos' => $validatedData['test_morisky_siente_mal_deja_tomarlos'] ?? null,
+        'valoracion_psicologia' => $validatedData['test_morisky_valoracio_psicologia'] ?? null,
+        'adherente' => $validatedData['adherente'] ?? null,
+        
+        // ✅ OTROS TRATAMIENTOS
+        'recibe_tratamiento_alternativo' => $validatedData['recibe_tratamiento_alternativo'] ?? null,
+        'recibe_tratamiento_con_plantas_medicinales' => $validatedData['recibe_tratamiento_plantas_medicinales'] ?? null,
+        'recibe_ritual_medicina_tradicional' => $validatedData['recibe_ritual_medicina_tradicional'] ?? null,
+        
+        // ✅ REVISIÓN POR SISTEMAS
+        'general' => $validatedData['general'] ?? null,
+        'cabeza' => $validatedData['cabeza'] ?? null,
+        'respiratorio' => $validatedData['respiratorio'] ?? null,
+        'cardiovascular' => $validatedData['cardiovascular'] ?? null,
+        'gastrointestinal' => $validatedData['gastrointestinal'] ?? null,
+        'osteoatromuscular' => $validatedData['osteoatromuscular'] ?? null,
+        'snc' => $validatedData['snc'] ?? null,
+        
+        // ✅ SIGNOS VITALES
+        'presion_arterial_sistolica_sentado_pie' => $validatedData['ef_pa_sistolica_sentado_pie'] ?? null,
+        'presion_arterial_distolica_sentado_pie' => $validatedData['ef_pa_distolica_sentado_pie'] ?? null,
+        'frecuencia_cardiaca' => $validatedData['ef_frecuencia_fisica'] ?? null,
+        'frecuencia_respiratoria' => $validatedData['ef_frecuencia_respiratoria'] ?? null,
+        
+        // ✅ EXAMEN FÍSICO
+        'ef_cabeza' => $validatedData['ef_cabeza'] ?? null,
+        'obs_cabeza' => $validatedData['ef_obs_cabeza'] ?? null,
+        'agudeza_visual' => $validatedData['ef_agudeza_visual'] ?? null,
+        'obs_agudeza_visual' => $validatedData['ef_obs_agudeza_visual'] ?? null,
+        'cuello' => $validatedData['ef_cuello'] ?? null,
+        'obs_cuello' => $validatedData['ef_obs_cuello'] ?? null,
+        'torax' => $validatedData['ef_torax'] ?? null,
+        'obs_torax' => $validatedData['ef_obs_torax'] ?? null,
+        'mamas' => $validatedData['ef_mamas'] ?? null,
+        'obs_mamas' => $validatedData['ef_obs_mamas'] ?? null,
+        'abdomen' => $validatedData['ef_abdomen'] ?? null,
+        'obs_abdomen' => $validatedData['ef_obs_abdomen'] ?? null,
+        'genito_urinario' => $validatedData['ef_genito_urinario'] ?? null,
+        'obs_genito_urinario' => $validatedData['ef_obs_genito_urinario'] ?? null,
+        'extremidades' => $validatedData['ef_extremidades'] ?? null,
+        'obs_extremidades' => $validatedData['ef_obs_extremidades'] ?? null,
+        'piel_anexos_pulsos' => $validatedData['ef_piel_anexos_pulsos'] ?? null,
+        'obs_piel_anexos_pulsos' => $validatedData['ef_obs_piel_anexos_pulsos'] ?? null,
+        'sistema_nervioso' => $validatedData['ef_sistema_nervioso'] ?? null,
+        'obs_sistema_nervioso' => $validatedData['ef_obs_sistema_nervioso'] ?? null,
+        'orientacion' => $validatedData['ef_orientacion'] ?? null,
+        'obs_orientacion' => $validatedData['ef_obs_orientacion'] ?? null,
+        'hallazgo_positivo_examen_fisico' => $validatedData['ef_hallazco_positivo_examen_fisico'] ?? null,
+        
+        // ✅ FACTORES DE RIESGO
+        'numero_frutas_diarias' => $validatedData['numero_frutas_diarias'] ?? null,
+        'elevado_consumo_grasa_saturada' => $validatedData['elevado_consumo_grasa_saturada'] ?? null,
+        'adiciona_sal_despues_preparar_comida' => $validatedData['adiciona_sal_despues_preparar_alimentos'] ?? null,
+        'dislipidemia' => $validatedData['dislipidemia'] ?? null,
+        'condicion_clinica_asociada' => $validatedData['condicion_clinica_asociada'] ?? null,
+        'lesion_organo_blanco' => $validatedData['lesion_organo_blanco'] ?? null,
+        'descripcion_lesion_organo_blanco' => $validatedData['descripcion_lesion_organo_blanco'] ?? null,
+        
+        // ✅ EXÁMENES
+        'fex_es' => $validatedData['fex_es'] ?? null,
+        'electrocardiograma' => $validatedData['hcElectrocardiograma'] ?? null,
+        'fex_es1' => $validatedData['fex_es1'] ?? null,
+        'ecocardiograma' => $validatedData['hcEcocardiograma'] ?? null,
+        'fex_es2' => $validatedData['fex_es2'] ?? null,
+        'ecografia_renal' => $validatedData['hcEcografiaRenal'] ?? null,
+        
+        // ✅ CLASIFICACIÓN
+        'clasificacion_estado_metabolico' => $validatedData['ClasificacionEstadoMetabolico'] ?? null,
+        'hipertension_arterial_personal' => $validatedData['hipertension_arterial_personal'] ?? null,
+        'obs_personal_hipertension_arterial' => $validatedData['obs_hipertension_arterial_personal'] ?? null,
+        'clasificacion_hta' => $validatedData['clasificacion_hta'] ?? null,
+        'diabetes_mellitus_personal' => $validatedData['diabetes_mellitus_personal'] ?? null,
+        'obs_personal_mellitus' => $validatedData['obs_diabetes_mellitus_personal'] ?? null,
+        'clasificacion_dm' => $validatedData['clasificacion_dm'] ?? null,
+        'clasificacion_erc_estado' => $validatedData['clasificacion_erc_estado'] ?? null,
+        'clasificacion_erc_categoria_ambulatoria_persistente' => $validatedData['clasificacion_erc_categoria_ambulatoria_persistente'] ?? null,
+        'clasificacion_rcv' => $validatedData['clasificacion_rcv'] ?? null,
+        'tasa_filtracion_glomerular_ckd_epi' => $validatedData['tasa_filtracion_glomerular_ckd_epi'] ?? null,
+        'tasa_filtracion_glomerular_gockcroft_gault' => $validatedData['tasa_filtracion_glomerular_gockcroft_gault'] ?? null,
+        
+        // ✅ EDUCACIÓN
+        'alimentacion' => $validatedData['alimentacion'] ?? null,
+        'disminucion_consumo_sal_azucar' => $validatedData['disminucion_consumo_sal_azucar'] ?? null,
+        'fomento_actividad_fisica' => $validatedData['fomento_actividad_fisica'] ?? null,
+        'importancia_adherencia_tratamiento' => $validatedData['importancia_adherencia_tratamiento'] ?? null,
+        'consumo_frutas_verduras' => $validatedData['consumo_frutas_verduras'] ?? null,
+        'manejo_estres' => $validatedData['manejo_estres'] ?? null,
+        'disminucion_consumo_cigarrillo' => $validatedData['disminucion_consumo_cigarrillo'] ?? null,
+        'disminucion_peso' => $validatedData['disminucion_peso'] ?? null,
+        
+        // ✅ OTROS
+        'observaciones_generales' => $validatedData['observaciones_generales'] ?? null,
+        
+        // ✅ ARRAYS RELACIONADOS (mantén los métodos que ya tienes)
+        'diagnosticos' => $this->prepareDiagnosticos($validatedData),
+        'medicamentos' => $this->prepareMedicamentos($validatedData),
+        'remisiones' => $this->prepareRemisiones($validatedData),
+        'cups' => $this->prepareCups($validatedData),
+    ];
+}
+
+
+ /**
+ * ✅ PREPARAR DIAGNÓSTICOS - CORREGIDO PARA UUIDs
+ */
+private function prepareDiagnosticos(array $validatedData): array
+{
+    $diagnosticos = [];
+    
+    // ✅ DIAGNÓSTICO PRINCIPAL
+    $diagnosticos[] = [
+        'diagnostico_id' => $validatedData['idDiagnostico'], // ✅ Puede ser UUID o ID
+        'tipo' => 'PRINCIPAL',
+        'tipo_diagnostico' => $validatedData['tipo_diagnostico'],
+        'observacion' => null
+    ];
+    
+    // ✅ DIAGNÓSTICOS ADICIONALES
+    if (!empty($validatedData['diagnosticos_adicionales'])) {
+        foreach ($validatedData['diagnosticos_adicionales'] as $index => $diagAdicional) {
+            // ✅ VERIFICAR UUID O ID
+            $diagnosticoId = $diagAdicional['idDiagnostico'] ?? 
+                            $diagAdicional['uuid'] ?? 
+                            $diagAdicional['id'] ?? 
+                            null;
+            
+            if (!$diagnosticoId) {
+                continue;
+            }
+            
+            $diagnosticos[] = [
+                'diagnostico_id' => $diagnosticoId, // ✅ Puede ser UUID o ID
+                'tipo' => 'SECUNDARIO',
+                'tipo_diagnostico' => $diagAdicional['tipo_diagnostico'],
+                'observacion' => $diagAdicional['observacion'] ?? null
+            ];
+        }
+    }
+    
+    return $diagnosticos;
+}
+/**
+ * ✅ PREPARAR MEDICAMENTOS - CORREGIDO PARA UUIDs
+ */
+private function prepareMedicamentos(array $validatedData): array
+{
+    $medicamentos = [];
+    
+    if (!empty($validatedData['medicamentos'])) {
+        foreach ($validatedData['medicamentos'] as $index => $medicamento) {
+            // ✅ VERIFICAR UUID O ID
+            $medicamentoId = $medicamento['idMedicamento'] ?? 
+                            $medicamento['uuid'] ?? 
+                            $medicamento['id'] ?? 
+                            null;
+            
+            if (!$medicamentoId) {
+                continue;
+            }
+            
+            $medicamentos[] = [
+                'medicamento_id' => $medicamentoId, // ✅ Puede ser UUID o ID
+                'cantidad' => $medicamento['cantidad'] ?? '',
+                'dosis' => $medicamento['dosis'] ?? '',
+                'frecuencia' => $medicamento['frecuencia'] ?? null,
+                'duracion' => $medicamento['duracion'] ?? null,
+                'via_administracion' => $medicamento['via_administracion'] ?? null,
+                'observaciones' => $medicamento['observaciones'] ?? null
+            ];
+        }
+    }
+    
+    return $medicamentos;
+}
+
+/**
+ * ✅ PREPARAR REMISIONES - CORREGIDO PARA UUIDs
+ */
+private function prepareRemisiones(array $validatedData): array
+{
+    $remisiones = [];
+    
+    if (!empty($validatedData['remisiones'])) {
+        foreach ($validatedData['remisiones'] as $index => $remision) {
+            // ✅ VERIFICAR UUID O ID
+            $remisionId = $remision['idRemision'] ?? 
+                         $remision['uuid'] ?? 
+                         $remision['id'] ?? 
+                         null;
+            
+            if (!$remisionId) {
+                continue;
+            }
+            
+            $remisiones[] = [
+                'remision_id' => $remisionId, // ✅ Puede ser UUID o ID
+                'observacion' => $remision['remObservacion'] ?? null,
+                'prioridad' => 'MEDIA',
+                'estado' => 'PENDIENTE',
+                'fecha_remision' => now()->toDateString()
+            ];
+        }
+    }
+    
+    return $remisiones;
+}
+ /**
+ * ✅ PREPARAR CUPS - CORREGIDO PARA UUIDs
+ */
+private function prepareCups(array $validatedData): array
+{
+    $cups = [];
+    
+    Log::info('🔍 Preparando CUPS', [
+        'cups_raw' => $validatedData['cups'] ?? 'No hay CUPS'
+    ]);
+    
+    if (!empty($validatedData['cups'])) {
+        foreach ($validatedData['cups'] as $index => $cup) {
+            Log::info("🔍 Procesando CUPS {$index}", [
+                'cup' => $cup,
+                'keys' => array_keys($cup)
+            ]);
+            
+            // ✅ VERIFICAR UUID O ID
+            $cupsId = $cup['idCups'] ?? 
+                     $cup['uuid'] ?? 
+                     $cup['id'] ?? 
+                     null;
+            
+            if (!$cupsId) {
+                Log::warning('⚠️ CUPS sin ID válido', [
+                    'cup' => $cup,
+                    'available_keys' => array_keys($cup)
+                ]);
+                continue;
+            }
+            
+            $cups[] = [
+                'cups_id' => $cupsId, // ✅ Puede ser UUID o ID
+                'observacion' => $cup['cupObservacion'] ?? null,
+                'cantidad' => 1,
+                'estado' => 'PENDIENTE'
+            ];
+        }
+    }
+    
+    Log::info('✅ CUPS preparados', [
+        'count' => count($cups),
+        'cups_data' => $cups
+    ]);
+    
+    return $cups;
+}
+
+    /**
+     * ✅ CLASIFICAR IMC
+     */
+    private function clasificarIMC(float $imc): string
+    {
+        if ($imc < 18.5) return 'Bajo peso';
+        if ($imc < 25) return 'Normal';
+        if ($imc < 30) return 'Sobrepeso';
+        if ($imc < 35) return 'Obesidad grado I';
+        if ($imc < 40) return 'Obesidad grado II';
+        return 'Obesidad grado III';
+    }
+
+ /**
+ * ✅ GUARDAR ONLINE - CON LOGGING DETALLADO DE ERRORES
+ */
+private function saveOnline(array $historiaData): array
+{
+    try {
+        $response = $this->apiService->post('/historias-clinicas', $historiaData);
+        
+        if ($response['success']) {
+            Log::info('✅ Historia clínica guardada online', [
+                'historia_uuid' => $response['data']['uuid']
+            ]);
+            
+            return $response;
+        }
+        
+        Log::warning('⚠️ Error guardando online', [
+            'error' => $response['error'] ?? 'Error desconocido'
+        ]);
+        
+        return ['success' => false, 'error' => $response['error'] ?? 'Error desconocido'];
+        
+    } catch (\Exception $e) {
+        // ✅ AGREGAR LOGGING DETALLADO AQUÍ
+        Log::error('❌ Error completo guardando historia clínica', [
+            'error_message' => $e->getMessage(),
+            'paciente_id' => $historiaData['paciente_id'] ?? 'NO_DEFINIDO',
+            'cita_uuid' => $historiaData['cita_uuid'] ?? 'NO_DEFINIDO',
+            'sede_id' => $historiaData['sede_id'] ?? 'NO_DEFINIDO',
+            'usuario_id' => $historiaData['usuario_id'] ?? 'NO_DEFINIDO'
+        ]);
+        
+        // ✅ EXTRAER ERRORES DE VALIDACIÓN DETALLADOS
+        if (strpos($e->getMessage(), '{') !== false) {
+            $errorStart = strpos($e->getMessage(), '{');
+            $errorJson = substr($e->getMessage(), $errorStart);
+            
+            try {
+                $errorData = json_decode($errorJson, true);
+                Log::error('❌ ERRORES DE VALIDACIÓN DETALLADOS', [
+                    'validation_errors' => $errorData,
+                    'errors_array' => $errorData['errors'] ?? 'NO_ERRORS_KEY',
+                    'message' => $errorData['message'] ?? 'NO_MESSAGE',
+                    'status_code' => $errorData['status_code'] ?? 'NO_STATUS'
+                ]);
+            } catch (\Exception $jsonError) {
+                Log::error('❌ No se pudo parsear JSON del error', [
+                    'json_error' => $jsonError->getMessage(),
+                    'raw_error' => $errorJson
+                ]);
+            }
+        }
+        
+        Log::error('❌ Excepción guardando online', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+
+    /**
+     * ✅ GUARDAR OFFLINE
+     */
+    private function saveOffline(array $historiaData, bool $needsSync = true): array
+    {
+        try {
+            // ✅ GENERAR UUID SI NO EXISTE
+            if (!isset($historiaData['uuid'])) {
+                $historiaData['uuid'] = \Illuminate\Support\Str::uuid();
+            }
+            
+            $historiaData['sync_status'] = $needsSync ? 'pending' : 'synced';
+            $historiaData['created_at'] = now()->toISOString();
+            $historiaData['updated_at'] = now()->toISOString();
+            
+            // ✅ GUARDAR EN OFFLINE SERVICE
+            $this->offlineService->storeHistoriaClinicaOffline($historiaData, $needsSync);
+            
+            Log::info('✅ Historia clínica guardada offline', [
+                'historia_uuid' => $historiaData['uuid'],
+                'needs_sync' => $needsSync
+            ]);
+            
+            return [
+                'success' => true,
+                'data' => $historiaData,
+                'message' => $needsSync ? 'Guardada offline - se sincronizará' : 'Guardada offline'
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error guardando offline', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * ✅ OBTENER DATOS MAESTROS PARA EL FORMULARIO
+     */
+  private function getMasterDataForForm(): array
+{
+    try {
+        $masterData = $this->offlineService->getMasterDataOffline();
+        
+        // ✅ USAR MÉTODO HÍBRIDO CORREGIDO
+        $datosMaestros = $this->obtenerDatosMaestrosHibrido();
+        
+        return array_merge($masterData, $datosMaestros);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo datos maestros', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+    /**
+     * ✅ OBTENER MEDICAMENTOS OFFLINE
+     */
+    private function getMedicamentosOffline(): array
+    {
+        try {
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/medicamentos');
+                if ($response['success']) {
+                    return $response['data'];
+                }
+            }
+            
+            // ✅ FALLBACK A OFFLINE
+            return $this->offlineService->getFromSQLite('medicamentos');
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo medicamentos', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * ✅ OBTENER DIAGNÓSTICOS OFFLINE
+     */
+    private function getDiagnosticosOffline(): array
+    {
+        try {
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/diagnosticos');
+                if ($response['success']) {
+                    return $response['data'];
+                }
+            }
+            
+            // ✅ FALLBACK A OFFLINE
+            return $this->offlineService->getFromSQLite('diagnosticos');
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo diagnósticos', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * ✅ OBTENER REMISIONES OFFLINE
+     */
+    private function getRemisionesOffline(): array
+    {
+        try {
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/remisiones');
+                if ($response['success']) {
+                    return $response['data'];
+                }
+            }
+            
+            // ✅ FALLBACK A OFFLINE
+            return $this->offlineService->getFromSQLite('remisiones');
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo remisiones', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * ✅ OBTENER CUPS OFFLINE
+     */
+    private function getCupsOffline(): array
+    {
+        try {
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/cups');
+                if ($response['success']) {
+                    return $response['data'];
+                }
+            }
+            
+            // ✅ FALLBACK A OFFLINE
+            return $this->offlineService->getCupsActivosOffline();
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo CUPS', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * ✅ BUSCAR MEDICAMENTOS AJAX
+     */
+    public function buscarMedicamentos(Request $request)
+    {
+        try {
+            $termino = $request->get('q', '');
+            
+            if (strlen($termino) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Término de búsqueda muy corto'
+                ]);
+            }
+            
+            $medicamentos = [];
+            
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/medicamentos/buscar', ['q' => $termino]);
+                if ($response['success']) {
+                    $medicamentos = $response['data'];
+                }
+            }
+            
+            if (empty($medicamentos)) {
+                // ✅ BUSCAR OFFLINE
+                $medicamentos = $this->offlineService->buscarMedicamentosOffline($termino);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => $medicamentos
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error buscando medicamentos', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ BUSCAR DIAGNÓSTICOS AJAX
+     */
+    public function buscarDiagnosticos(Request $request)
+    {
+        try {
+            $termino = $request->get('q', '');
+            
+            if (strlen($termino) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Término de búsqueda muy corto'
+                ]);
+            }
+            
+            $diagnosticos = [];
+            
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/diagnosticos/buscar', ['q' => $termino]);
+                if ($response['success']) {
+                    $diagnosticos = $response['data'];
+                }
+            }
+            
+            if (empty($diagnosticos)) {
+                // ✅ BUSCAR OFFLINE
+                $diagnosticos = $this->offlineService->buscarDiagnosticosOffline($termino);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => $diagnosticos
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error buscando diagnósticos', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ BUSCAR CUPS AJAX
+     */
+    public function buscarCups(Request $request)
+    {
+        try {
+            $termino = $request->get('q', '');
+            
+            if (strlen($termino) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Término de búsqueda muy corto'
+                ]);
+            }
+            
+            $cups = $this->offlineService->buscarCupsOffline($termino, 20);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $cups
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error buscando CUPS', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ BUSCAR REMISIONES AJAX
+     */
+    public function buscarRemisiones(Request $request)
+    {
+        try {
+            $termino = $request->get('q', '');
+            
+            if (strlen($termino) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Término de búsqueda muy corto'
+                ]);
+            }
+            
+            $remisiones = [];
+            
+            if ($this->apiService->isOnline()) {
+                $response = $this->apiService->get('/remisiones/buscar', ['q' => $termino]);
+                if ($response['success']) {
+                    $remisiones = $response['data'];
+                }
+            }
+            
+            if (empty($remisiones)) {
+                // ✅ BUSCAR OFFLINE
+                $remisiones = $this->offlineService->buscarRemisionesOffline($termino);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => $remisiones
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error buscando remisiones', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+
+    /**
+ * ✅ DETERMINAR TIPO DE CONSULTA INTELIGENTEMENTE
+ */
+private function determinarTipoConsulta(string $citaUuid, string $pacienteUuid): string
+{
+    try {
+        Log::info('🧠 Determinando tipo de consulta inteligente', [
+            'cita_uuid' => $citaUuid,
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ VERIFICAR SI EL PACIENTE YA TIENE HISTORIAS CLÍNICAS
+        $tieneHistoriasAnteriores = $this->verificarHistoriasAnteriores($pacienteUuid);
+        
+        if ($tieneHistoriasAnteriores) {
+            Log::info('✅ Paciente con historias anteriores - CONTROL', [
+                'paciente_uuid' => $pacienteUuid
+            ]);
+            return 'CONTROL';
+        }
+
+        Log::info('✅ Paciente sin historias anteriores - PRIMERA VEZ', [
+            'paciente_uuid' => $pacienteUuid
+        ]);
+        
+        return 'PRIMERA VEZ';
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando tipo consulta, usando PRIMERA VEZ por defecto', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid
+        ]);
+        
+        return 'PRIMERA VEZ'; // ✅ FALLBACK SEGURO
+    }
+}
+
+/**
+ * ✅ VERIFICAR SI EL PACIENTE TIENE HISTORIAS CLÍNICAS ANTERIORES
+ */
+private function verificarHistoriasAnteriores(string $pacienteUuid): bool
+{
+    try {
+        // ✅ 1. INTENTAR VERIFICAR ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get("/pacientes/{$pacienteUuid}/historias-clinicas");
+            
+            if ($response['success'] && !empty($response['data'])) {
+                Log::info('✅ Historias encontradas online', [
+                    'paciente_uuid' => $pacienteUuid,
+                    'count' => count($response['data'])
+                ]);
+                return true;
+            }
+        }
+
+        // ✅ 2. VERIFICAR EN DATOS OFFLINE
+        $historiasOffline = $this->offlineService->getHistoriasClinicasByPaciente($pacienteUuid);
+        
+        if (!empty($historiasOffline)) {
+            Log::info('✅ Historias encontradas offline', [
+                'paciente_uuid' => $pacienteUuid,
+                'count' => count($historiasOffline)
+            ]);
+            return true;
+        }
+
+        // ✅ 3. VERIFICAR EN SQLITE SI EXISTE EL MÉTODO
+        try {
+            $historiasSQL = $this->offlineService->buscarHistoriasEnSQLite($pacienteUuid);
+            if (!empty($historiasSQL)) {
+                Log::info('✅ Historias encontradas en SQLite', [
+                    'paciente_uuid' => $pacienteUuid,
+                    'count' => count($historiasSQL)
+                ]);
+                return true;
+            }
+        } catch (\Exception $sqliteError) {
+            Log::debug('ℹ️ No se pudo verificar SQLite (normal si no existe)', [
+                'error' => $sqliteError->getMessage()
+            ]);
+        }
+
+        return false;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando historias anteriores', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid
+        ]);
+        
+        return false; // ✅ FALLBACK: asumir primera vez
+    }
+}
+
+}
+

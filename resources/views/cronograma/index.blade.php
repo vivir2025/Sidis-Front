@@ -877,6 +877,28 @@ function initEventListeners() {
     
     // ✅ EVENT DELEGATION CORREGIDO CON DEBUG COMPLETO
     document.addEventListener('click', function(e) {
+        // ✅ BOTÓN DE HISTORIA CLÍNICA
+        if (e.target.classList.contains('btn-historia-clinica') || e.target.closest('.btn-historia-clinica')) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const btn = e.target.classList.contains('btn-historia-clinica') ? e.target : e.target.closest('.btn-historia-clinica');
+            const citaUuid = btn.dataset.citaUuid;
+            
+            console.log('📋 Abriendo Historia Clínica para cita:', citaUuid);
+            
+            if (!citaUuid) {
+                mostrarAlerta('error', 'Error: ID de cita no válido para Historia Clínica');
+                return;
+            }
+            
+            // Redirigir a la página de crear historia clínica
+            const url = `/historia-clinica/crear/${citaUuid}`;
+            console.log('🔗 Redirigiendo a:', url);
+            window.location.href = url;
+            return;
+        }
+        
         // Botones de estado de citas
         if (e.target.classList.contains('btn-estado-cita') || e.target.closest('.btn-estado-cita')) {
             e.preventDefault(); // ✅ PREVENIR COMPORTAMIENTO DEFAULT
@@ -947,7 +969,8 @@ function initEventListeners() {
 // ✅ DEBUG: Verificar event listeners
 console.log('🔍 DEBUG: Event listeners registrados:', {
     totalListeners: document.querySelectorAll('*').length,
-    botonesEstado: document.querySelectorAll('.btn-estado-cita').length
+    botonesEstado: document.querySelectorAll('.btn-estado-cita').length,
+    botonesHistoria: document.querySelectorAll('.btn-historia-clinica').length
 });
 
 // ✅ Verificar si hay múltiples event listeners
@@ -1174,7 +1197,7 @@ function verDetalleCita(citaUuid) {
     });
 }
 
-// ✅ MOSTRAR MODAL DETALLE
+// ✅ MOSTRAR MODAL DETALLE CON BOTÓN DE HISTORIA CLÍNICA
 function mostrarModalDetalleCita(cita) {
     const modal = new bootstrap.Modal(document.getElementById('modal-detalle-cita'));
     const modalBody = document.getElementById('modal-detalle-cita-body');
@@ -1256,17 +1279,30 @@ function mostrarModalDetalleCita(cita) {
         ` : ''}
     `;
     
-    // Construir botones de estado
-    if (!isOffline && cita.estado) {
-        botonesModal.innerHTML = generarBotonesEstado(cita.uuid, cita.estado);
-    } else {
-        botonesModal.innerHTML = '';
+    // ✅ CONSTRUIR BOTONES DE ESTADO + HISTORIA CLÍNICA
+    let botonesHtml = '';
+    
+    // Botón de Historia Clínica si la cita está en atención o atendida
+    if (cita.estado === 'EN_ATENCION' || cita.estado === 'ATENDIDA') {
+        botonesHtml += `
+            <button type="button" class="btn btn-success btn-historia-clinica me-2" 
+                    data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal">
+                <i class="fas fa-file-medical me-1"></i>Historia Clínica
+            </button>
+        `;
     }
+    
+    // Botones de estado si no está offline
+    if (!isOffline && cita.estado) {
+        botonesHtml += generarBotonesEstado(cita.uuid, cita.estado);
+    }
+    
+    botonesModal.innerHTML = botonesHtml;
     
     modal.show();
 }
 
-// ✅ VER CITAS DE AGENDA
+// ✅ VER CITAS DE AGENDA CON BOTÓN DE HISTORIA CLÍNICA
 function verCitasAgenda(agendaUuid) {
     console.log('📋 Viendo citas de agenda:', agendaUuid);
     
@@ -1291,28 +1327,46 @@ function verCitasAgenda(agendaUuid) {
             const paciente = cita.paciente || {};
             const fila = tabla.insertRow();
             
+            // ✅ GENERAR BOTONES INCLUYENDO HISTORIA CLÍNICA
+            let botonesAccion = `
+                <button class="btn btn-sm btn-outline-primary btn-detalle-cita" 
+                        data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal">
+                    <i class="fas fa-eye"></i> Ver
+                </button>
+            `;
+            
+            // Botón de Historia Clínica
+            if (cita.estado === 'EN_ATENCION' || cita.estado === 'ATENDIDA') {
+                botonesAccion += `
+                    <button class="btn btn-sm btn-success btn-historia-clinica ms-1" 
+                            data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal"
+                            title="Crear Historia Clínica">
+                        <i class="fas fa-file-medical"></i>
+                    </button>
+                `;
+            }
+            
+            // Botón de iniciar atención
+            if (!isOffline && cita.estado === 'PROGRAMADA') {
+                botonesAccion += `
+                    <button class="btn btn-sm btn-warning btn-estado-cita ms-1" 
+                            data-cita-uuid="${cita.uuid}" 
+                            data-estado="EN_ATENCION" 
+                            data-bs-dismiss="modal">
+                        <i class="fas fa-play"></i>
+                    </button>
+                `;
+            }
+            
             fila.innerHTML = `
                 <td>${cita.fecha_inicio ? new Date(cita.fecha_inicio).toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'}) : 'N/A'}</td>
                 <td>${paciente.nombre_completo || 'N/A'}</td>
                 <td>${paciente.documento || 'N/A'}</td>
-                               <td>${paciente.telefono || 'N/A'}</td>
+                <td>${paciente.telefono || 'N/A'}</td>
                 <td>
                     <span class="badge bg-${getEstadoColor(cita.estado)}">${cita.estado || 'N/A'}</span>
                 </td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary btn-detalle-cita" 
-                            data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal">
-                        <i class="fas fa-eye"></i> Ver
-                    </button>
-                    ${!isOffline && cita.estado === 'PROGRAMADA' ? `
-                        <button class="btn btn-sm btn-success btn-estado-cita ms-1" 
-                                data-cita-uuid="${cita.uuid}" 
-                                data-estado="EN_ATENCION" 
-                                data-bs-dismiss="modal">
-                            <i class="fas fa-play"></i>
-                        </button>
-                    ` : ''}
-                </td>
+                <td>${botonesAccion}</td>
             `;
         });
     } else {
@@ -1436,7 +1490,7 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
     })
     .finally(() => {
         mostrarLoading(false);
-    });
+            });
 }
 
 // ✅ GUARDAR CAMBIO OFFLINE MEJORADO
@@ -1473,7 +1527,6 @@ function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
         return false;
     }
 }
-
 
 // ✅ NUEVA FUNCIÓN: SINCRONIZAR CAMBIOS PENDIENTES
 function sincronizarCambiosPendientes() {
@@ -1528,7 +1581,7 @@ function sincronizarCambiosPendientes() {
     }
 }
 
-// ✅ ACTUALIZAR CITA EN INTERFAZ
+// ✅ ACTUALIZAR CITA EN INTERFAZ CON BOTÓN DE HISTORIA CLÍNICA
 function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
     const citaCard = document.querySelector(`[data-cita-uuid="${citaUuid}"]`);
     if (!citaCard) return;
@@ -1548,11 +1601,11 @@ function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
         card.className = card.className.replace(/border-\w+/, `border-${estadoInfo.color}`);
     }
     
-    // Actualizar botones de acción
+    // ✅ ACTUALIZAR BOTONES DE ACCIÓN INCLUYENDO HISTORIA CLÍNICA
     const botonesContainer = citaCard.querySelector('.d-flex.gap-1');
     if (botonesContainer) {
         const nuevosBotones = generarBotonesAccion(citaUuid, nuevoEstado);
-        const botonesDinamicos = botonesContainer.querySelectorAll('.btn-estado-cita, .dropdown');
+        const botonesDinamicos = botonesContainer.querySelectorAll('.btn-estado-cita, .dropdown, .btn-historia-clinica');
         botonesDinamicos.forEach(btn => btn.remove());
         botonesContainer.insertAdjacentHTML('beforeend', nuevosBotones);
     }
@@ -1588,6 +1641,7 @@ function initDetectorConectividad() {
     // Verificar conectividad cada 30 segundos
     setInterval(verificarConectividad, 30000);
 }
+
 // ✅ NUEVA FUNCIÓN: VERIFICAR Y SINCRONIZAR CAMBIOS PENDIENTES
 function verificarYSincronizarCambiosPendientes() {
     try {
@@ -1723,6 +1777,7 @@ function sincronizarCambiosPendientesInteligente(cambiosNoSincronizados) {
         }, index * 500); // ✅ DELAY DE 500ms ENTRE CADA PETICIÓN
     });
 }
+
 // ✅ LIMPIAR CAMBIOS SINCRONIZADOS DEL LOCALSTORAGE
 function limpiarCambiosSincronizados() {
     try {
@@ -1737,6 +1792,7 @@ function limpiarCambiosSincronizados() {
         console.error('❌ Error limpiando localStorage:', error);
     }
 }
+
 // ✅ FUNCIÓN: RESOLVER CONFLICTOS ENTRE API Y CAMBIOS OFFLINE
 function resolverConflictosDatos(citaApi, cambiosOffline) {
     // Si no hay cambios offline, usar datos de API
@@ -1768,6 +1824,7 @@ function resolverConflictosDatos(citaApi, cambiosOffline) {
     
     return citaConCambios;
 }
+
 // ✅ APLICAR INDICADORES VISUALES A CAMBIOS PENDIENTES
 function aplicarIndicadoresCambiosPendientes(cambiosPendientes) {
     cambiosPendientes.forEach(cambio => {
@@ -1926,6 +1983,7 @@ function generarBotonesEstado(citaUuid, estadoActual) {
     return botones;
 }
 
+// ✅ GENERAR BOTONES DE ACCIÓN CON HISTORIA CLÍNICA
 function generarBotonesAccion(citaUuid, estado) {
     if (isOffline) {
         return `
@@ -1937,10 +1995,20 @@ function generarBotonesAccion(citaUuid, estado) {
     
     let botones = '';
     
+    // ✅ BOTÓN DE HISTORIA CLÍNICA PARA ESTADOS APROPIADOS
+    if (estado === 'EN_ATENCION' || estado === 'ATENDIDA') {
+        botones += `
+            <button type="button" class="btn btn-success btn-sm btn-historia-clinica"
+                    data-cita-uuid="${citaUuid}" title="Crear Historia Clínica">
+                <i class="fas fa-file-medical"></i>
+            </button>
+        `;
+    }
+    
     switch (estado) {
         case 'PROGRAMADA':
-            botones = `
-                <button type="button" class="btn btn-success btn-sm btn-estado-cita"
+            botones += `
+                <button type="button" class="btn btn-warning btn-sm btn-estado-cita"
                         data-cita-uuid="${citaUuid}" data-estado="EN_ATENCION" title="Iniciar atención">
                     <i class="fas fa-play"></i>
                 </button>
@@ -1968,7 +2036,7 @@ function generarBotonesAccion(citaUuid, estado) {
             break;
             
         case 'EN_ATENCION':
-            botones = `
+            botones += `
                 <button type="button" class="btn btn-success btn-sm btn-estado-cita"
                         data-cita-uuid="${citaUuid}" data-estado="ATENDIDA" title="Marcar como atendida">
                     <i class="fas fa-check"></i>
@@ -1977,7 +2045,7 @@ function generarBotonesAccion(citaUuid, estado) {
             break;
             
         case 'ATENDIDA':
-            botones = `
+            botones += `
                 <span class="badge bg-success flex-fill text-center py-2">
                     <i class="fas fa-check-circle"></i> Completada
                 </span>
@@ -1985,7 +2053,7 @@ function generarBotonesAccion(citaUuid, estado) {
             break;
             
         default:
-            botones = `
+            botones += `
                 <button type="button" class="btn btn-outline-primary btn-sm btn-estado-cita"
                         data-cita-uuid="${citaUuid}" data-estado="PROGRAMADA" title="Reprogramar">
                     <i class="fas fa-redo"></i>
@@ -2072,7 +2140,7 @@ function animarCambioNumero(elemento, nuevoValor) {
     }, 100);
 }
 
-// ✅ DEBUGGING
+// ✅ DEBUGGING CON HISTORIA CLÍNICA
 window.cronogramaDebug = {
     cronogramaData,
     fechaActual,
@@ -2082,11 +2150,18 @@ window.cronogramaDebug = {
     cambiarEstadoCita,
     verificarConectividad,
     sincronizarCambiosPendientes,
-    guardarCambioEstadoOffline
+    guardarCambioEstadoOffline,
+    // ✅ NUEVAS FUNCIONES DE DEBUG
+    testHistoriaClinica: function(citaUuid) {
+        console.log('🧪 Test Historia Clínica:', citaUuid);
+        const url = `/historia-clinica/crear/${citaUuid}`;
+        console.log('🔗 URL generada:', url);
+        window.open(url, '_blank');
+    }
 };
 
-console.log('✅ Cronograma JavaScript cargado completamente');
+console.log('✅ Cronograma JavaScript con Historia Clínica cargado completamente');
 </script>
 @endpush
 
-
+    

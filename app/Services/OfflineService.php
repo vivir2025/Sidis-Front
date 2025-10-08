@@ -130,6 +130,27 @@ class OfflineService
                 $this->createContratosTable();
                 Log::info('✅ Tabla contratos creada');
             }
+                if (!in_array('medicamentos', $existingTables)) {
+                    $this->createMedicamentosTable();
+                    Log::info('✅ Tabla medicamentos creada');
+                }
+                if (!in_array('diagnosticos', $existingTables)) {
+                    $this->createDiagnosticosTable();
+                    Log::info('✅ Tabla diagnosticos creada');
+                }
+                if (!in_array('remisiones', $existingTables)) {
+                    $this->createRemisionesTable();
+                    Log::info('✅ Tabla remisiones creada');
+                }
+
+                if (!in_array('historias_clinicas', $existingTables)) {
+                    $this->createHistoriasClinicasTable();
+                    Log::info('✅ Tabla historias_clinicas creada');
+                }
+
+
+
+
             
             return;
         }
@@ -161,7 +182,12 @@ class OfflineService
         $this->createCupsTable();
         $this->createPacientesTable();
          $this->createCupsContratadosTable(); 
-        $this->createContratosTable();      
+        $this->createContratosTable();
+    
+        $this->createMedicamentosTable();
+        $this->createDiagnosticosTable();
+        $this->createRemisionesTable();
+        $this->createHistoriasClinicasTable();   
         $this->createSyncStatusTable();
         
         Log::info('✅ Todas las tablas SQLite creadas exitosamente');
@@ -6146,4 +6172,601 @@ private function getValidContractFromJson(string $cupsUuid, string $fechaActual)
         return null;
     }
 }
+// offline historia clinica
+/**
+ * ✅ GUARDAR HISTORIA CLÍNICA OFFLINE
+ */
+public function storeHistoriaClinicaOffline(array $historiaData, bool $needsSync = false): void
+{
+    try {
+        if (empty($historiaData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar historia clínica sin UUID');
+            return;
+        }
+
+        // ✅ PREPARAR DATOS PARA SQLite
+        $offlineData = [
+            'uuid' => $historiaData['uuid'],
+            'cita_uuid' => $historiaData['cita_uuid'],
+            'sede_id' => $historiaData['sede_id'],
+            'usuario_id' => $historiaData['usuario_id'],
+            
+            // ✅ DATOS BÁSICOS
+            'finalidad' => $historiaData['finalidad'] ?? null,
+            'acompanante' => $historiaData['acompanante'] ?? null,
+            'acu_telefono' => $historiaData['acu_telefono'] ?? null,
+            'acu_parentesco' => $historiaData['acu_parentesco'] ?? null,
+            'causa_externa' => $historiaData['causa_externa'] ?? null,
+            'motivo_consulta' => $historiaData['motivo_consulta'],
+            'enfermedad_actual' => $historiaData['enfermedad_actual'],
+            
+            // ✅ MEDIDAS ANTROPOMÉTRICAS
+            'peso' => $historiaData['peso'] ?? null,
+            'talla' => $historiaData['talla'] ?? null,
+            'imc' => $historiaData['imc'] ?? null,
+            'clasificacion' => $historiaData['clasificacion'] ?? null,
+            
+            // ✅ SIGNOS VITALES
+            'presion_arterial_sistolica_sentado_pie' => $historiaData['presion_arterial_sistolica_sentado_pie'] ?? null,
+            'presion_arterial_distolica_sentado_pie' => $historiaData['presion_arterial_distolica_sentado_pie'] ?? null,
+            'frecuencia_cardiaca' => $historiaData['frecuencia_cardiaca'] ?? null,
+            'frecuencia_respiratoria' => $historiaData['frecuencia_respiratoria'] ?? null,
+            
+            // ✅ CLASIFICACIONES
+            'clasificacion_hta' => $historiaData['clasificacion_hta'] ?? null,
+            'clasificacion_dm' => $historiaData['clasificacion_dm'] ?? null,
+            'clasificacion_rcv' => $historiaData['clasificacion_rcv'] ?? null,
+            
+            // ✅ OBSERVACIONES
+            'observaciones_generales' => $historiaData['observaciones_generales'] ?? null,
+            
+            // ✅ CONTROL
+            'sync_status' => $needsSync ? 'pending' : 'synced',
+            'created_at' => $historiaData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString(),
+            'deleted_at' => null
+        ];
+
+        // ✅ GUARDAR EN SQLite SI ESTÁ DISPONIBLE
+        if ($this->isSQLiteAvailable()) {
+            $this->createHistoriasClinicasTable();
+            
+            DB::connection('offline')->table('historias_clinicas')->updateOrInsert(
+                ['uuid' => $historiaData['uuid']],
+                $offlineData
+            );
+        }
+
+        // ✅ GUARDAR DATOS COMPLETOS EN JSON
+        $this->storeData('historias_clinicas/' . $historiaData['uuid'] . '.json', $historiaData);
+
+        Log::debug('✅ Historia clínica almacenada offline', [
+            'uuid' => $historiaData['uuid'],
+            'cita_uuid' => $historiaData['cita_uuid'],
+            'sync_status' => $offlineData['sync_status']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando historia clínica offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $historiaData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
+/**
+ * ✅ CREAR TABLA DE HISTORIAS CLÍNICAS
+ */
+private function createHistoriasClinicasTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS historias_clinicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            cita_uuid TEXT NOT NULL,
+            sede_id INTEGER NOT NULL,
+            usuario_id INTEGER NOT NULL,
+            
+            finalidad TEXT,
+            acompanante TEXT,
+            acu_telefono TEXT,
+            acu_parentesco TEXT,
+            causa_externa TEXT,
+            motivo_consulta TEXT NOT NULL,
+            enfermedad_actual TEXT NOT NULL,
+            
+            peso REAL,
+            talla REAL,
+            imc REAL,
+            clasificacion TEXT,
+            
+            presion_arterial_sistolica_sentado_pie REAL,
+            presion_arterial_distolica_sentado_pie REAL,
+            frecuencia_cardiaca REAL,
+            frecuencia_respiratoria REAL,
+            
+            clasificacion_hta TEXT,
+            clasificacion_dm TEXT,
+            clasificacion_rcv TEXT,
+            
+            observaciones_generales TEXT,
+            
+            sync_status TEXT DEFAULT "synced",
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME NULL
+        )
+    ');
+}
+
+/**
+ * ✅ BUSCAR MEDICAMENTOS OFFLINE
+ */
+public function buscarMedicamentosOffline(string $termino, int $limit = 20): array
+{
+    try {
+        $medicamentos = [];
+        
+        if ($this->isSQLiteAvailable()) {
+            $results = DB::connection('offline')->table('medicamentos')
+                ->where('nombre', 'LIKE', '%' . $termino . '%')
+                ->limit($limit)
+                ->get();
+                            $medicamentos = $results->map(function($medicamento) {
+                return [
+                    'id' => $medicamento->id,
+                    'uuid' => $medicamento->uuid,
+                    'nombre' => $medicamento->nombre,
+                    'principio_activo' => $medicamento->principio_activo ?? null,
+                    'concentracion' => $medicamento->concentracion ?? null,
+                    'forma_farmaceutica' => $medicamento->forma_farmaceutica ?? null
+                ];
+            })->toArray();
+        } else {
+            // ✅ FALLBACK A JSON
+            $medicamentosPath = $this->getStoragePath() . '/medicamentos';
+            if (is_dir($medicamentosPath)) {
+                $files = glob($medicamentosPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && stripos($data['nombre'] ?? '', $termino) !== false) {
+                        $medicamentos[] = $data;
+                        if (count($medicamentos) >= $limit) break;
+                    }
+                }
+            }
+        }
+
+        return $medicamentos;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando medicamentos offline', [
+            'error' => $e->getMessage(),
+            'termino' => $termino
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ BUSCAR DIAGNÓSTICOS OFFLINE
+ */
+public function buscarDiagnosticosOffline(string $termino, int $limit = 20): array
+{
+    try {
+        $diagnosticos = [];
+        
+        if ($this->isSQLiteAvailable()) {
+            $results = DB::connection('offline')->table('diagnosticos')
+                ->where(function($q) use ($termino) {
+                    $q->where('codigo', 'LIKE', '%' . $termino . '%')
+                      ->orWhere('nombre', 'LIKE', '%' . $termino . '%');
+                })
+                ->limit($limit)
+                ->get();
+                
+            $diagnosticos = $results->map(function($diagnostico) {
+                return [
+                    'id' => $diagnostico->id,
+                    'uuid' => $diagnostico->uuid,
+                    'codigo' => $diagnostico->codigo,
+                    'nombre' => $diagnostico->nombre,
+                    'categoria' => $diagnostico->categoria ?? null
+                ];
+            })->toArray();
+        } else {
+            // ✅ FALLBACK A JSON
+            $diagnosticosPath = $this->getStoragePath() . '/diagnosticos';
+            if (is_dir($diagnosticosPath)) {
+                $files = glob($diagnosticosPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && (
+                        stripos($data['codigo'] ?? '', $termino) !== false ||
+                        stripos($data['nombre'] ?? '', $termino) !== false
+                    )) {
+                        $diagnosticos[] = $data;
+                        if (count($diagnosticos) >= $limit) break;
+                    }
+                }
+            }
+        }
+
+        return $diagnosticos;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando diagnósticos offline', [
+            'error' => $e->getMessage(),
+            'termino' => $termino
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ BUSCAR REMISIONES OFFLINE
+ */
+public function buscarRemisionesOffline(string $termino, int $limit = 20): array
+{
+    try {
+        $remisiones = [];
+        
+        if ($this->isSQLiteAvailable()) {
+            $results = DB::connection('offline')->table('remisiones')
+                ->where('nombre', 'LIKE', '%' . $termino . '%')
+                ->where('activo', true)
+                ->limit($limit)
+                ->get();
+                
+            $remisiones = $results->map(function($remision) {
+                return [
+                    'id' => $remision->id,
+                    'uuid' => $remision->uuid,
+                    'codigo' => $remision->codigo,
+                    'nombre' => $remision->nombre,
+                    'tipo' => $remision->tipo ?? null
+                ];
+            })->toArray();
+        } else {
+            // ✅ FALLBACK A JSON
+            $remisionesPath = $this->getStoragePath() . '/remisiones';
+            if (is_dir($remisionesPath)) {
+                $files = glob($remisionesPath . '/*.json');
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    if ($data && 
+                        stripos($data['nombre'] ?? '', $termino) !== false &&
+                        ($data['activo'] ?? true)) {
+                        $remisiones[] = $data;
+                        if (count($remisiones) >= $limit) break;
+                    }
+                }
+            }
+        }
+
+        return $remisiones;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando remisiones offline', [
+            'error' => $e->getMessage(),
+            'termino' => $termino
+        ]);
+        return [];
+    }
+}
+/**
+ * ✅ CREAR TABLA DE MEDICAMENTOS
+ */
+private function createMedicamentosTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS medicamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            codigo TEXT,
+            nombre TEXT NOT NULL,
+            principio_activo TEXT,
+            concentracion TEXT,
+            forma_farmaceutica TEXT,
+            via_administracion TEXT,
+            unidad_medida TEXT,
+            pos BOOLEAN DEFAULT 1,
+            activo BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_medicamentos_nombre ON medicamentos(nombre)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_medicamentos_activo ON medicamentos(activo)
+    ');
+}
+
+/**
+ * ✅ CREAR TABLA DE DIAGNÓSTICOS
+ */
+private function createDiagnosticosTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS diagnosticos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            codigo TEXT NOT NULL,
+            nombre TEXT NOT NULL,
+            cod_categoria TEXT,
+            categoria TEXT,
+            activo BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_diagnosticos_codigo ON diagnosticos(codigo)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_diagnosticos_nombre ON diagnosticos(nombre)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_diagnosticos_activo ON diagnosticos(activo)
+    ');
+}
+
+/**
+ * ✅ CREAR TABLA DE REMISIONES
+ */
+private function createRemisionesTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS remisiones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            codigo TEXT,
+            nombre TEXT NOT NULL,
+            tipo TEXT,
+            especialidad_id INTEGER,
+            descripcion TEXT,
+            activo BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_remisiones_nombre ON remisiones(nombre)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_remisiones_activo ON remisiones(activo)
+    ');
+}
+
+/**
+ * ✅ SINCRONIZAR MEDICAMENTOS DESDE API
+ */
+public function syncMedicamentosFromApi(array $medicamentos): bool
+{
+    try {
+        Log::info('🔄 Sincronizando medicamentos offline', [
+            'count' => count($medicamentos)
+        ]);
+
+        if ($this->isSQLiteAvailable()) {
+            $this->createMedicamentosTable();
+            
+            // Limpiar datos existentes
+            DB::connection('offline')->table('medicamentos')->delete();
+            
+            foreach ($medicamentos as $medicamento) {
+                DB::connection('offline')->table('medicamentos')->insert([
+                    'uuid' => $medicamento['uuid'],
+                    'codigo' => $medicamento['codigo'] ?? null,
+                    'nombre' => $medicamento['nombre'],
+                    'principio_activo' => $medicamento['principio_activo'] ?? null,
+                    'concentracion' => $medicamento['concentracion'] ?? null,
+                    'forma_farmaceutica' => $medicamento['forma_farmaceutica'] ?? null,
+                    'via_administracion' => $medicamento['via_administracion'] ?? null,
+                    'unidad_medida' => $medicamento['unidad_medida'] ?? null,
+                    'pos' => $medicamento['pos'] ?? true,
+                    'activo' => $medicamento['activo'] ?? true,
+                    'created_at' => now()->toISOString(),
+                    'updated_at' => now()->toISOString()
+                ]);
+            }
+        }
+
+        // También guardar en JSON como backup
+        foreach ($medicamentos as $medicamento) {
+            $this->storeData('medicamentos/' . $medicamento['uuid'] . '.json', $medicamento);
+        }
+
+        Log::info('✅ Medicamentos sincronizados offline', [
+            'synced' => count($medicamentos)
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando medicamentos offline', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ SINCRONIZAR DIAGNÓSTICOS DESDE API
+ */
+public function syncDiagnosticosFromApi(array $diagnosticos): bool
+{
+    try {
+        Log::info('🔄 Sincronizando diagnósticos offline', [
+            'count' => count($diagnosticos)
+        ]);
+
+        if ($this->isSQLiteAvailable()) {
+            $this->createDiagnosticosTable();
+            
+            // Limpiar datos existentes
+            DB::connection('offline')->table('diagnosticos')->delete();
+            
+            foreach ($diagnosticos as $diagnostico) {
+                DB::connection('offline')->table('diagnosticos')->insert([
+                    'uuid' => $diagnostico['uuid'],
+                    'codigo' => $diagnostico['codigo'],
+                    'nombre' => $diagnostico['nombre'],
+                    'cod_categoria' => $diagnostico['cod_categoria'] ?? null,
+                    'categoria' => $diagnostico['categoria'] ?? null,
+                    'activo' => true,
+                    'created_at' => now()->toISOString(),
+                    'updated_at' => now()->toISOString()
+                ]);
+            }
+        }
+
+        // También guardar en JSON como backup
+        foreach ($diagnosticos as $diagnostico) {
+            $this->storeData('diagnosticos/' . $diagnostico['uuid'] . '.json', $diagnostico);
+        }
+
+        Log::info('✅ Diagnósticos sincronizados offline', [
+            'synced' => count($diagnosticos)
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando diagnósticos offline', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ SINCRONIZAR REMISIONES DESDE API
+ */
+public function syncRemisionesFromApi(array $remisiones): bool
+{
+    try {
+        Log::info('🔄 Sincronizando remisiones offline', [
+            'count' => count($remisiones)
+        ]);
+
+        if ($this->isSQLiteAvailable()) {
+            $this->createRemisionesTable();
+            
+            // Limpiar datos existentes
+            DB::connection('offline')->table('remisiones')->delete();
+            
+            foreach ($remisiones as $remision) {
+                DB::connection('offline')->table('remisiones')->insert([
+                    'uuid' => $remision['uuid'],
+                    'codigo' => $remision['codigo'] ?? null,
+                    'nombre' => $remision['nombre'],
+                    'tipo' => $remision['tipo'] ?? null,
+                    'especialidad_id' => $remision['especialidad_id'] ?? null,
+                    'descripcion' => $remision['descripcion'] ?? null,
+                    'activo' => $remision['activo'] ?? true,
+                    'created_at' => now()->toISOString(),
+                    'updated_at' => now()->toISOString()
+                ]);
+            }
+        }
+
+        // También guardar en JSON como backup
+        foreach ($remisiones as $remision) {
+            $this->storeData('remisiones/' . $remision['uuid'] . '.json', $remision);
+        }
+
+        Log::info('✅ Remisiones sincronizadas offline', [
+            'synced' => count($remisiones)
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando remisiones offline', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ OBTENER HISTORIAS CLÍNICAS POR PACIENTE
+ */
+public function getHistoriasClinicasByPaciente(string $pacienteUuid): array
+{
+    try {
+        $historiasPath = storage_path('app/offline/historias_clinicas');
+        
+        if (!is_dir($historiasPath)) {
+            return [];
+        }
+        
+        $historias = [];
+        $files = glob($historiasPath . '/*.json');
+        
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            
+            if (isset($data['paciente_uuid']) && $data['paciente_uuid'] === $pacienteUuid) {
+                $historias[] = $data;
+            }
+        }
+        
+        Log::info('✅ Historias offline encontradas', [
+            'paciente_uuid' => $pacienteUuid,
+            'count' => count($historias)
+        ]);
+        
+        return $historias;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias offline', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid
+        ]);
+        
+        return [];
+    }
+}
+
+/**
+ * ✅ BUSCAR HISTORIAS EN SQLITE (OPCIONAL)
+ */
+public function buscarHistoriasEnSQLite(string $pacienteUuid): array
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            return [];
+        }
+        
+        $results = DB::connection('offline')->table('historias_clinicas')
+            ->where('paciente_uuid', $pacienteUuid)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        return $results->toArray();
+        
+    } catch (\Exception $e) {
+        Log::debug('ℹ️ No se pudo buscar en SQLite', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+
 }
