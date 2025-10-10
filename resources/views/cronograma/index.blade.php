@@ -644,83 +644,97 @@
                                                         </p>
                                                     @endif
                                                     
-                                                    <!-- ✅ BOTONES DE ACCIÓN MEJORADOS -->
-                                                    <div class="d-flex gap-1 mt-auto position-relative">
-                                                        <button type="button" 
-                                                                class="btn btn-outline-primary btn-sm flex-fill btn-detalle-cita"
-                                                                data-cita-uuid="{{ $cita['uuid'] }}">
-                                                            <i class="fas fa-eye"></i> Ver
-                                                        </button>
-                                                        
-                                                        <!-- ✅ BOTONES QUE FUNCIONAN TANTO ONLINE COMO OFFLINE -->
-                                                        @switch($estado)
-                                                            @case('PROGRAMADA')
-                                                                <button type="button" 
-                                                                        class="btn btn-success btn-sm btn-estado-cita"
-                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                        data-estado="EN_ATENCION"
-                                                                        title="Iniciar atención">
-                                                                    <i class="fas fa-play"></i>
-                                                                </button>
-                                                                <div class="dropdown">
-                                                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
-                                                                            data-bs-toggle="dropdown">
-                                                                        <i class="fas fa-ellipsis-v"></i>
-                                                                    </button>
-                                                                    <ul class="dropdown-menu">
-                                                                        <li>
-                                                                            <a class="dropdown-item btn-estado-cita" 
-                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
-                                                                               data-estado="CANCELADA">
-                                                                                <i class="fas fa-times text-danger me-2"></i>Cancelar
-                                                                            </a>
-                                                                        </li>
-                                                                        <li>
-                                                                            <a class="dropdown-item btn-estado-cita" 
-                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
-                                                                               data-estado="NO_ASISTIO">
-                                                                                <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
-                                                                            </a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                                @break
-                                                                
-                                                            @case('EN_ATENCION')
-                                                                <button type="button" 
-                                                                        class="btn btn-success btn-sm btn-estado-cita"
-                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                        data-estado="ATENDIDA"
-                                                                        title="Marcar como atendida">
-                                                                    <i class="fas fa-check"></i>
-                                                                </button>
-                                                                @break
-                                                                
-                                                            @case('ATENDIDA')
-                                                                <span class="badge bg-success flex-fill text-center py-2">
-                                                                    <i class="fas fa-check-circle"></i> Completada
-                                                                </span>
-                                                                @break
-                                                                
-                                                            @default
-                                                                <button type="button" 
-                                                                        class="btn btn-outline-primary btn-sm btn-estado-cita"
-                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
-                                                                        data-estado="PROGRAMADA"
-                                                                        title="Reprogramar">
-                                                                    <i class="fas fa-redo"></i>
-                                                                </button>
-                                                        @endswitch
-                                                        
-                                                        <!-- ✅ INDICADOR DE MODO OFFLINE (OPCIONAL) -->
-                                                        @if($isOffline)
-                                                            <div class="position-absolute top-0 end-0 mt-1 me-1">
-                                                                <span class="badge bg-warning badge-sm" title="Modo offline - Los cambios se sincronizarán">
-                                                                    <i class="fas fa-database"></i>
-                                                                </span>
-                                                            </div>
-                                                        @endif
-                                                    </div>
+                                                <!-- ✅ BOTONES DE ACCIÓN MEJORADOS CON HISTORIA CLÍNICA -->
+<div class="d-flex gap-1 mt-auto position-relative">
+    <button type="button" 
+            class="btn btn-outline-primary btn-sm flex-fill btn-detalle-cita"
+            data-cita-uuid="{{ $cita['uuid'] }}">
+        <i class="fas fa-eye"></i> Ver
+    </button>
+    
+    <!-- ✅ BOTONES QUE FUNCIONAN TANTO ONLINE COMO OFFLINE -->
+    @switch($estado)
+        @case('PROGRAMADA')
+            <button type="button" 
+                    class="btn btn-success btn-sm btn-estado-cita"
+                    data-cita-uuid="{{ $cita['uuid'] }}"
+                    data-estado="EN_ATENCION"
+                    title="Iniciar atención">
+                <i class="fas fa-play"></i>
+            </button>
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
+                        data-bs-toggle="dropdown">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item btn-estado-cita" 
+                           data-cita-uuid="{{ $cita['uuid'] }}" 
+                           data-estado="CANCELADA">
+                            <i class="fas fa-times text-danger me-2"></i>Cancelar
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item btn-estado-cita" 
+                           data-cita-uuid="{{ $cita['uuid'] }}" 
+                           data-estado="NO_ASISTIO">
+                            <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            @break
+            
+        @case('EN_ATENCION')
+            <!-- ✅ AGREGADO: Botón de Historia Clínica para EN_ATENCION -->
+            <button type="button" 
+                    class="btn btn-info btn-sm btn-historia-clinica"
+                    data-cita-uuid="{{ $cita['uuid'] }}"
+                    title="Crear Historia Clínica">
+                <i class="fas fa-file-medical"></i> HC
+            </button>
+            <button type="button" 
+                    class="btn btn-success btn-sm btn-estado-cita"
+                    data-cita-uuid="{{ $cita['uuid'] }}"
+                    data-estado="ATENDIDA"
+                    title="Marcar como atendida">
+                <i class="fas fa-check"></i>
+            </button>
+            @break
+            
+        @case('ATENDIDA')
+            <!-- ✅ AGREGADO: Botón de Historia Clínica para ATENDIDA -->
+            <button type="button" 
+                    class="btn btn-success btn-sm btn-historia-clinica"
+                    data-cita-uuid="{{ $cita['uuid'] }}"
+                    title="Ver Historia Clínica">
+                <i class="fas fa-file-medical"></i> HC
+            </button>
+            <span class="badge bg-success flex-fill text-center py-2 ms-1">
+                <i class="fas fa-check-circle"></i> Completada
+            </span>
+            @break
+            
+        @default
+            <button type="button" 
+                    class="btn btn-outline-primary btn-sm btn-estado-cita"
+                    data-cita-uuid="{{ $cita['uuid'] }}"
+                    data-estado="PROGRAMADA"
+                    title="Reprogramar">
+                <i class="fas fa-redo"></i>
+            </button>
+    @endswitch
+    
+    <!-- ✅ INDICADOR DE MODO OFFLINE (OPCIONAL) -->
+    @if($isOffline)
+        <div class="position-absolute top-0 end-0 mt-1 me-1">
+            <span class="badge bg-warning badge-sm" title="Modo offline - Los cambios se sincronizarán">
+                <i class="fas fa-database"></i>
+            </span>
+        </div>
+    @endif
+</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -878,26 +892,26 @@ function initEventListeners() {
     // ✅ EVENT DELEGATION CORREGIDO CON DEBUG COMPLETO
     document.addEventListener('click', function(e) {
         // ✅ BOTÓN DE HISTORIA CLÍNICA
-        if (e.target.classList.contains('btn-historia-clinica') || e.target.closest('.btn-historia-clinica')) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const btn = e.target.classList.contains('btn-historia-clinica') ? e.target : e.target.closest('.btn-historia-clinica');
-            const citaUuid = btn.dataset.citaUuid;
-            
-            console.log('📋 Abriendo Historia Clínica para cita:', citaUuid);
-            
-            if (!citaUuid) {
-                mostrarAlerta('error', 'Error: ID de cita no válido para Historia Clínica');
-                return;
-            }
-            
-            // Redirigir a la página de crear historia clínica
-            const url = `/historia-clinica/crear/${citaUuid}`;
-            console.log('🔗 Redirigiendo a:', url);
-            window.location.href = url;
-            return;
-        }
+       if (e.target.classList.contains('btn-historia-clinica') || e.target.closest('.btn-historia-clinica')) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const btn = e.target.classList.contains('btn-historia-clinica') ? e.target : e.target.closest('.btn-historia-clinica');
+    const citaUuid = btn.dataset.citaUuid;
+    
+    console.log('📋 Abriendo Historia Clínica para cita:', citaUuid);
+    
+    if (!citaUuid) {
+        mostrarAlerta('error', 'Error: ID de cita no válido para Historia Clínica');
+        return;
+    }
+    
+    // ✅ CAMBIAR ESTA LÍNEA:
+    const url = `/historia-clinica/determinar-vista/${citaUuid}`; // ← NUEVA RUTA
+    console.log('🔗 Redirigiendo a:', url);
+    window.location.href = url;
+    return;
+}
         
         // Botones de estado de citas
         if (e.target.classList.contains('btn-estado-cita') || e.target.closest('.btn-estado-cita')) {
@@ -2154,7 +2168,8 @@ window.cronogramaDebug = {
     // ✅ NUEVAS FUNCIONES DE DEBUG
     testHistoriaClinica: function(citaUuid) {
         console.log('🧪 Test Historia Clínica:', citaUuid);
-        const url = `/historia-clinica/crear/${citaUuid}`;
+        
+        const url = `/historia-clinica/determinar-vista/${citaUuid}`; // ← NUEVA RUTA
         console.log('🔗 URL generada:', url);
         window.open(url, '_blank');
     }

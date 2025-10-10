@@ -277,6 +277,12 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         ->name('historia-clinica.buscar-remisiones');
     Route::get('/historia-clinica/buscar-cups', [HistoriaClinicaController::class, 'buscarCups'])
         ->name('historia-clinica.buscar-cups');
+        // routes/web.php
+
+Route::get('/historia-clinica/determinar-vista/{citaUuid}', [HistoriaClinicaController::class, 'determinarVista'])
+    ->name('historia-clinica.determinar-vista');
+
+
 
     // ✅ OTRAS RUTAS ESPECÍFICAS PARA PROFESIONALES DE SALUD
     Route::prefix('profesional')->name('profesional.')->group(function () {
@@ -292,7 +298,9 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
 
      // ✅ RUTAS DE HISTORIA CLÍNICA
     Route::prefix('historia-clinica')->name('historia-clinica.')->group(function () {
-        Route::get('/crear/{citaUuid}', [HistoriaClinicaController::class, 'create'])->name('create');
+        Route::get('/crear/{citaUuid}', [HistoriaClinicaController::class, 'determinarVista'])
+    ->name('historia-clinica.create');
+
         Route::post('/guardar', [HistoriaClinicaController::class, 'store'])->name('store');
         Route::get('/{uuid}', [HistoriaClinicaController::class, 'show'])->name('show');
         

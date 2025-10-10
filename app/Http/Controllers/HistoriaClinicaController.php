@@ -115,6 +115,18 @@ class HistoriaClinicaController extends Controller
 
             // ✅ GUARDAR OFFLINE
             $result = $this->saveOffline($historiaData, true);
+            // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
+                $especialidadesConComplementaria = [
+                    'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
+                    'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
+                ];
+
+                $especialidad = $this->obtenerEspecialidadDesdeCita($request->cita_uuid);
+
+                if (in_array($especialidad, $especialidadesConComplementaria)) {
+                    // Crear registro complementario si hay datos
+                    $this->crearHistoriaComplementaria($historia->id, $request);
+                }
             
             return response()->json([
                 'success' => true,
@@ -185,8 +197,8 @@ private function validateHistoriaClinica(Request $request): array
     return $request->validate([
         // ✅ DATOS BÁSICOS OBLIGATORIOS
         'cita_uuid' => 'required|string',
-        'motivo' => 'required|string|max:1000',
-        'enfermedad_actual' => 'required|string|max:2000',
+        'motivo' => 'nullable|string|max:1000',
+        'enfermedad_actual' => 'nullable|string|max:2000',
         
         // ✅ DIAGNÓSTICO PRINCIPAL OBLIGATORIO
         'idDiagnostico' => 'required|string|uuid',
@@ -600,9 +612,9 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'acu_telefono' => $validatedData['telefono_acudiente'] ?? null,
         'acu_parentesco' => $validatedData['parentesco'] ?? null,
         'causa_externa' => $validatedData['causa_externa'] ?? null,
-        'motivo_consulta' => $validatedData['motivo'],
-        'enfermedad_actual' => $validatedData['enfermedad_actual'],
-        
+        'motivo_consulta' => $validatedData['motivo'] ?? '',
+        'enfermedad_actual' => $validatedData['enfermedad_actual'] ?? '',
+
         // ✅ DISCAPACIDADES
         'discapacidad_fisica' => $validatedData['discapacidad_fisica'] ?? null,
         'discapacidad_visual' => $validatedData['discapacidad_visual'] ?? null,
@@ -1432,6 +1444,544 @@ private function verificarHistoriasAnteriores(string $pacienteUuid): bool
         return false; // ✅ FALLBACK: asumir primera vez
     }
 }
+/**
+ * ✅ MÉTODO PRINCIPAL ACTUALIZADO: Determinar qué vista mostrar
+ */
+public function determinarVista(Request $request, string $citaUuid)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
 
+        Log::info('🔍 FRONTEND: Determinando vista de historia clínica', [
+            'cita_uuid' => $citaUuid,
+            'usuario' => $usuario['nombre_completo']
+        ]);
+
+        // ✅ CONSULTAR AL BACKEND PARA DETERMINAR LA VISTA
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get("/historias-clinicas/determinar-vista/{$citaUuid}");
+            
+            if ($response['success']) {
+                $data = $response['data'];
+                
+                Log::info('✅ Vista determinada por API', [
+                    'especialidad' => $data['especialidad'],
+                    'tipo_consulta' => $data['tipo_consulta'],
+                    'vista_recomendada' => $data['vista_recomendada']['vista']
+                ]);
+
+                return $this->renderizarVistaEspecifica(
+                    $data['vista_recomendada'],
+                    $data['cita'],
+                    $data['historia_previa'],
+                    $usuario,
+                    $isOffline
+                );
+            }
+        }
+
+        // ✅ FALLBACK OFFLINE - USAR DATOS LOCALES
+        Log::warning('⚠️ API offline, usando determinación local');
+        
+        $citaResult = $this->citaService->show($citaUuid);
+        if (!$citaResult['success']) {
+            return back()->with('error', 'Cita no encontrada');
+        }
+
+        $cita = $citaResult['data'];
+        $especialidad = $this->obtenerEspecialidadMedico($cita);
+        $tipoConsulta = $this->determinarTipoConsultaOffline($cita['paciente_uuid'], $especialidad ?? 'MEDICINA GENERAL');
+        
+        $vistaInfo = [
+            'vista' => $this->determinarVistaOffline($especialidad, $tipoConsulta),
+            'usa_complementaria' => in_array($especialidad, [
+                'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
+                'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
+            ]),
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta
+        ];
+
+        $historiaPrevia = $tipoConsulta === 'CONTROL' ? 
+            $this->obtenerUltimaHistoriaOffline($cita['paciente_uuid'], $especialidad) : null;
+
+        return $this->renderizarVistaEspecifica($vistaInfo, $cita, $historiaPrevia, $usuario, $isOffline);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando vista de historia clínica', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+
+        return back()->with('error', 'Error determinando el tipo de historia clínica');
+    }
+}
+/**
+ * ✅ RENDERIZAR VISTA ESPECÍFICA
+ */
+private function renderizarVistaEspecifica(array $vistaInfo, array $cita, ?array $historiaPrevia, array $usuario, bool $isOffline)
+{
+    $masterData = $this->getMasterDataForForm();
+    
+    $vista = 'historia-clinica.' . $vistaInfo['vista'];
+    
+    Log::info('🎯 Renderizando vista específica', [
+        'vista' => $vista,
+        'especialidad' => $vistaInfo['especialidad'],
+        'tipo_consulta' => $vistaInfo['tipo_consulta']
+    ]);
+
+    return view($vista, compact(
+        'cita',
+        'usuario', 
+        'isOffline',
+        'masterData',
+        'historiaPrevia',
+        'vistaInfo'
+    ));
+}
+
+/**
+ * ✅ OBTENER ESPECIALIDAD DEL MÉDICO DE LA CITA
+ */
+private function obtenerEspecialidadMedico(array $cita): ?string
+{
+    $especialidad = $cita['agenda']['medico']['especialidad']['nombre'] ?? 
+                   $cita['medico']['especialidad']['nombre'] ?? 
+                   $cita['especialidad']['nombre'] ?? 
+                   $cita['especialidad_nombre'] ?? 
+                   null;
+
+    Log::info('🔍 Especialidad detectada', [
+        'especialidad' => $especialidad
+    ]);
+
+    return $especialidad;
+}
+
+/**
+ * ✅ DETERMINAR TIPO DE CONSULTA POR ESPECIALIDAD
+ */
+private function determinarTipoConsultaPorEspecialidad(string $pacienteUuid, string $especialidad): string
+{
+    try {
+        $tieneHistoriasEspecialidad = $this->verificarHistoriasAnterioresPorEspecialidad($pacienteUuid, $especialidad);
+        
+        return $tieneHistoriasEspecialidad ? 'CONTROL' : 'PRIMERA VEZ';
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando tipo consulta por especialidad', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return 'PRIMERA VEZ'; // Fallback seguro
+    }
+}
+
+/**
+ * ✅ VERIFICAR HISTORIAS ANTERIORES POR ESPECIALIDAD
+ */
+private function verificarHistoriasAnterioresPorEspecialidad(string $pacienteUuid, string $especialidad): bool
+{
+    try {
+        $count = \App\Models\HistoriaClinica::whereHas('cita', function($query) use ($pacienteUuid) {
+            $query->whereHas('paciente', function($q) use ($pacienteUuid) {
+                $q->where('uuid', $pacienteUuid);
+            });
+        })
+        ->whereHas('cita.agenda.usuarioMedico.especialidad', function($query) use ($especialidad) {
+            $query->where('nombre', $especialidad);
+        })
+        ->count();
+
+        return $count > 0;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando historias por especialidad', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return false;
+    }
+}
+
+
+/**
+ * ✅ OBTENER ÚLTIMA HISTORIA POR ESPECIALIDAD
+ */
+private function obtenerUltimaHistoriaPorEspecialidad(string $pacienteUuid, string $especialidad): ?array
+{
+    try {
+        $historia = \App\Models\HistoriaClinica::with([
+            'sede',
+            'cita.paciente',
+            'historiaDiagnosticos.diagnostico',
+            'historiaMedicamentos.medicamento'
+        ])
+        ->whereHas('cita', function($query) use ($pacienteUuid) {
+            $query->whereHas('paciente', function($q) use ($pacienteUuid) {
+                $q->where('uuid', $pacienteUuid);
+            });
+        })
+        ->whereHas('cita.agenda.usuarioMedico.especialidad', function($query) use ($especialidad) {
+            $query->where('nombre', $especialidad);
+        })
+        ->orderBy('created_at', 'desc')
+        ->first();
+
+        return $historia ? $historia->toArray() : null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo última historia por especialidad', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return null;
+    }
+}
+
+/**
+ * ✅ DETERMINAR VISTA ESPECÍFICA SEGÚN ESPECIALIDAD
+ */
+private function determinarVistaEspecifica(string $especialidad, string $tipoConsulta, array $cita, ?array $historiaPrevia, array $masterData, array $usuario, bool $isOffline)
+{
+    // ✅ ESPECIALIDADES QUE USAN TABLA COMPLEMENTARIA
+    $especialidadesConComplementaria = [
+        'CARDIOLOGÍA',
+        'PEDIATRÍA', 
+        'GINECOLOGÍA',
+        'NEUROLOGÍA',
+        'DERMATOLOGÍA',
+        'ORTOPEDIA',
+        'PSIQUIATRÍA'
+    ];
+
+    $usaComplementaria = in_array($especialidad, $especialidadesConComplementaria);
+
+    // ✅ DETERMINAR VISTA SEGÚN ESPECIALIDAD Y TIPO
+    switch ($especialidad) {
+        case 'MEDICINA GENERAL':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.medicina-general.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData'
+                ));
+            } else {
+                return view('historia-clinica.medicina-general.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia'
+                ));
+            }
+
+        case 'CARDIOLOGÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.cardiologia.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.cardiologia.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'PEDIATRÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.pediatria.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.pediatria.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'GINECOLOGÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.ginecologia.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.ginecologia.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'NEUROLOGÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.neurologia.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.neurologia.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'DERMATOLOGÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.dermatologia.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.dermatologia.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'ORTOPEDIA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.ortopedia.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.ortopedia.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        case 'PSIQUIATRÍA':
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.psiquiatria.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
+                ));
+            } else {
+                return view('historia-clinica.psiquiatria.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
+                ));
+            }
+
+        default:
+            // ✅ FALLBACK A MEDICINA GENERAL
+            Log::warning('⚠️ Especialidad no reconocida, usando Medicina General', [
+                'especialidad' => $especialidad
+            ]);
+            
+            if ($tipoConsulta === 'PRIMERA VEZ') {
+                return view('historia-clinica.medicina-general.primera-vez', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData'
+                ));
+            } else {
+                return view('historia-clinica.medicina-general.control', compact(
+                    'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia'
+                ));
+            }
+    }
+}
+/**
+ * ✅ OBTENER ESPECIALIDAD DESDE CITA UUID
+ */
+private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
+{
+    try {
+        $citaResult = $this->citaService->show($citaUuid);
+        if ($citaResult['success']) {
+            return $this->obtenerEspecialidadMedico($citaResult['data']);
+        }
+        return null;
+    } catch (\Exception $e) {
+        Log::error('Error obteniendo especialidad desde cita', ['error' => $e->getMessage()]);
+        return null;
+    }
+}
+
+/**
+ * ✅ CREAR HISTORIA COMPLEMENTARIA
+ */
+private function crearHistoriaComplementaria(int $historiaId, Request $request): void
+{
+    try {
+        $datosComplementarios = $request->only([
+            // ✅ ANTECEDENTES PATOLÓGICOS
+            'sistema_nervioso_nefro_inter', 'sistema_hemolinfatico', 'aparato_digestivo',
+            'organo_sentido', 'endocrino_metabolico', 'inmunologico', 
+            'cancer_tumores_radioterapia_quimio', 'glandula_mamaria', 
+            'hipertension_diabetes_erc', 'reacciones_alergica', 'cardio_vasculares',
+            'respiratorios', 'urinarias', 'osteoarticulares', 'infecciosos',
+            'cirugia_trauma', 'tratamiento_medicacion', 'antecedente_quirurgico',
+            'antecedentes_familiares', 'consumo_tabaco', 'antecedentes_alcohol',
+            'sedentarismo', 'ginecologico', 'citologia_vaginal', 'menarquia',
+            'gestaciones', 'parto', 'aborto', 'cesaria', 'metodo_conceptivo',
+            'metodo_conceptivo_cual', 'antecedente_personal',
+            
+            // ✅ DESCRIPCIONES DETALLADAS
+            'descripcion_sistema_nervioso', 'descripcion_sistema_hemolinfatico',
+            'descripcion_aparato_digestivo', 'descripcion_organos_sentidos',
+            'descripcion_endocrino_metabolico', 'descripcion_inmunologico',
+            'descripcion_cancer_tumores_radio_quimioterapia', 'descripcion_glandulas_mamarias',
+            'descripcion_hipertension_diabetes_erc', 'descripcion_reacion_alergica',
+            'descripcion_cardio_vasculares', 'descripcion_respiratorios',
+            'descripcion_urinarias', 'descripcion_osteoarticulares',
+            'descripcion_infecciosos', 'descripcion_cirugias_traumas',
+            'descripcion_tratamiento_medicacion', 'descripcion_antecedentes_quirurgicos',
+            'descripcion_antecedentes_familiares', 'descripcion_consumo_tabaco',
+            'descripcion_antecedentes_alcohol', 'descripcion_sedentarismo',
+            'descripcion_ginecologicos', 'descripcion_citologia_vaginal',
+            
+            // ✅ NEUROLÓGICO Y ESTADO MENTAL
+            'neurologico_estado_mental', 'obs_neurologico_estado_mental',
+            
+            // ✅ ESTRUCTURA FAMILIAR
+            'estructura_familiar', 'cantidad_habitantes', 'cantidad_conforman_familia',
+            'composicion_familiar',
+            
+            // ✅ VIVIENDA
+            'tipo_vivienda', 'tenencia_vivienda', 'material_paredes', 'material_pisos',
+            'espacios_sala', 'comedor', 'banio', 'cocina', 'patio', 'cantidad_dormitorios',
+            'cantidad_personas_ocupan_cuarto',
+            
+            // ✅ SERVICIOS PÚBLICOS
+            'energia_electrica', 'alcantarillado', 'gas_natural', 'centro_atencion',
+            'acueducto', 'centro_culturales', 'ventilacion', 'organizacion',
+            'centro_educacion', 'centro_recreacion_esparcimiento',
+            
+            // ✅ EVALUACIÓN PSICOSOCIAL
+            'dinamica_familiar', 'diagnostico', 'acciones_seguir', 'motivo_consulta',
+            'psicologia_descripcion_problema', 'psicologia_red_apoyo',
+            'psicologia_plan_intervencion_recomendacion', 'psicologia_tratamiento_actual_adherencia',
+            'analisis_conclusiones', 'psicologia_comportamiento_consulta',
+            
+            // ✅ SEGUIMIENTO
+            'objetivo_visita', 'situacion_encontrada', 'compromiso', 'recomendaciones',
+            'siguiente_seguimiento', 'enfermedad_diagnostica',
+            
+            // ✅ ANTECEDENTES ADICIONALES
+            'habito_intestinal', 'quirurgicos', 'quirurgicos_observaciones',
+            'alergicos', 'alergicos_observaciones', 'familiares', 'familiares_observaciones',
+            'psa', 'psa_observaciones', 'farmacologicos', 'farmacologicos_observaciones',
+            'sueno', 'sueno_observaciones', 'tabaquismo_observaciones',
+            'ejercicio', 'ejercicio_observaciones',
+            
+            // ✅ GINECO-OBSTÉTRICOS
+            'embarazo_actual', 'semanas_gestacion', 'climatero',
+            
+            // ✅ EVALUACIÓN NUTRICIONAL
+            'tolerancia_via_oral', 'percepcion_apetito', 'percepcion_apetito_observacion',
+            'alimentos_preferidos', 'alimentos_rechazados', 'suplemento_nutricionales',
+            'dieta_especial', 'dieta_especial_cual',
+            
+            // ✅ HORARIOS DE COMIDA
+            'desayuno_hora', 'desayuno_hora_observacion', 'media_manana_hora',
+            'media_manana_hora_observacion', 'almuerzo_hora', 'almuerzo_hora_observacion',
+            'media_tarde_hora', 'media_tarde_hora_observacion', 'cena_hora',
+            'cena_hora_observacion', 'refrigerio_nocturno_hora', 'refrigerio_nocturno_hora_observacion',
+            
+            // ✅ EVALUACIÓN NUTRICIONAL DETALLADA
+            'peso_ideal', 'interpretacion', 'meta_meses', 'analisis_nutricional',
+            'plan_seguir', 'avance_paciente',
+            
+            // ✅ FRECUENCIA DE CONSUMO
+            'comida_desayuno', 'comida_almuerzo', 'comida_medio_almuerzo',
+            'comida_cena', 'comida_medio_desayuno',
+            
+            // ✅ GRUPOS DE ALIMENTOS
+            'lacteo', 'lacteo_observacion', 'huevo', 'huevo_observacion',
+            'embutido', 'embutido_observacion', 'carne_roja', 'carne_blanca',
+            'carne_vicera', 'carne_observacion', 'leguminosas', 'leguminosas_observacion',
+            'frutas_jugo', 'frutas_porcion', 'frutas_observacion', 'verduras_hortalizas',
+            'vh_observacion', 'cereales', 'cereales_observacion', 'rtp', 'rtp_observacion',
+            'azucar_dulce', 'ad_observacion',
+            
+            // ✅ DIAGNÓSTICO NUTRICIONAL
+            'diagnostico_nutri', 'plan_seguir_nutri',
+            
+            // ✅ EVALUACIÓN FÍSICA Y TERAPÉUTICA
+            'actitud', 'evaluacion_d', 'evaluacion_p', 'estado', 'evaluacion_dolor',
+            'evaluacion_os', 'evaluacion_neu', 'comitante'
+        ]);
+
+        if (!empty(array_filter($datosComplementarios))) {
+            \App\Models\HistoriaClinicaComplementaria::create([
+                'historia_clinica_id' => $historiaId,
+                ...$datosComplementarios
+            ]);
+            
+            Log::info('✅ Historia complementaria creada', [
+                'historia_id' => $historiaId,
+                'campos_completados' => count(array_filter($datosComplementarios))
+            ]);
+        }
+    } catch (\Exception $e) {
+        Log::error('❌ Error creando historia complementaria', [
+            'error' => $e->getMessage(),
+            'historia_id' => $historiaId
+        ]);
+    }
+}
+
+/**
+ * ✅ MÉTODOS AUXILIARES OFFLINE
+ */
+private function determinarVistaOffline(string $especialidad, string $tipoConsulta): string
+{
+    $vistas = [
+        'MEDICINA GENERAL' => [
+            'PRIMERA VEZ' => 'medicina-general.primera-vez',
+            'CONTROL' => 'medicina-general.control'
+        ],
+        'CARDIOLOGÍA' => [
+            'PRIMERA VEZ' => 'cardiologia.primera-vez',
+            'CONTROL' => 'cardiologia.control'
+        ],
+        // ... agregar más especialidades según necesites
+    ];
+
+    return $vistas[$especialidad][$tipoConsulta] ?? $vistas['MEDICINA GENERAL'][$tipoConsulta];
+}
+
+private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $especialidad = null): string
+{
+    try {
+        Log::info('🔍 OFFLINE: Determinando tipo de consulta', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+
+        // ✅ USAR MEDICINA GENERAL SI NO HAY ESPECIALIDAD
+        $especialidadFinal = $especialidad ?? 'MEDICINA GENERAL';
+
+        // ✅ VERIFICAR HISTORIAS ANTERIORES
+        $tieneHistoriasAnteriores = $this->verificarHistoriasAnterioresPorEspecialidad($pacienteUuid, $especialidadFinal);
+        
+        $tipoConsulta = $tieneHistoriasAnteriores ? 'CONTROL' : 'PRIMERA VEZ';
+
+        Log::info('✅ Tipo de consulta determinado offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad_final' => $especialidadFinal,
+            'tipo_consulta' => $tipoConsulta
+        ]);
+
+        return $tipoConsulta;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en determinarTipoConsultaOffline', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+
+        return 'PRIMERA VEZ'; // ✅ FALLBACK SEGURO
+    }
+}
+
+private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
+{
+    $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
+    
+    if (empty($historias)) {
+        return null;
+    }
+
+    // Ordenar por fecha y devolver la más reciente
+    usort($historias, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+
+    return $historias[0];
+}
 }
 

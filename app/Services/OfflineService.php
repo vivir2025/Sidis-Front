@@ -6767,6 +6767,52 @@ public function buscarHistoriasEnSQLite(string $pacienteUuid): array
         return [];
     }
 }
-
+/**
+ * ✅ OBTENER HISTORIAS CLÍNICAS POR PACIENTE Y ESPECIALIDAD
+ */
+public function getHistoriasClinicasByPacienteYEspecialidad(string $pacienteUuid, string $especialidad): array
+{
+    try {
+        $historiasPath = storage_path('app/offline/historias_clinicas');
+        
+        if (!is_dir($historiasPath)) {
+            return [];
+        }
+        
+        $historias = [];
+        $files = glob($historiasPath . '/*.json');
+        
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            
+            if (isset($data['paciente_uuid']) && $data['paciente_uuid'] === $pacienteUuid) {
+                // Verificar especialidad si está disponible en los datos
+                if (isset($data['especialidad']) && $data['especialidad'] === $especialidad) {
+                    $historias[] = $data;
+                } elseif (!isset($data['especialidad']) && $especialidad === 'MEDICINA GENERAL') {
+                    // Fallback: si no hay especialidad definida, asumir Medicina General
+                    $historias[] = $data;
+                }
+            }
+        }
+        
+        Log::info('✅ Historias offline por especialidad', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'count' => count($historias)
+        ]);
+        
+        return $historias;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias por especialidad offline', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return [];
+    }
+}
 
 }
