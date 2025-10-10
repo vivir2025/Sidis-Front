@@ -590,7 +590,7 @@
         <i class="fas fa-wifi"></i> 
         <span id="statusText">{{ session('is_online', true) ? 'Conectado' : 'Sin conexión' }}</span>
     </div>
-
+ @unless(request()->routeIs('login'))
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
@@ -629,6 +629,8 @@
             </div>
         </div>
     </nav>
+@endunless
+
 
     <div class="container-fluid">
         <div class="row">
