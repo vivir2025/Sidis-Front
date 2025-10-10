@@ -68,6 +68,7 @@ class Kernel extends HttpKernel
     'custom.auth' => \App\Http\Middleware\AuthMiddleware::class,        // ✅ CORRECTO
     'custom.guest' => \App\Http\Middleware\CustomGuestMiddleware::class,     // ✅ CORRECTO
     'role' => \App\Http\Middleware\RoleMiddleware::class,     
-    'profesional.salud' => \App\Http\Middleware\ProfesionalEnSaludMiddleware::class,          // ✅ CORRECTO
+    'profesional.salud' => \App\Http\Middleware\ProfesionalEnSaludMiddleware::class,    
+     'role' => \App\Http\Middleware\CheckRole::class,      // ✅ CORRECTO
     ];
 }

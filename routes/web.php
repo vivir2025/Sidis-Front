@@ -11,6 +11,7 @@ use App\Http\Controllers\{
     AgendaController,
     CronogramaController,
     CupsController,
+    UsuarioController,
     HistoriaClinicaController
 };
 
@@ -166,6 +167,13 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
     Route::post('/sync-pacientes', [PacienteController::class, 'syncPendingPacientes'])
         ->name('pacientes.sync');
          Route::post('/test-sync-manual', [PacienteController::class, 'testSyncManual'])->name('pacientes.test-sync');
+
+         // Sincronización de usuarios
+    Route::get('/usuarios/sincronizar', [UsuarioController::class, 'sincronizar'])
+        ->name('usuarios.sincronizar');
+    Route::post('/usuarios/sincronizar/ejecutar', [UsuarioController::class, 'ejecutarSincronizacion'])
+        ->name('usuarios.sincronizar.ejecutar');
+
     
     // ✅ RUTAS DE ADMINISTRACIÓN (requieren rol admin)
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
@@ -185,9 +193,9 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::get('/logs/download', [AdminController::class, 'downloadLogs'])->name('logs.download');
         
         // En routes/web.php - agregar esta ruta
-Route::get('/api/health-check', function () {
-    return response()->json(['status' => 'ok', 'timestamp' => now()]);
-})->name('health.check');
+        Route::get('/api/health-check', function () {
+            return response()->json(['status' => 'ok', 'timestamp' => now()]);
+        })->name('health.check');
 
         // Configuración del sistema
         Route::get('/config', [AdminController::class, 'config'])->name('config');
@@ -220,6 +228,21 @@ Route::get('/api/health-check', function () {
     });
 
 
+});
+
+Route::middleware(['custom.auth', 'role:admin,administrador'])->prefix('usuarios')->name('usuarios.')->group(function () {
+    Route::get('/', [UsuarioController::class, 'index'])->name('index');
+    Route::get('/create', [UsuarioController::class, 'create'])->name('create');
+    Route::post('/', [UsuarioController::class, 'store'])->name('store');
+    Route::get('/{uuid}', [UsuarioController::class, 'show'])->name('show');
+    Route::get('/{uuid}/edit', [UsuarioController::class, 'edit'])->name('edit');
+    Route::put('/{uuid}', [UsuarioController::class, 'update'])->name('update');
+    Route::delete('/{uuid}', [UsuarioController::class, 'destroy'])->name('destroy');
+    
+    // Rutas adicionales
+    Route::patch('/{uuid}/cambiar-estado', [UsuarioController::class, 'cambiarEstado'])->name('cambiar-estado');
+    Route::post('/{uuid}/subir-firma', [UsuarioController::class, 'subirFirma'])->name('subir-firma');
+    Route::delete('/{uuid}/eliminar-firma', [UsuarioController::class, 'eliminarFirma'])->name('eliminar-firma');
 });
 Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
     // ✅ CRONOGRAMA - RUTAS COMPLETAS PARA PROFESIONALES DE SALUD

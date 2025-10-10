@@ -12,6 +12,8 @@ class OfflineService
 {
     protected $storagePath;
     protected $offlineConnection = 'offline';
+    protected $sqlitePath;
+    protected $pdo;
 
     public function __construct()
     {
@@ -491,7 +493,7 @@ private function createCitasTable(): void
 
     private function createUsuariosTable(): void
 {
-    DB::connection('offline')->statement('
+ DB::connection('offline')->statement('
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT UNIQUE NOT NULL,
@@ -506,6 +508,8 @@ private function createCitasTable(): void
             sede_id INTEGER,
             sede_nombre TEXT,
             estado TEXT DEFAULT "ACTIVO",
+            firma TEXT NULL,
+            tiene_firma INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -538,6 +542,14 @@ private function createCupsTable(): void
     
     DB::connection('offline')->statement('
         CREATE INDEX IF NOT EXISTS idx_cups_estado ON cups(estado)
+    ');
+        // ✅ CREAR ÍNDICES
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_usuarios_uuid ON usuarios(uuid)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_usuarios_login ON usuarios(login)
     ');
 }
 // En OfflineService.php - REEMPLAZAR createPacientesTable
@@ -732,28 +744,81 @@ private function createContratosTable(): void
             }
         }
     }
-    private function syncUsuariosConEspecialidad(array $data): void
+  private function syncUsuariosConEspecialidad(array $data): void
 {
-    DB::connection('offline')->table('usuarios')->delete();
-    foreach ($data as $item) {
-        DB::connection('offline')->table('usuarios')->insert([
-            'uuid' => $item['uuid'],
-            'documento' => $item['documento'] ?? null,
-            'nombre' => $item['nombre'],
-            'apellido' => $item['apellido'] ?? null,
-            'nombre_completo' => $item['nombre_completo'],
-            'login' => $item['login'] ?? null,
-            'especialidad_id' => $item['especialidad']['id'] ?? null,
-            'especialidad_uuid' => $item['especialidad']['uuid'] ?? null,
-            'especialidad_nombre' => $item['especialidad']['nombre'] ?? null,
-            'sede_id' => $item['sede']['id'] ?? null,
-            'sede_nombre' => $item['sede']['nombre'] ?? null,
-            'estado' => 'ACTIVO',
-            'created_at' => now(),
-            'updated_at' => now()
+    try {
+        Log::info('🔄 Sincronizando usuarios con especialidad', [
+            'total' => count($data)
         ]);
+
+        DB::connection('offline')->table('usuarios')->delete();
+        
+        $syncCount = 0;
+        foreach ($data as $item) {
+            // ✅ EXTRAER Y LIMPIAR FIRMA
+            $firma = null;
+            $tieneFirma = 0;
+            
+            if (!empty($item['firma'])) {
+                $firma = $item['firma'];
+                $tieneFirma = 1;
+                
+                // ✅ VALIDAR QUE LA FIRMA TENGA PREFIJO
+                if (strpos($firma, 'data:image/') !== 0) {
+                    $firma = 'data:image/png;base64,' . $firma;
+                }
+                
+                Log::debug('✅ Firma procesada para usuario', [
+                    'usuario_uuid' => $item['uuid'],
+                    'login' => $item['login'] ?? 'N/A',
+                    'tiene_firma' => $tieneFirma,
+                    'longitud_firma' => strlen($firma),
+                    'prefijo' => substr($firma, 0, 30)
+                ]);
+            } else {
+                Log::debug('ℹ️ Usuario sin firma', [
+                    'usuario_uuid' => $item['uuid'],
+                    'login' => $item['login'] ?? 'N/A'
+                ]);
+            }
+
+            DB::connection('offline')->table('usuarios')->insert([
+                'uuid' => $item['uuid'],
+                'documento' => $item['documento'] ?? null,
+                'nombre' => $item['nombre'],
+                'apellido' => $item['apellido'] ?? null,
+                'nombre_completo' => $item['nombre_completo'],
+                'login' => $item['login'] ?? null,
+                'especialidad_id' => $item['especialidad']['id'] ?? null,
+                'especialidad_uuid' => $item['especialidad']['uuid'] ?? null,
+                'especialidad_nombre' => $item['especialidad']['nombre'] ?? null,
+                'sede_id' => $item['sede']['id'] ?? null,
+                'sede_nombre' => $item['sede']['nombre'] ?? null,
+                'estado' => 'ACTIVO',
+                'firma' => $firma, // ✅ FIRMA CON PREFIJO
+                'tiene_firma' => $tieneFirma, // ✅ BOOLEANO
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+            
+            $syncCount++;
+        }
+        
+        $this->updateSyncStatus('usuarios', $syncCount);
+        
+        Log::info('✅ Usuarios sincronizados con firma', [
+            'total_sincronizados' => $syncCount,
+            'con_firma' => DB::connection('offline')->table('usuarios')
+                ->where('tiene_firma', 1)->count()
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando usuarios con especialidad', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        throw $e;
     }
-    $this->updateSyncStatus('usuarios', count($data));
 }
 
 
@@ -1324,29 +1389,55 @@ private function createContratosTable(): void
             ];
         })->toArray();
 
-          $usuarios = DB::connection('offline')->table('usuarios')->get();
-    $masterData['usuarios_con_especialidad'] = $usuarios->map(function ($usuario) {
-        return [
-            'id' => $usuario->id,
-            'uuid' => $usuario->uuid,
-            'documento' => $usuario->documento,
-            'nombre' => $usuario->nombre,
-            'apellido' => $usuario->apellido,
-            'nombre_completo' => $usuario->nombre_completo,
-            'login' => $usuario->login,
-            'especialidad_id' => $usuario->especialidad_id,
-            'especialidad' => [
-                'id' => $usuario->especialidad_id,
-                'uuid' => $usuario->especialidad_uuid,
-                'nombre' => $usuario->especialidad_nombre
-            ],
-            'sede_id' => $usuario->sede_id,
-            'sede' => [
-                'id' => $usuario->sede_id,
-                'nombre' => $usuario->sede_nombre
-            ]
-        ];
-    })->toArray();
+         try {
+    $usuarios = DB::connection('offline')->table('usuarios')->get();
+    
+    if ($usuarios->isEmpty()) {
+        Log::warning('⚠️ No hay usuarios en SQLite offline');
+        $masterData['usuarios_con_especialidad'] = [];
+    } else {
+        $masterData['usuarios_con_especialidad'] = $usuarios->map(function ($usuario) {
+            return [
+                'id' => $usuario->id,
+                'uuid' => $usuario->uuid,
+                'documento' => $usuario->documento ?? null,
+                'nombre' => $usuario->nombre,
+                'apellido' => $usuario->apellido ?? null,
+                'nombre_completo' => $usuario->nombre_completo,
+                'login' => $usuario->login ?? null,
+                'email' => $usuario->email ?? null,
+                'especialidad_id' => $usuario->especialidad_id ?? null,
+                'especialidad' => [
+                    'id' => $usuario->especialidad_id ?? null,
+                    'uuid' => $usuario->especialidad_uuid ?? null,
+                    'nombre' => $usuario->especialidad_nombre ?? 'Sin especialidad'
+                ],
+                'sede_id' => $usuario->sede_id ?? null,
+                'sede' => [
+                    'id' => $usuario->sede_id ?? null,
+                    'nombre' => $usuario->sede_nombre ?? 'Sin sede'
+                ],
+                'estado' => $usuario->estado ?? 'ACTIVO',
+                'firma' => $usuario->firma ?? null,
+                'tiene_firma' => $usuario->tiene_firma ?? 0,
+                'created_at' => $usuario->created_at ?? null,
+                'updated_at' => $usuario->updated_at ?? null
+            ];
+        })->toArray();
+        
+        Log::info('✅ Usuarios cargados desde SQLite', [
+            'total_usuarios' => count($masterData['usuarios_con_especialidad'])
+        ]);
+    }
+} catch (\Exception $e) {
+    Log::error('❌ Error obteniendo usuarios desde SQLite', [
+        'error' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
+    $masterData['usuarios_con_especialidad'] = [];
+}
+
 
 
 
@@ -1677,10 +1768,45 @@ private function createContratosTable(): void
     }
 
     /**
-     * Almacenar datos de usuario para uso offline
-     */
-    public function storeUserData(array $userData): void
-    {
+ * Almacenar datos de usuario para uso offline
+ */
+public function storeUserData(array $userData): void
+{
+    try {
+        Log::info('💾 Guardando datos de usuario offline', [
+            'usuario_uuid' => $userData['uuid'] ?? 'N/A',
+            'login' => $userData['login'] ?? 'N/A',
+            'tiene_firma' => !empty($userData['firma'])
+        ]);
+
+        // ✅ EXTRAER Y LIMPIAR FIRMA
+        $firma = null;
+        $tieneFirma = 0;
+        
+        if (!empty($userData['firma'])) {
+            $firma = $userData['firma'];
+            $tieneFirma = 1;
+            
+            // ✅ VALIDAR QUE LA FIRMA TENGA PREFIJO DATA URI
+            if (strpos($firma, 'data:image/') !== 0) {
+                // Si no tiene prefijo, agregarlo (asumiendo PNG por defecto)
+                $firma = 'data:image/png;base64,' . $firma;
+            }
+            
+            Log::info('✅ Firma incluida en datos offline', [
+                'usuario_uuid' => $userData['uuid'],
+                'login' => $userData['login'],
+                'longitud_firma' => strlen($firma),
+                'tiene_prefijo' => strpos($firma, 'data:image/') === 0,
+                'primeros_30_caracteres' => substr($firma, 0, 30)
+            ]);
+        } else {
+            Log::info('ℹ️ Usuario sin firma digital', [
+                'usuario_uuid' => $userData['uuid'],
+                'login' => $userData['login']
+            ]);
+        }
+
         $offlineData = [
             'id' => $userData['id'],
             'uuid' => $userData['uuid'],
@@ -1701,14 +1827,32 @@ private function createContratosTable(): void
             'estado' => $userData['estado'],
             'permisos' => $userData['permisos'] ?? [],
             'tipo_usuario' => $userData['tipo_usuario'] ?? [],
+            'firma' => $firma, // ✅ FIRMA CON PREFIJO DATA URI
+            'tiene_firma' => $tieneFirma, // ✅ BOOLEANO (1 = tiene, 0 = no tiene)
             'stored_at' => now()->toISOString()
         ];
 
+        // ✅ GUARDAR EN JSON
         $this->storeData('users/' . $userData['login'] . '.json', $offlineData);
         
-        // Guardar hash de contraseña para validación offline
+        // ✅ GUARDAR HASH DE CONTRASEÑA PARA VALIDACIÓN OFFLINE
         $this->savePasswordHash($userData['login'], session('temp_password_for_offline'));
+        
+        Log::info('✅ Datos de usuario guardados offline con firma', [
+            'login' => $userData['login'],
+            'tiene_firma' => $tieneFirma,
+            'archivo_guardado' => 'users/' . $userData['login'] . '.json'
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error guardando datos de usuario offline', [
+            'error' => $e->getMessage(),
+            'login' => $userData['login'] ?? 'N/A',
+            'trace' => $e->getTraceAsString()
+        ]);
     }
+}
+
 
     /**
      * Guardar hash de contraseña para validación offline
@@ -1727,18 +1871,215 @@ private function createContratosTable(): void
     }
 
     /**
-     * Obtener usuario offline
-     */
-    public function getOfflineUser(string $login): ?array
-    {
+ * Obtener usuario offline
+ */
+public function getOfflineUser(string $login): ?array
+{
+    try {
         $userFile = 'users/' . $login . '.json';
         
         if (!$this->hasData($userFile)) {
+            Log::warning('⚠️ Usuario no encontrado offline', ['login' => $login]);
             return null;
         }
 
-        return $this->getData($userFile);
+        $userData = $this->getData($userFile);
+        
+        // ✅ LOGGING DE FIRMA
+        Log::info('✅ Usuario offline cargado', [
+            'login' => $login,
+            'uuid' => $userData['uuid'] ?? 'N/A',
+            'tiene_firma' => $userData['tiene_firma'] ?? 0,
+            'firma_presente' => !empty($userData['firma'])
+        ]);
+
+        return $userData;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo usuario offline', [
+            'login' => $login,
+            'error' => $e->getMessage()
+        ]);
+        return null;
     }
+}
+
+/**
+ * ✅ Almacenar usuario completo (para sincronización masiva)
+ */
+public function storeUsuarioCompleto(array $userData): void
+{
+    try {
+        Log::info('💾 Almacenando usuario completo offline', [
+            'uuid' => $userData['uuid'] ?? 'N/A',
+            'login' => $userData['login'] ?? 'N/A',
+            'tiene_firma' => !empty($userData['firma'])
+        ]);
+
+        // ✅ Procesar firma
+        $firma = null;
+        $tieneFirma = 0;
+        
+        if (!empty($userData['firma'])) {
+            $firma = $userData['firma'];
+            $tieneFirma = 1;
+            
+            // Validar prefijo data:image/
+            if (strpos($firma, 'data:image/') !== 0) {
+                $firma = 'data:image/png;base64,' . $firma;
+            }
+            
+            Log::info('✅ Firma incluida en sincronización', [
+                'uuid' => $userData['uuid'],
+                'longitud' => strlen($firma)
+            ]);
+        }
+
+        $offlineData = [
+            'id' => $userData['id'],
+            'uuid' => $userData['uuid'],
+            'documento' => $userData['documento'],
+            'nombre' => $userData['nombre'],
+            'apellido' => $userData['apellido'],
+            'nombre_completo' => $userData['nombre_completo'],
+            'correo' => $userData['correo'],
+            'telefono' => $userData['telefono'],
+            'login' => $userData['login'],
+            'sede_id' => $userData['sede_id'],
+            'sede' => $userData['sede'],
+            'rol_id' => $userData['rol_id'],
+            'rol' => $userData['rol'],
+            'especialidad_id' => $userData['especialidad_id'] ?? null,
+            'especialidad' => $userData['especialidad'] ?? null,
+            'estado_id' => $userData['estado_id'],
+            'estado' => $userData['estado'], // ✅ CORREGIDO: era $usuario['estado']
+            'permisos' => $userData['permisos'] ?? [],
+            'tipo_usuario' => $userData['tipo_usuario'] ?? [],
+            'es_medico' => $userData['es_medico'] ?? false,
+            'registro_profesional' => $userData['registro_profesional'] ?? null,
+            'firma' => $firma,
+            'tiene_firma' => $tieneFirma,
+            'synced_at' => now()->toISOString()
+        ];
+
+        // ✅ Guardar en JSON por UUID (para búsquedas por UUID)
+        $this->storeData('usuarios/' . $userData['uuid'] . '.json', $offlineData);
+        
+        // ✅ También guardar por login (para login offline)
+        $this->storeData('users/' . $userData['login'] . '.json', $offlineData);
+        
+        Log::info('✅ Usuario completo almacenado offline', [
+            'uuid' => $userData['uuid'],
+            'login' => $userData['login'],
+            'tiene_firma' => $tieneFirma
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando usuario completo offline', [
+            'uuid' => $userData['uuid'] ?? 'N/A',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+}
+
+
+/**
+ * ✅ Obtener usuario por UUID (offline)
+ */
+public function getUsuarioByUuid(string $uuid): ?array
+{
+    try {
+        $userFile = 'usuarios/' . $uuid . '.json';
+        
+        if (!$this->hasData($userFile)) {
+            Log::warning('⚠️ Usuario no encontrado offline por UUID', ['uuid' => $uuid]);
+            return null;
+        }
+
+        $userData = $this->getData($userFile);
+        
+        Log::info('✅ Usuario offline cargado por UUID', [
+            'uuid' => $uuid,
+            'login' => $userData['login'] ?? 'N/A',
+            'tiene_firma' => $userData['tiene_firma'] ?? 0
+        ]);
+
+        return $userData;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo usuario offline por UUID', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ Obtener todos los usuarios offline
+ */
+public function getAllUsuariosOffline(array $filters = []): array
+{
+    try {
+        $usuariosPath = storage_path('app/offline/usuarios');
+        
+        if (!is_dir($usuariosPath)) {
+            return [];
+        }
+
+        $usuarios = [];
+        $files = glob($usuariosPath . '/*.json');
+
+        foreach ($files as $file) {
+            $userData = json_decode(file_get_contents($file), true);
+            
+            if ($userData) {
+                // Aplicar filtros
+                if (!empty($filters['sede_id']) && $userData['sede_id'] != $filters['sede_id']) {
+                    continue;
+                }
+                
+                if (!empty($filters['rol_id']) && $userData['rol_id'] != $filters['rol_id']) {
+                    continue;
+                }
+                
+                if (!empty($filters['estado_id']) && $userData['estado_id'] != $filters['estado_id']) {
+                    continue;
+                }
+                
+                if (!empty($filters['search'])) {
+                    $search = strtolower($filters['search']);
+                    $searchable = strtolower(
+                        $userData['nombre_completo'] . ' ' . 
+                        $userData['documento'] . ' ' . 
+                        $userData['login']
+                    );
+                    
+                    if (strpos($searchable, $search) === false) {
+                        continue;
+                    }
+                }
+                
+                $usuarios[] = $userData;
+            }
+        }
+
+        Log::info('✅ Usuarios offline obtenidos', [
+            'total' => count($usuarios),
+            'filtros' => $filters
+        ]);
+
+        return $usuarios;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo usuarios offline', [
+            'error' => $e->getMessage()
+        ]);
+        return [];
+    }
+}
+
 
     /**
      * Validar credenciales offline con contraseña
@@ -3230,77 +3571,94 @@ public function getCitaOffline(string $uuid): ?array
 }
 
 /**
- * ✅ NUEVO: Obtener usuario offline por ID
+ * Obtener usuario desde almacenamiento offline (SQLite o JSON)
  */
-private function getUsuarioOffline($usuarioId): ?array
+public function getUsuarioOffline(string $uuid): ?array
 {
     try {
-        Log::info('🔍 Buscando usuario offline', [
-            'usuario_id' => $usuarioId,
-            'tipo' => gettype($usuarioId)
-        ]);
-
+        $usuario = null;
+        
+        // ✅ BUSCAR EN SQLite PRIMERO
         if ($this->isSQLiteAvailable()) {
-            // ✅ BUSCAR POR ID PRIMERO
-            $usuario = DB::connection('offline')->table('usuarios')
-                ->where('id', $usuarioId)
+            $usuarioRaw = DB::connection('offline')->table('usuarios')
+                ->where('uuid', $uuid)
                 ->first();
             
-            if ($usuario) {
-                $usuarioArray = (array) $usuario;
-                Log::info('✅ Usuario encontrado en SQLite por ID', [
-                    'usuario_id' => $usuarioArray['id'],
-                    'nombre_completo' => $usuarioArray['nombre_completo']
+            if ($usuarioRaw) {
+                $usuario = (array) $usuarioRaw;
+                Log::info('✅ Usuario encontrado en SQLite offline', [
+                    'uuid' => $usuario['uuid'],
+                    'nombre' => $usuario['nombre_completo']
                 ]);
-                return $usuarioArray;
             }
-
-            // ✅ SI NO SE ENCUENTRA POR ID, BUSCAR POR UUID (FALLBACK)
-            $usuario = DB::connection('offline')->table('usuarios')
-                ->where('uuid', $usuarioId)
-                ->first();
+        }
+        
+        // ✅ FALLBACK A JSON
+        if (!$usuario) {
+            $path = $this->storagePath . "/usuarios/{$uuid}.json";
             
-            if ($usuario) {
-                $usuarioArray = (array) $usuario;
-                Log::info('✅ Usuario encontrado en SQLite por UUID', [
-                    'usuario_uuid' => $usuarioArray['uuid'],
-                    'nombre_completo' => $usuarioArray['nombre_completo']
+            if (file_exists($path)) {
+                $content = file_get_contents($path);
+                $usuario = json_decode($content, true);
+                
+                Log::info('✅ Usuario encontrado en JSON offline', [
+                    'uuid' => $usuario['uuid'] ?? 'NO_UUID',
+                    'nombre' => $usuario['nombre_completo'] ?? 'NO_NOMBRE'
                 ]);
-                return $usuarioArray;
             }
         }
 
-        // ✅ FALLBACK A DATOS MAESTROS JSON
-        $masterData = $this->getData('master_data.json', []);
-        if (isset($masterData['usuarios_con_especialidad'])) {
-            foreach ($masterData['usuarios_con_especialidad'] as $usuario) {
-                // Buscar por ID o UUID
-                if (($usuario['id'] ?? null) == $usuarioId || 
-                    ($usuario['uuid'] ?? null) === $usuarioId) {
-                    
-                    Log::info('✅ Usuario encontrado en JSON', [
-                        'usuario_id' => $usuario['id'] ?? 'N/A',
-                        'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
-                        'nombre_completo' => $usuario['nombre_completo']
-                    ]);
-                    return $usuario;
-                }
-            }
+        if (!$usuario) {
+            Log::info('⚠️ Usuario no encontrado offline', ['uuid' => $uuid]);
+            return null;
         }
 
-        Log::warning('⚠️ Usuario no encontrado offline', [
-            'usuario_id' => $usuarioId
-        ]);
-        return null;
+        // ✅ ENRIQUECER CON OBJETOS DE RELACIONES PARA COMPATIBILIDAD
+        $usuario = $this->enrichUsuarioRelations($usuario);
+
+        return $usuario;
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo usuario offline', [
-            'usuario_id' => $usuarioId,
+            'uuid' => $uuid,
             'error' => $e->getMessage()
         ]);
         return null;
     }
 }
+
+/**
+ * Enriquecer relaciones del usuario para compatibilidad con vistas
+ */
+private function enrichUsuarioRelations(array $usuario): array
+{
+    // Convertir campos planos a objetos anidados
+    if (isset($usuario['especialidad_id'])) {
+        $usuario['especialidad'] = [
+            'id' => $usuario['especialidad_id'],
+            'uuid' => $usuario['especialidad_uuid'] ?? null,
+            'nombre' => $usuario['especialidad_nombre'] ?? null,
+        ];
+    }
+
+    if (isset($usuario['sede_id'])) {
+        $usuario['sede'] = [
+            'id' => $usuario['sede_id'],
+            'nombre' => $usuario['sede_nombre'] ?? null,
+        ];
+    }
+
+    // Convertir tiene_firma a booleano
+    if (isset($usuario['tiene_firma'])) {
+        $usuario['tiene_firma'] = (bool) $usuario['tiene_firma'];
+    }
+
+    return $usuario;
+}
+
+
+
+
 public function syncPendingAgendas(): array
 {
     try {
