@@ -29,54 +29,261 @@ class HistoriaClinicaController extends Controller
         $this->citaService = $citaService;
     }
 
-    /**
-     * ✅ MOSTRAR FORMULARIO DE HISTORIA CLÍNICA
-     */
-    public function create(Request $request, string $citaUuid)
-    {
-        try {
-            $usuario = $this->authService->usuario();
-            $isOffline = $this->authService->isOffline();
+   public function create(Request $request, string $citaUuid)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
 
-            Log::info('🩺 Creando historia clínica', [
-                'cita_uuid' => $citaUuid,
-                'usuario' => $usuario['nombre_completo']
-            ]);
+        Log::info('🩺 Creando historia clínica', [
+            'cita_uuid' => $citaUuid,
+            'usuario' => $usuario['nombre_completo']
+        ]);
 
-            // ✅ OBTENER DATOS DE LA CITA
-            $citaResult = $this->citaService->show($citaUuid);
-            
-            if (!$citaResult['success']) {
-                return back()->with('error', 'Cita no encontrada');
-            }
-
-            $cita = $citaResult['data'];
-
-            // ✅ VERIFICAR QUE LA CITA NO TENGA HISTORIA CLÍNICA
-            if (isset($cita['historia_clinica_uuid'])) {
-                return redirect()->route('historia-clinica.show', $cita['historia_clinica_uuid'])
-                    ->with('info', 'Esta cita ya tiene una historia clínica asociada');
-            }
-
-            // ✅ OBTENER DATOS MAESTROS PARA SELECTS
-            $masterData = $this->getMasterDataForForm();
-
-            return view('historia-clinica.create', compact(
-                'cita',
-                'usuario',
-                'isOffline',
-                'masterData'
-            ));
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error creando historia clínica', [
-                'error' => $e->getMessage(),
-                'cita_uuid' => $citaUuid
-            ]);
-
-            return back()->with('error', 'Error cargando formulario de historia clínica');
+        // ✅ OBTENER DATOS DE LA CITA
+        $citaResult = $this->citaService->show($citaUuid);
+        
+        if (!$citaResult['success']) {
+            return back()->with('error', 'Cita no encontrada');
         }
+
+        $cita = $citaResult['data'];
+
+        // ✅ VERIFICAR QUE LA CITA NO TENGA HISTORIA CLÍNICA
+        if (isset($cita['historia_clinica_uuid'])) {
+            return redirect()->route('historia-clinica.show', $cita['historia_clinica_uuid'])
+                ->with('info', 'Esta cita ya tiene una historia clínica asociada');
+        }
+
+        // ✅ OBTENER ESPECIALIDAD Y TIPO DE CONSULTA
+        $especialidad = $this->obtenerEspecialidadMedico($cita);
+        $pacienteUuid = $cita['paciente_uuid'] ?? $cita['paciente']['uuid'] ?? null;
+        
+        if (!$pacienteUuid) {
+            return back()->with('error', 'No se pudo obtener información del paciente');
+        }
+
+        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad);
+
+        // ✅ OBTENER HISTORIA PREVIA SOLO PARA MEDICINA GENERAL Y CONTROL
+        $historiaPrevia = null;
+        if ($tipoConsulta === 'CONTROL' && $especialidad === 'MEDICINA GENERAL') {
+            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+            
+            Log::info('🔄 Historia previa cargada para formulario', [
+                'tiene_historia' => !empty($historiaPrevia),
+                'especialidad' => $especialidad,
+                'tipo_consulta' => $tipoConsulta
+            ]);
+        }
+
+        // ✅ OBTENER DATOS MAESTROS PARA SELECTS
+        $masterData = $this->getMasterDataForForm();
+
+        return view('historia-clinica.create', compact(
+            'cita',
+            'usuario',
+            'isOffline',
+            'masterData',
+            'historiaPrevia', // ✅ AGREGAR ESTA VARIABLE
+            'especialidad',
+            'tipoConsulta'
+        ));
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error creando historia clínica', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+
+        return back()->with('error', 'Error cargando formulario de historia clínica');
     }
+}
+
+/**
+ * ✅ OBTENER ÚLTIMA HISTORIA FORMATEADA PARA EL FORMULARIO
+ */
+private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, string $especialidad): ?array
+{
+    try {
+        Log::info('🔍 Obteniendo última historia para formulario', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+
+        // ✅ INTENTAR OBTENER DESDE API PRIMERO
+        if ($this->apiService->isOnline()) {
+            $response = $this->apiService->get("/pacientes/{$pacienteUuid}/ultima-historia", [
+                'especialidad' => $especialidad
+            ]);
+            
+            if ($response['success'] && !empty($response['data'])) {
+                Log::info('✅ Historia previa obtenida desde API');
+                return $response['data'];
+            }
+        }
+
+        // ✅ FALLBACK A OFFLINE
+        $historiaOffline = $this->obtenerUltimaHistoriaOffline($pacienteUuid, $especialidad);
+        
+        if ($historiaOffline) {
+            Log::info('✅ Historia previa obtenida desde offline');
+            return $this->formatearHistoriaParaFormulario($historiaOffline);
+        }
+
+        Log::info('ℹ️ No se encontró historia previa');
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historia previa para formulario', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return null;
+    }
+}
+
+private function formatearHistoriaParaFormulario(array $historia): array
+{
+    try {
+        return [
+            // ✅ TEST DE MORISKY
+            'test_morisky_olvida_tomar_medicamentos' => $historia['olvida_tomar_medicamentos'] ?? 'NO',
+            'test_morisky_toma_medicamentos_hora_indicada' => $historia['toma_medicamentos_hora_indicada'] ?? 'NO',
+            'test_morisky_cuando_esta_bien_deja_tomar_medicamentos' => $historia['cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO',
+            'test_morisky_siente_mal_deja_tomarlos' => $historia['siente_mal_deja_tomarlos'] ?? 'NO',
+            'test_morisky_valoracio_psicologia' => $historia['valoracion_psicologia'] ?? 'NO',
+            'adherente' => $historia['adherente'] ?? 'NO',
+
+            // ✅ ANTECEDENTES PERSONALES
+            'hipertension_arterial_personal' => $historia['hipertension_arterial_personal'] ?? 'NO',
+            'obs_hipertension_arterial_personal' => $historia['obs_personal_hipertension_arterial'] ?? '',
+            'diabetes_mellitus_personal' => $historia['diabetes_mellitus_personal'] ?? 'NO',
+            'obs_diabetes_mellitus_personal' => $historia['obs_personal_mellitus'] ?? '',
+
+            // ✅ CLASIFICACIONES
+            'clasificacion_estado_metabolico' => $historia['clasificacion_estado_metabolico'] ?? '',
+            'clasificacion_hta' => $historia['clasificacion_hta'] ?? '',
+            'clasificacion_dm' => $historia['clasificacion_dm'] ?? '',
+            'clasificacion_rcv' => $historia['clasificacion_rcv'] ?? '',
+            'clasificacion_erc_estado' => $historia['clasificacion_erc_estado'] ?? '',
+            'clasificacion_erc_categoria_ambulatoria_persistente' => $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '',
+
+            // ✅ TASAS DE FILTRACIÓN
+            'tasa_filtracion_glomerular_ckd_epi' => $historia['tasa_filtracion_glomerular_ckd_epi'] ?? '',
+            'tasa_filtracion_glomerular_gockcroft_gault' => $historia['tasa_filtracion_glomerular_gockcroft_gault'] ?? '',
+
+            // ✅ TALLA
+            'talla' => $historia['talla'] ?? '',
+
+            // ✅ MEDICAMENTOS - FORMATEAR PARA EL FRONTEND
+            'medicamentos' => $this->formatearMedicamentosParaFormulario($historia['medicamentos'] ?? []),
+
+            // ✅ REMISIONES - FORMATEAR PARA EL FRONTEND
+            'remisiones' => $this->formatearRemisionesParaFormulario($historia['remisiones'] ?? []),
+
+            // ✅ DIAGNÓSTICOS - FORMATEAR PARA EL FRONTEND
+            'diagnosticos' => $this->formatearDiagnosticosParaFormulario($historia['diagnosticos'] ?? []),
+
+            // ✅ CUPS - FORMATEAR PARA EL FRONTEND
+            'cups' => $this->formatearCupsParaFormulario($historia['cups'] ?? []),
+
+            // ✅✅✅ NUEVOS CAMPOS DE EDUCACIÓN ✅✅✅
+            'alimentacion' => $historia['alimentacion'] ?? 'NO',
+            'disminucion_consumo_sal_azucar' => $historia['disminucion_consumo_sal_azucar'] ?? 'NO',
+            'fomento_actividad_fisica' => $historia['fomento_actividad_fisica'] ?? 'NO',
+            'importancia_adherencia_tratamiento' => $historia['importancia_adherencia_tratamiento'] ?? 'NO',
+            'consumo_frutas_verduras' => $historia['consumo_frutas_verduras'] ?? 'NO',
+            'manejo_estres' => $historia['manejo_estres'] ?? 'NO',
+            'disminucion_consumo_cigarrillo' => $historia['disminucion_consumo_cigarrillo'] ?? 'NO',
+            'disminucion_peso' => $historia['disminucion_peso'] ?? 'NO',
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error formateando historia para formulario', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+
+/**
+ * ✅ FORMATEAR MEDICAMENTOS PARA EL FORMULARIO
+ */
+private function formatearMedicamentosParaFormulario(array $medicamentos): array
+{
+    return array_map(function($medicamento) {
+        return [
+            'medicamento_id' => $medicamento['medicamento_id'] ?? $medicamento['id'],
+            'cantidad' => $medicamento['cantidad'] ?? '',
+            'dosis' => $medicamento['dosis'] ?? '',
+            'medicamento' => [
+                'uuid' => $medicamento['medicamento']['uuid'] ?? $medicamento['medicamento']['id'],
+                'nombre' => $medicamento['medicamento']['nombre'] ?? '',
+                'principio_activo' => $medicamento['medicamento']['principio_activo'] ?? ''
+            ]
+        ];
+    }, $medicamentos);
+}
+
+/**
+ * ✅ FORMATEAR REMISIONES PARA EL FORMULARIO
+ */
+private function formatearRemisionesParaFormulario(array $remisiones): array
+{
+    return array_map(function($remision) {
+        return [
+            'remision_id' => $remision['remision_id'] ?? $remision['id'],
+            'observacion' => $remision['observacion'] ?? '',
+            'remision' => [
+                'uuid' => $remision['remision']['uuid'] ?? $remision['remision']['id'],
+                'nombre' => $remision['remision']['nombre'] ?? '',
+                'tipo' => $remision['remision']['tipo'] ?? ''
+            ]
+        ];
+    }, $remisiones);
+}
+
+/**
+ * ✅ FORMATEAR DIAGNÓSTICOS PARA EL FORMULARIO
+ */
+private function formatearDiagnosticosParaFormulario(array $diagnosticos): array
+{
+    return array_map(function($diagnostico) {
+        return [
+            'diagnostico_id' => $diagnostico['diagnostico_id'] ?? $diagnostico['id'],
+            'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
+            'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
+            'diagnostico' => [
+                'uuid' => $diagnostico['diagnostico']['uuid'] ?? $diagnostico['diagnostico']['id'],
+                'codigo' => $diagnostico['diagnostico']['codigo'] ?? '',
+                'nombre' => $diagnostico['diagnostico']['nombre'] ?? ''
+            ]
+        ];
+    }, $diagnosticos);
+}
+
+/**
+ * ✅ FORMATEAR CUPS PARA EL FORMULARIO
+ */
+private function formatearCupsParaFormulario(array $cups): array
+{
+    return array_map(function($cup) {
+        return [
+            'cups_id' => $cup['cups_id'] ?? $cup['id'],
+            'observacion' => $cup['observacion'] ?? '',
+            'cups' => [
+                'uuid' => $cup['cups']['uuid'] ?? $cup['cups']['id'],
+                'codigo' => $cup['cups']['codigo'] ?? '',
+                'nombre' => $cup['cups']['nombre'] ?? ''
+            ]
+        ];
+    }, $cups);
+}
 
     /**
      * ✅ GUARDAR HISTORIA CLÍNICA
@@ -855,10 +1062,6 @@ private function prepareMedicamentos(array $validatedData): array
                 'medicamento_id' => $medicamentoId, // ✅ Puede ser UUID o ID
                 'cantidad' => $medicamento['cantidad'] ?? '',
                 'dosis' => $medicamento['dosis'] ?? '',
-                'frecuencia' => $medicamento['frecuencia'] ?? null,
-                'duracion' => $medicamento['duracion'] ?? null,
-                'via_administracion' => $medicamento['via_administracion'] ?? null,
-                'observaciones' => $medicamento['observaciones'] ?? null
             ];
         }
     }
@@ -888,9 +1091,6 @@ private function prepareRemisiones(array $validatedData): array
             $remisiones[] = [
                 'remision_id' => $remisionId, // ✅ Puede ser UUID o ID
                 'observacion' => $remision['remObservacion'] ?? null,
-                'prioridad' => 'MEDIA',
-                'estado' => 'PENDIENTE',
-                'fecha_remision' => now()->toDateString()
             ];
         }
     }
@@ -932,8 +1132,6 @@ private function prepareCups(array $validatedData): array
             $cups[] = [
                 'cups_id' => $cupsId, // ✅ Puede ser UUID o ID
                 'observacion' => $cup['cupObservacion'] ?? null,
-                'cantidad' => 1,
-                'estado' => 'PENDIENTE'
             ];
         }
     }
@@ -1444,9 +1642,6 @@ private function verificarHistoriasAnteriores(string $pacienteUuid): bool
         return false; // ✅ FALLBACK: asumir primera vez
     }
 }
-/**
- * ✅ MÉTODO PRINCIPAL ACTUALIZADO: Determinar qué vista mostrar
- */
 public function determinarVista(Request $request, string $citaUuid)
 {
     try {
@@ -1468,20 +1663,34 @@ public function determinarVista(Request $request, string $citaUuid)
                 Log::info('✅ Vista determinada por API', [
                     'especialidad' => $data['especialidad'],
                     'tipo_consulta' => $data['tipo_consulta'],
-                    'vista_recomendada' => $data['vista_recomendada']['vista']
+                    'vista_recomendada' => $data['vista_recomendada']['vista'],
+                    'tiene_historia_previa' => !empty($data['historia_previa'])
                 ]);
+
+                // ✅ FORMATEAR HISTORIA PREVIA SI EXISTE - ESTO ES LO QUE FALTABA
+                $historiaPrevia = null;
+                if (!empty($data['historia_previa'])) {
+                    $historiaPrevia = $this->formatearHistoriaDesdeAPI($data['historia_previa']);
+                    
+                    Log::info('🔄 Historia previa formateada desde API', [
+                        'campos_formateados' => count($historiaPrevia),
+                        'tiene_medicamentos' => !empty($historiaPrevia['medicamentos']),
+                        'tiene_diagnosticos' => !empty($historiaPrevia['diagnosticos']),
+                        'tiene_test_morisky' => isset($historiaPrevia['test_morisky_olvida_tomar_medicamentos'])
+                    ]);
+                }
 
                 return $this->renderizarVistaEspecifica(
                     $data['vista_recomendada'],
                     $data['cita'],
-                    $data['historia_previa'],
+                    $historiaPrevia, // ✅ AHORA SÍ PASA LA HISTORIA FORMATEADA
                     $usuario,
                     $isOffline
                 );
             }
         }
 
-        // ✅ FALLBACK OFFLINE - USAR DATOS LOCALES
+        // ✅ RESTO DEL CÓDIGO IGUAL...
         Log::warning('⚠️ API offline, usando determinación local');
         
         $citaResult = $this->citaService->show($citaUuid);
@@ -1491,7 +1700,13 @@ public function determinarVista(Request $request, string $citaUuid)
 
         $cita = $citaResult['data'];
         $especialidad = $this->obtenerEspecialidadMedico($cita);
-        $tipoConsulta = $this->determinarTipoConsultaOffline($cita['paciente_uuid'], $especialidad ?? 'MEDICINA GENERAL');
+        $pacienteUuid = $cita['paciente_uuid'] ?? $cita['paciente']['uuid'] ?? null;
+        
+        if (!$pacienteUuid) {
+            return back()->with('error', 'No se pudo obtener información del paciente');
+        }
+
+        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad ?? 'MEDICINA GENERAL');
         
         $vistaInfo = [
             'vista' => $this->determinarVistaOffline($especialidad, $tipoConsulta),
@@ -1503,8 +1718,13 @@ public function determinarVista(Request $request, string $citaUuid)
             'tipo_consulta' => $tipoConsulta
         ];
 
-        $historiaPrevia = $tipoConsulta === 'CONTROL' ? 
-            $this->obtenerUltimaHistoriaOffline($cita['paciente_uuid'], $especialidad) : null;
+        $historiaPrevia = null;
+        if ($tipoConsulta === 'CONTROL' && $especialidad === 'MEDICINA GENERAL') {
+            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+            Log::info('🔄 Historia previa offline para Medicina General', [
+                'tiene_historia' => !empty($historiaPrevia)
+            ]);
+        }
 
         return $this->renderizarVistaEspecifica($vistaInfo, $cita, $historiaPrevia, $usuario, $isOffline);
 
@@ -1517,29 +1737,201 @@ public function determinarVista(Request $request, string $citaUuid)
         return back()->with('error', 'Error determinando el tipo de historia clínica');
     }
 }
+
+private function formatearHistoriaDesdeAPI(array $historiaAPI): array
+{
+    try {
+        Log::info('🔧 Formateando historia desde API', [
+            'keys_disponibles' => array_keys($historiaAPI),
+            'tiene_medicamentos' => !empty($historiaAPI['medicamentos']),
+            'tiene_diagnosticos' => !empty($historiaAPI['diagnosticos'])
+        ]);
+
+        $historiaFormateada = [
+            // ✅ TEST DE MORISKY
+            'test_morisky_olvida_tomar_medicamentos' => $historiaAPI['test_morisky_olvida_tomar_medicamentos'] ?? $historiaAPI['olvida_tomar_medicamentos'] ?? 'NO',
+            'test_morisky_toma_medicamentos_hora_indicada' => $historiaAPI['test_morisky_toma_medicamentos_hora_indicada'] ?? $historiaAPI['toma_medicamentos_hora_indicada'] ?? 'NO',
+            'test_morisky_cuando_esta_bien_deja_tomar_medicamentos' => $historiaAPI['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? $historiaAPI['cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO',
+            'test_morisky_siente_mal_deja_tomarlos' => $historiaAPI['test_morisky_siente_mal_deja_tomarlos'] ?? $historiaAPI['siente_mal_deja_tomarlos'] ?? 'NO',
+            'test_morisky_valoracio_psicologia' => $historiaAPI['test_morisky_valoracio_psicologia'] ?? $historiaAPI['valoracion_psicologia'] ?? 'NO',
+            'adherente' => $historiaAPI['adherente'] ?? 'NO',
+
+            // ✅ ANTECEDENTES PERSONALES
+            'hipertension_arterial_personal' => $historiaAPI['hipertension_arterial_personal'] ?? 'NO',
+            'obs_hipertension_arterial_personal' => $historiaAPI['obs_hipertension_arterial_personal'] ?? $historiaAPI['obs_personal_hipertension_arterial'] ?? '',
+            'diabetes_mellitus_personal' => $historiaAPI['diabetes_mellitus_personal'] ?? 'NO',
+            'obs_diabetes_mellitus_personal' => $historiaAPI['obs_diabetes_mellitus_personal'] ?? $historiaAPI['obs_personal_mellitus'] ?? '',
+
+            // ✅ CLASIFICACIONES
+            'clasificacion_estado_metabolico' => $historiaAPI['clasificacion_estado_metabolico'] ?? '',
+            'clasificacion_hta' => $historiaAPI['clasificacion_hta'] ?? '',
+            'clasificacion_dm' => $historiaAPI['clasificacion_dm'] ?? '',
+            'clasificacion_rcv' => $historiaAPI['clasificacion_rcv'] ?? '',
+            'clasificacion_erc_estado' => $historiaAPI['clasificacion_erc_estado'] ?? '',
+            'clasificacion_erc_categoria_ambulatoria_persistente' => $historiaAPI['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '',
+
+            // ✅ TASAS DE FILTRACIÓN
+            'tasa_filtracion_glomerular_ckd_epi' => $historiaAPI['tasa_filtracion_glomerular_ckd_epi'] ?? '',
+            'tasa_filtracion_glomerular_gockcroft_gault' => $historiaAPI['tasa_filtracion_glomerular_gockcroft_gault'] ?? '',
+
+            // ✅ TALLA
+            'talla' => $historiaAPI['talla'] ?? '',
+
+            // ✅ MEDICAMENTOS - USAR NOMBRES CORRECTOS DEL API
+            'medicamentos' => $this->formatearMedicamentosDesdeAPI($historiaAPI['medicamentos'] ?? []),
+
+            // ✅ REMISIONES - USAR NOMBRES CORRECTOS DEL API
+            'remisiones' => $this->formatearRemisionesDesdeAPI($historiaAPI['remisiones'] ?? []),
+
+            // ✅ DIAGNÓSTICOS - USAR NOMBRES CORRECTOS DEL API
+            'diagnosticos' => $this->formatearDiagnosticosDesdeAPI($historiaAPI['diagnosticos'] ?? []),
+
+            // ✅ CUPS - USAR NOMBRES CORRECTOS DEL API
+            'cups' => $this->formatearCupsDesdeAPI($historiaAPI['cups'] ?? []),
+
+            // ✅✅✅ NUEVOS CAMPOS DE EDUCACIÓN ✅✅✅
+            'alimentacion' => $historiaAPI['alimentacion'] ?? 'NO',
+            'disminucion_consumo_sal_azucar' => $historiaAPI['disminucion_consumo_sal_azucar'] ?? 'NO',
+            'fomento_actividad_fisica' => $historiaAPI['fomento_actividad_fisica'] ?? 'NO',
+            'importancia_adherencia_tratamiento' => $historiaAPI['importancia_adherencia_tratamiento'] ?? 'NO',
+            'consumo_frutas_verduras' => $historiaAPI['consumo_frutas_verduras'] ?? 'NO',
+            'manejo_estres' => $historiaAPI['manejo_estres'] ?? 'NO',
+            'disminucion_consumo_cigarrillo' => $historiaAPI['disminucion_consumo_cigarrillo'] ?? 'NO',
+            'disminucion_peso' => $historiaAPI['disminucion_peso'] ?? 'NO',
+        ];
+
+        Log::info('✅ Historia formateada desde API', [
+            'campos_totales' => count($historiaFormateada),
+            'medicamentos_count' => count($historiaFormateada['medicamentos']),
+            'diagnosticos_count' => count($historiaFormateada['diagnosticos']),
+            'remisiones_count' => count($historiaFormateada['remisiones']),
+            'cups_count' => count($historiaFormateada['cups']),
+            'tiene_talla' => !empty($historiaFormateada['talla']),
+            'tiene_clasificacion_metabolica' => !empty($historiaFormateada['clasificacion_estado_metabolico']),
+            // ✅ VERIFICAR EDUCACIÓN
+            'tiene_educacion' => !empty($historiaFormateada['alimentacion'])
+        ]);
+
+        return $historiaFormateada;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error formateando historia desde API', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+
+
+// ✅ MÉTODOS AUXILIARES DE FORMATEO
+private function formatearMedicamentosDesdeAPI(array $medicamentos): array
+{
+    return array_map(function($medicamento) {
+        return [
+            'medicamento_id' => $medicamento['medicamento_id'] ?? $medicamento['medicamento']['uuid'] ?? $medicamento['medicamento']['id'],
+            'cantidad' => $medicamento['cantidad'] ?? '',
+            'dosis' => $medicamento['dosis'] ?? '',
+            'medicamento' => [
+                'uuid' => $medicamento['medicamento']['uuid'] ?? $medicamento['medicamento']['id'],
+                'nombre' => $medicamento['medicamento']['nombre'] ?? '',
+                'principio_activo' => $medicamento['medicamento']['principio_activo'] ?? ''
+            ]
+        ];
+    }, $medicamentos);
+}
+
+private function formatearRemisionesDesdeAPI(array $remisiones): array
+{
+    return array_map(function($remision) {
+        return [
+            'remision_id' => $remision['remision_id'] ?? $remision['remision']['uuid'] ?? $remision['remision']['id'],
+            'observacion' => $remision['observacion'] ?? '',
+            'remision' => [
+                'uuid' => $remision['remision']['uuid'] ?? $remision['remision']['id'],
+                'nombre' => $remision['remision']['nombre'] ?? '',
+                'tipo' => $remision['remision']['tipo'] ?? ''
+            ]
+        ];
+    }, $remisiones);
+}
+
+private function formatearDiagnosticosDesdeAPI(array $diagnosticos): array
+{
+    return array_map(function($diagnostico) {
+        return [
+            'diagnostico_id' => $diagnostico['diagnostico_id'] ?? $diagnostico['diagnostico']['uuid'] ?? $diagnostico['diagnostico']['id'],
+            'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
+            'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
+            'diagnostico' => [
+                'uuid' => $diagnostico['diagnostico']['uuid'] ?? $diagnostico['diagnostico']['id'],
+                'codigo' => $diagnostico['diagnostico']['codigo'] ?? '',
+                'nombre' => $diagnostico['diagnostico']['nombre'] ?? ''
+            ]
+        ];
+    }, $diagnosticos);
+}
+
+private function formatearCupsDesdeAPI(array $cups): array
+{
+    return array_map(function($cup) {
+        return [
+            'cups_id' => $cup['cups_id'] ?? $cup['cups']['uuid'] ?? $cup['cups']['id'],
+            'observacion' => $cup['observacion'] ?? '',
+            'cups' => [
+                'uuid' => $cup['cups']['uuid'] ?? $cup['cups']['id'],
+                'codigo' => $cup['cups']['codigo'] ?? '',
+                'nombre' => $cup['cups']['nombre'] ?? ''
+            ]
+        ];
+    }, $cups);
+}
+
 /**
  * ✅ RENDERIZAR VISTA ESPECÍFICA
  */
 private function renderizarVistaEspecifica(array $vistaInfo, array $cita, ?array $historiaPrevia, array $usuario, bool $isOffline)
 {
-    $masterData = $this->getMasterDataForForm();
-    
-    $vista = 'historia-clinica.' . $vistaInfo['vista'];
-    
-    Log::info('🎯 Renderizando vista específica', [
-        'vista' => $vista,
-        'especialidad' => $vistaInfo['especialidad'],
-        'tipo_consulta' => $vistaInfo['tipo_consulta']
-    ]);
+    try {
+        $vista = $vistaInfo['vista'];
+        $especialidad = $vistaInfo['especialidad'];
+        $tipoConsulta = $vistaInfo['tipo_consulta'];
+        
+        Log::info('🎨 Renderizando vista específica', [
+            'vista' => $vista,
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta,
+            'tiene_historia_previa' => !empty($historiaPrevia),
+            'es_medicina_general' => $especialidad === 'MEDICINA GENERAL'
+        ]);
 
-    return view($vista, compact(
-        'cita',
-        'usuario', 
-        'isOffline',
-        'masterData',
-        'historiaPrevia',
-        'vistaInfo'
-    ));
+        // ✅ OBTENER DATOS MAESTROS
+        $masterData = $this->getMasterDataForForm();
+
+        // ✅ DATOS COMUNES PARA TODAS LAS VISTAS
+        $datosComunes = [
+            'cita' => $cita,
+            'usuario' => $usuario,
+            'isOffline' => $isOffline,
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta,
+            'historiaPrevia' => $historiaPrevia, // ✅ Solo para Medicina General
+            'masterData' => $masterData,
+            'vistaInfo' => $vistaInfo
+        ];
+
+        // ✅ RENDERIZAR VISTA ESPECÍFICA
+        return view("historia-clinica.{$vista}", $datosComunes);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error renderizando vista específica', [
+            'error' => $e->getMessage(),
+            'vista' => $vistaInfo['vista'] ?? 'N/A'
+        ]);
+
+        return back()->with('error', 'Error cargando la vista de historia clínica');
+    }
 }
 
 /**
@@ -1914,7 +2306,7 @@ private function crearHistoriaComplementaria(int $historiaId, Request $request):
 }
 
 /**
- * ✅ MÉTODOS AUXILIARES OFFLINE
+ * ✅ DETERMINAR VISTA OFFLINE
  */
 private function determinarVistaOffline(string $especialidad, string $tipoConsulta): string
 {
@@ -1927,12 +2319,38 @@ private function determinarVistaOffline(string $especialidad, string $tipoConsul
             'PRIMERA VEZ' => 'cardiologia.primera-vez',
             'CONTROL' => 'cardiologia.control'
         ],
-        // ... agregar más especialidades según necesites
+        'PEDIATRÍA' => [
+            'PRIMERA VEZ' => 'pediatria.primera-vez',
+            'CONTROL' => 'pediatria.control'
+        ],
+        'GINECOLOGÍA' => [
+            'PRIMERA VEZ' => 'ginecologia.primera-vez',
+            'CONTROL' => 'ginecologia.control'
+        ],
+        'NEUROLOGÍA' => [
+            'PRIMERA VEZ' => 'neurologia.primera-vez',
+            'CONTROL' => 'neurologia.control'
+        ],
+        'DERMATOLOGÍA' => [
+            'PRIMERA VEZ' => 'dermatologia.primera-vez',
+            'CONTROL' => 'dermatologia.control'
+        ],
+        'ORTOPEDIA' => [
+            'PRIMERA VEZ' => 'ortopedia.primera-vez',
+            'CONTROL' => 'ortopedia.control'
+        ],
+        'PSIQUIATRÍA' => [
+            'PRIMERA VEZ' => 'psiquiatria.primera-vez',
+            'CONTROL' => 'psiquiatria.control'
+        ]
     ];
 
     return $vistas[$especialidad][$tipoConsulta] ?? $vistas['MEDICINA GENERAL'][$tipoConsulta];
 }
 
+/**
+ * ✅ DETERMINAR TIPO CONSULTA OFFLINE
+ */
 private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $especialidad = null): string
 {
     try {
@@ -1941,11 +2359,10 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $es
             'especialidad' => $especialidad
         ]);
 
-        // ✅ USAR MEDICINA GENERAL SI NO HAY ESPECIALIDAD
         $especialidadFinal = $especialidad ?? 'MEDICINA GENERAL';
-
-        // ✅ VERIFICAR HISTORIAS ANTERIORES
-        $tieneHistoriasAnteriores = $this->verificarHistoriasAnterioresPorEspecialidad($pacienteUuid, $especialidadFinal);
+        
+        // ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE
+        $tieneHistoriasAnteriores = $this->verificarHistoriasAnterioresOffline($pacienteUuid, $especialidadFinal);
         
         $tipoConsulta = $tieneHistoriasAnteriores ? 'CONTROL' : 'PRIMERA VEZ';
 
@@ -1964,24 +2381,61 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $es
             'especialidad' => $especialidad
         ]);
 
-        return 'PRIMERA VEZ'; // ✅ FALLBACK SEGURO
+        return 'PRIMERA VEZ';
     }
 }
 
+/**
+ * ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE
+ */
+private function verificarHistoriasAnterioresOffline(string $pacienteUuid, string $especialidad): bool
+{
+    try {
+        // ✅ VERIFICAR EN OFFLINE SERVICE
+        $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
+        
+        return !empty($historias);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando historias offline', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return false;
+    }
+}
+
+/**
+ * ✅ OBTENER ÚLTIMA HISTORIA OFFLINE
+ */
 private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
 {
-    $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
-    
-    if (empty($historias)) {
+    try {
+        $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
+        
+        if (empty($historias)) {
+            return null;
+        }
+
+        // Ordenar por fecha y devolver la más reciente
+        usort($historias, function($a, $b) {
+            return strtotime($b['created_at']) - strtotime($a['created_at']);
+        });
+
+        return $historias[0];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo última historia offline', [
+            'error' => $e->getMessage(),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
         return null;
     }
-
-    // Ordenar por fecha y devolver la más reciente
-    usort($historias, function($a, $b) {
-        return strtotime($b['created_at']) - strtotime($a['created_at']);
-    });
-
-    return $historias[0];
 }
+
 }
 

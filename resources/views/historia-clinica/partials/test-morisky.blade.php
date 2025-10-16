@@ -27,14 +27,16 @@
                         <input class="form-check-input test-morisky-input" type="radio" 
                                name="{{ $pregunta['key'] }}" 
                                id="{{ $pregunta['key'] }}_si" 
-                               value="SI">
+                               value="SI"
+                               @if(isset($historiaPrevia) && isset($historiaPrevia[$pregunta['key']]) && $historiaPrevia[$pregunta['key']] === 'SI') checked @endif>
                         <label class="form-check-label" for="{{ $pregunta['key'] }}_si">Sí</label>
                     </div>
                     <div class="form-check form-check-inline">
                         <input class="form-check-input test-morisky-input" type="radio" 
                                name="{{ $pregunta['key'] }}" 
                                id="{{ $pregunta['key'] }}_no" 
-                               value="NO" checked>
+                               value="NO" 
+                               @if(!isset($historiaPrevia) || !isset($historiaPrevia[$pregunta['key']]) || $historiaPrevia[$pregunta['key']] === 'NO' || empty($historiaPrevia[$pregunta['key']])) checked @endif>
                         <label class="form-check-label" for="{{ $pregunta['key'] }}_no">No</label>
                     </div>
                 </div>
@@ -56,11 +58,13 @@
             <div class="col-md-4">
                 <div>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="adherente" id="adherente_si" value="SI" readonly>
+                        <input class="form-check-input" type="radio" name="adherente" id="adherente_si" value="SI" 
+                               @if(isset($historiaPrevia) && isset($historiaPrevia['adherente']) && $historiaPrevia['adherente'] === 'SI') checked @endif readonly>
                         <label class="form-check-label" for="adherente_si">Sí</label>
                     </div>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="adherente" id="adherente_no" value="NO" checked readonly>
+                        <input class="form-check-input" type="radio" name="adherente" id="adherente_no" value="NO" 
+                               @if(!isset($historiaPrevia) || !isset($historiaPrevia['adherente']) || $historiaPrevia['adherente'] === 'NO' || empty($historiaPrevia['adherente'])) checked @endif readonly>
                         <label class="form-check-label" for="adherente_no">No</label>
                     </div>
                 </div>

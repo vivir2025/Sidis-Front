@@ -7,6 +7,7 @@
 <div class="container-fluid">
     {{-- ✅ HEADER CON INFORMACIÓN DEL PACIENTE --}}
     @include('historia-clinica.partials.header-paciente')
+    
     {{-- ✅ FORMULARIO PRINCIPAL --}}
     <form id="historiaClinicaForm" method="POST" action="{{ route('historia-clinica.store') }}">
         @csrf
@@ -14,20 +15,23 @@
         <input type="hidden" name="tipo_consulta" value="CONTROL">
         
         {{-- ✅ SECCIÓN: DATOS BÁSICOS --}}
-       @include('historia-clinica.partials.datos-basicos')
+        @include('historia-clinica.partials.datos-basicos')
 
         {{-- ✅ SECCIÓN: ACUDIENTE --}}
-       @include('historia-clinica.partials.acudiente')
+        @include('historia-clinica.partials.acudiente')
 
         {{-- ✅ SECCIÓN: MEDIDAS ANTROPOMÉTRICAS --}}
-       @include('historia-clinica.partials.medidas-antropometricas')
+        @include('historia-clinica.partials.medidas-antropometricas')
 
         {{-- ✅ SECCIÓN: TEST MORISKY --}}
         @include('historia-clinica.partials.test-morisky')
+        
         {{-- ✅ SECCIÓN: REVISIÓN POR SISTEMAS --}}
         @include('historia-clinica.partials.revision-sistemas')
+        
         {{-- ✅ SECCIÓN: SIGNOS VITALES --}}
-       @include('historia-clinica.partials.signos-vitales')
+        @include('historia-clinica.partials.signos-vitales')
+        
         {{-- ✅ SECCIÓN: EXAMEN FÍSICO --}}
         <div class="card mb-4">
             <div class="card-header bg-success text-white">
@@ -107,6 +111,7 @@
                         </div>
                     </div>
                 </div>
+                
                 <div class="row" id="descripcion_lesion_container" style="display: {{ ($historiaPrevia['lesion_organo_blanco'] ?? 'NO') === 'SI' ? 'block' : 'none' }};">
                     <div class="col-md-12">
                         <div class="mb-3">
@@ -114,7 +119,8 @@
                             <textarea class="form-control" id="descripcion_lesion_organo_blanco" 
                                       name="descripcion_lesion_organo_blanco" rows="2" 
                                       placeholder="Descripción de la lesión">{{ $historiaPrevia['descripcion_lesion_organo_blanco'] ?? '' }}</textarea>
-                                           </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -170,218 +176,17 @@
         </div>
 
         {{-- ✅ SECCIÓN: CLASIFICACIONES --}}
-        <div class="card mb-4">
-            <div class="card-header bg-dark text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-tags me-2"></i>
-                    Clasificaciones
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="ClasificacionEstadoMetabolico" class="form-label">Clasificación Estado Metabólico <span class="text-danger">*</span></label>
-                            <select class="form-select" id="ClasificacionEstadoMetabolico" name="ClasificacionEstadoMetabolico" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $estadosMetabolicos = [
-                                    'HTA-RIESGOS BAJO', 'HTA-RIESGOS MODERADO', 'HTA-RIESGOS ALTO', 'HTA-RIESGOS MUY ALTO',
-                                    'HTA-RIESGOS SIN CLASIFICAR', 'DM-RIESGOS SIN COMPLICACIONES', 'DM-RIESGOS CON COMPLICACIONES',
-                                    'ERC-RIESGOS ESTADIO IIIB', 'ERC-RIESGOS ESTADIO IV', 'ERC-RIESGOS ESTADIO V'
-                                ];
-                                $estadoActual = $historiaPrevia['clasificacion_estado_metabolico'] ?? '';
-                                @endphp
-                                @foreach($estadosMetabolicos as $estado)
-                                    <option value="{{ $estado }}" {{ $estadoActual === $estado ? 'selected' : '' }}>
-                                        {{ $estado }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="clasificacion_hta" class="form-label">Clasificación HTA <span class="text-danger">*</span></label>
-                            <select class="form-select" id="clasificacion_hta" name="clasificacion_hta" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $clasificacionesHTA = ['PA Normal', 'PA Normal - Alta', 'HTA Grado 1', 'HTA Grado 2', 'No HTA'];
-                                $htaActual = $historiaPrevia['clasificacion_hta'] ?? '';
-                                @endphp
-                                @foreach($clasificacionesHTA as $hta)
-                                    <option value="{{ $hta }}" {{ $htaActual === $hta ? 'selected' : '' }}>
-                                        {{ $hta }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="clasificacion_dm" class="form-label">Clasificación DM <span class="text-danger">*</span></label>
-                            <select class="form-select" id="clasificacion_dm" name="clasificacion_dm" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $clasificacionesDM = ['TIPO 1', 'TIPO 2', 'NO DIABETICO'];
-                                $dmActual = $historiaPrevia['clasificacion_dm'] ?? '';
-                                @endphp
-                                @foreach($clasificacionesDM as $dm)
-                                    <option value="{{ $dm }}" {{ $dmActual === $dm ? 'selected' : '' }}>
-                                        {{ $dm }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="clasificacion_rcv" class="form-label">Clasificación Riesgo Cardiovascular <span class="text-danger">*</span></label>
-                            <select class="form-select" id="clasificacion_rcv" name="clasificacion_rcv" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $riesgosRCV = ['BAJO', 'MODERADO', 'ALTO', 'MUY ALTO', 'SIN CLASIFICAR'];
-                                $rcvActual = $historiaPrevia['clasificacion_rcv'] ?? '';
-                                @endphp
-                                @foreach($riesgosRCV as $riesgo)
-                                    <option value="{{ $riesgo }}" {{ $rcvActual === $riesgo ? 'selected' : '' }}>
-                                        {{ $riesgo }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="clasificacion_erc_estado" class="form-label">Clasificación ERC Estadio <span class="text-danger">*</span></label>
-                            <select class="form-select" id="clasificacion_erc_estado" name="clasificacion_erc_estado" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $estadiosERC = ['I', 'II', 'IIIA', 'IIIB', 'IV', 'V', 'SIN CLASIFICACION'];
-                                $ercActual = $historiaPrevia['clasificacion_erc_estado'] ?? '';
-                                @endphp
-                                @foreach($estadiosERC as $estadio)
-                                    <option value="{{ $estadio }}" {{ $ercActual === $estadio ? 'selected' : '' }}>
-                                        {{ $estadio }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="clasificacion_erc_categoria_ambulatoria_persistente" class="form-label">Categoría Albuminuria Persistente <span class="text-danger">*</span></label>
-                            <select class="form-select" id="clasificacion_erc_categoria_ambulatoria_persistente" 
-                                    name="clasificacion_erc_categoria_ambulatoria_persistente" required>
-                                <option value="">[SELECCIONE]</option>
-                                @php
-                                $categoriasERC = ['A1', 'A2', 'A3', 'SIN CLASIFICAR'];
-                                $categoriaActual = $historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '';
-                                @endphp
-                                @foreach($categoriasERC as $categoria)
-                                    <option value="{{ $categoria }}" {{ $categoriaActual === $categoria ? 'selected' : '' }}>
-                                        {{ $categoria }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="tasa_filtracion_glomerular_ckd_epi" class="form-label">Tasa Filtración Glomerular CKD-EPI</label>
-                            <input type="number" step="0.01" class="form-control" id="tasa_filtracion_glomerular_ckd_epi" 
-                                   name="tasa_filtracion_glomerular_ckd_epi" min="0" max="200" 
-                                   value="{{ $historiaPrevia['tasa_filtracion_glomerular_ckd_epi'] ?? '0' }}">
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="tasa_filtracion_glomerular_gockcroft_gault" class="form-label">Tasa Filtración Glomerular Cockcroft-Gault</label>
-                            <input type="number" step="0.01" class="form-control" id="tasa_filtracion_glomerular_gockcroft_gault" 
-                                   name="tasa_filtracion_glomerular_gockcroft_gault" min="0" max="200" 
-                                   value="{{ $historiaPrevia['tasa_filtracion_glomerular_gockcroft_gault'] ?? '0' }}">
-                        </div>
-                    </div>
-                </div>
-
-                {{-- ✅ ANTECEDENTES PERSONALES ESPECÍFICOS --}}
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">Hipertensión Arterial Personal</label>
-                            <div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="hipertension_arterial_personal" 
-                                           id="hta_personal_si" value="SI" 
-                                           {{ ($historiaPrevia['hipertension_arterial_personal'] ?? '') === 'SI' ? 'checked' : '' }}>
-                                    <label class="form-check-label" for="hta_personal_si">Sí</label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="hipertension_arterial_personal" 
-                                           id="hta_personal_no" value="NO" 
-                                           {{ ($historiaPrevia['hipertension_arterial_personal'] ?? 'NO') === 'NO' ? 'checked' : '' }}>
-                                    <label class="form-check-label" for="hta_personal_no">No</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        @include('historia-clinica.partials.clasificaciones')
 
         {{-- ✅ SECCIÓN: EDUCACIÓN --}}
-        <div class="card mb-4">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-graduation-cap me-2"></i>
-                    Educación en Salud
-                </h5>
-            </div>
-            <div class="card-body">
-                @php
-                $educacionItems = [
-                    ['key' => 'alimentacion', 'label' => 'Alimentación'],
-                    ['key' => 'fomento_actividad_fisica', 'label' => 'Fomento de Actividad Física'],
-                    ['key' => 'importancia_adherencia_tratamiento', 'label' => 'Importancia de Adherencia a Tratamiento'],
-                    ['key' => 'disminucion_consumo_sal_azucar', 'label' => 'Disminución de Consumo de Sal/Azúcar'],
-                    ['key' => 'disminucion_consumo_cigarrillo', 'label' => 'Disminución de Consumo Cigarrillo'],
-                    ['key' => 'disminucion_peso', 'label' => 'Disminución de Peso'],
-                    ['key' => 'consumo_frutas_verduras', 'label' => 'Consumo de Frutas y Verduras']
-                ];
-                @endphp
-
-                @foreach($educacionItems as $index => $item)
-                    @if($index % 2 == 0)
-                        <div class="row">
-                    @endif
-                    
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="{{ $item['key'] }}" class="form-label">{{ $item['label'] }} <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="{{ $item['key'] }}" name="{{ $item['key'] }}" 
-                                   required value="{{ $historiaPrevia[$item['key']] ?? 'SI' }}">
-                        </div>
-                    </div>
-                    
-                    @if($index % 2 == 1 || $index == count($educacionItems) - 1)
-                        </div>
-                    @endif
-                @endforeach
-            </div>
-        </div>
+       @include('historia-clinica.partials.educacion')
 
         {{-- ✅ SECCIÓN: DIAGNÓSTICO PRINCIPAL --}}
-       @include('historia-clinica.partials.diagnostico-principal')
+        @include('historia-clinica.partials.diagnostico-principal')
+        
+        {{-- ✅ SECCIÓN: DIAGNÓSTICOS ADICIONALES --}}
         @include('historia-clinica.partials.diagnosticos-adicionales')
+        
         {{-- ✅ SECCIONES DINÁMICAS (MEDICAMENTOS, REMISIONES, CUPS) --}}
         @include('historia-clinica.partials.medicamentos-section')
         @include('historia-clinica.partials.remisiones-section')
@@ -486,176 +291,6 @@
         </div>
     </form>
 </div>
-
-{{-- ✅ TEMPLATES PARA ELEMENTOS DINÁMICOS --}}
-{{-- TEMPLATE DIAGNÓSTICO ADICIONAL --}}
-<template id="diagnostico_adicional_template">
-    <div class="diagnostico-adicional-item border rounded p-3 mb-3">
-        <div class="row">
-            <div class="col-md-5">
-                <div class="mb-3">
-                    <label class="form-label">Buscar Diagnóstico</label>
-                    <input type="text" class="form-control buscar-diagnostico-adicional" placeholder="Escriba código o nombre del diagnóstico...">
-                    <div class="diagnosticos-adicionales-resultados dropdown-menu w-100" style="max-height: 200px; overflow-y: auto;"></div>
-                    <input type="hidden" class="diagnostico-adicional-id" name="diagnosticos_adicionales[][idDiagnostico]">
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="mb-3">
-                    <label class="form-label">Tipo de Diagnóstico</label>
-                    <select class="form-select" name="diagnosticos_adicionales[][tipo_diagnostico]">
-                        <option value="">Seleccione...</option>
-                        <option value="IMPRESION_DIAGNOSTICA">Impresión Diagnóstica</option>
-                        <option value="CONFIRMADO_NUEVO">Confirmado Nuevo</option>
-                        <option value="CONFIRMADO_REPETIDO">Confirmado Repetido</option>
-                    </select>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="mb-3">
-                    <label class="form-label">Observación</label>
-                    <input type="text" class="form-control" name="diagnosticos_adicionales[][observacion]" placeholder="Observación opcional">
-                </div>
-            </div>
-            <div class="col-md-1">
-                <div class="mb-3">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="button" class="btn btn-danger btn-sm d-block eliminar-diagnostico-adicional">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="alert alert-info diagnostico-adicional-seleccionado" style="display: none;">
-                    <strong>Diagnóstico Seleccionado:</strong>
-                    <span class="diagnostico-adicional-info"></span>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
-{{-- TEMPLATE MEDICAMENTO --}}
-<template id="medicamento_template">
-    <div class="medicamento-item border rounded p-3 mb-3">
-        <div class="row">
-            <div class="col-md-5">
-                <div class="mb-3">
-                    <label class="form-label">Buscar Medicamento</label>
-                    <input type="text" class="form-control buscar-medicamento" placeholder="Escriba el nombre del medicamento...">
-                    <div class="medicamentos-resultados dropdown-menu w-100" style="max-height: 200px; overflow-y: auto;"></div>
-                    <input type="hidden" class="medicamento-id" name="medicamentos[][idMedicamento]">
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="mb-3">
-                    <label class="form-label">Cantidad</label>
-                    <input type="text" class="form-control" name="medicamentos[][cantidad]" placeholder="Ej: 30 tabletas">
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="mb-3
-                                    <label class="form-label">Dosis</label>
-                    <input type="text" class="form-control" name="medicamentos[][dosis]" placeholder="Ej: 1 tableta cada 8 horas">
-                </div>
-            </div>
-            <div class="col-md-1">
-                <div class="mb-3">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="button" class="btn btn-danger btn-sm d-block eliminar-medicamento">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="alert alert-info medicamento-seleccionado" style="display: none;">
-                    <strong>Medicamento Seleccionado:</strong>
-                    <span class="medicamento-info"></span>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
-{{-- TEMPLATE REMISIÓN --}}
-<template id="remision_template">
-    <div class="remision-item border rounded p-3 mb-3">
-        <div class="row">
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Buscar Remisión</label>
-                    <input type="text" class="form-control buscar-remision" placeholder="Escriba el nombre de la remisión...">
-                    <div class="remisiones-resultados dropdown-menu w-100" style="max-height: 200px; overflow-y: auto;"></div>
-                    <input type="hidden" class="remision-id" name="remisiones[][idRemision]">
-                </div>
-            </div>
-            <div class="col-md-5">
-                <div class="mb-3">
-                    <label class="form-label">Observación</label>
-                    <textarea class="form-control" name="remisiones[][remObservacion]" rows="2" placeholder="Observación de la remisión..."></textarea>
-                </div>
-            </div>
-            <div class="col-md-1">
-                <div class="mb-3">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="button" class="btn btn-danger btn-sm d-block eliminar-remision">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="alert alert-info remision-seleccionada" style="display: none;">
-                    <strong>Remisión Seleccionada:</strong>
-                    <span class="remision-info"></span>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
-{{-- TEMPLATE CUPS --}}
-<template id="cups_template">
-    <div class="cups-item border rounded p-3 mb-3">
-        <div class="row">
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label class="form-label">Buscar CUPS</label>
-                    <input type="text" class="form-control buscar-cups" placeholder="Escriba código o nombre del procedimiento...">
-                    <div class="cups-resultados dropdown-menu w-100" style="max-height: 200px; overflow-y: auto;"></div>
-                    <input type="hidden" class="cups-id" name="cups[][idCups]">
-                </div>
-            </div>
-            <div class="col-md-5">
-                <div class="mb-3">
-                    <label class="form-label">Observación</label>
-                    <textarea class="form-control" name="cups[][cupObservacion]" rows="2" placeholder="Observación del procedimiento..."></textarea>
-                </div>
-            </div>
-            <div class="col-md-1">
-                <div class="mb-3">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="button" class="btn btn-danger btn-sm d-block eliminar-cups">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div class="alert alert-info cups-seleccionado" style="display: none;">
-                    <strong>CUPS Seleccionado:</strong>
-                    <span class="cups-info"></span>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
 
 {{-- ✅ LOADING OVERLAY --}}
 <div id="loading_overlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" 
@@ -788,17 +423,888 @@ hr.my-4 {
 </style>
 @endpush
 
+@push('styles')
+<style>
+.card-header {
+    font-weight: 600;
+}
+
+.medicamento-item, .diagnostico-adicional-item, .remision-item, .cups-item {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6 !important;
+}
+
+.dropdown-menu.show {
+    display: block !important;
+}
+
+.dropdown-item:hover {
+    background-color: #e9ecef;
+}
+
+.alert-info {
+    border-left: 4px solid #0dcaf0;
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.table-borderless td {
+    border: none;
+    padding: 0.25rem 0.5rem;
+}
+
+.required-field {
+    border-left: 3px solid #dc3545;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* ✅ ESTILOS PARA CAMPOS READONLY */
+input[readonly] {
+    background-color: #e9ecef !important;
+    opacity: 1;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+input[readonly]:checked {
+    background-color: #0d6efd !important;
+    border-color: #0d6efd !important;
+}
+
+.test-morisky-input:checked + label {
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+#explicacion_adherencia {
+    border-left: 4px solid #0dcaf0;
+    background-color: #f8f9fa;
+}
+
+.alert-info strong {
+    color: #0c5460;
+}
+
+hr.my-4 {
+    border-top: 2px solid #dee2e6;
+    margin: 1.5rem 0;
+}
+
+/* ✅ ESTILOS PARA MICRÓFONO */
+.form-group {
+    position: relative;
+}
+
+.microfono {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    background-color: transparent;
+    background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zM19 10v1a7 7 0 0 1-14 0v-1a1 1 0 0 1 2 0v1a5 5 0 0 0 10 0v-1a1 1 0 0 1 2 0z"/><path d="M12 18.5a1 1 0 0 1 1 1V22a1 1 0 0 1-2 0v-2.5a1 1 0 0 1 1-1z"/></svg>');
+    background-size: cover;
+    cursor: pointer;
+    z-index: 1;
+    display: inline-block;
+    transition: transform 0.3s ease-in-out;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(0, 0, 255, 0.7);
+}
+
+.microfono.active {
+    animation: pulse 1s infinite;
+    box-shadow: 0 0 0 10px rgba(0, 0, 255, 0);
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.8);
+        box-shadow: 0 0 0 0 rgba(0, 0, 255, 0.7);
+    }
+    50% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(0, 0, 255, 0);
+    }
+    100% {
+        transform: scale(0.8);
+        box-shadow: 0 0 0 0 rgba(0, 0, 255, 0.7);
+    }
+}
+</style>
+@endpush
 @push('scripts')
 <script>
-$(document).ready(function() {
-    // ✅ VARIABLES GLOBALES
-    let medicamentoCounter = 0;
-    let diagnosticoAdicionalCounter = 0;
-    let remisionCounter = 0;
-    let cupsCounter = 0;
-    let diagnosticoSeleccionado = null;
+// ============================================
+// ✅ VARIABLES GLOBALES
+// ============================================
+let medicamentoCounter = 0;
+let diagnosticoAdicionalCounter = 0;
+let remisionCounter = 0;
+let cupsCounter = 0;
+let diagnosticoSeleccionado = null;
+
+// ============================================
+// ✅ FUNCIONES PRINCIPALES (FUERA DE DOCUMENT.READY)
+// ============================================
+
+/**
+ * ✅ CALCULAR ADHERENCIA MORISKY
+ */
+function calcularAdherenciaMorisky() {
+    console.log('Calculando adherencia Morisky...');
     
+    const olvida = $('input[name="test_morisky_olvida_tomar_medicamentos"]:checked').val();
+    const horaIndicada = $('input[name="test_morisky_toma_medicamentos_hora_indicada"]:checked').val();
+    const cuandoEstaBien = $('input[name="test_morisky_cuando_esta_bien_deja_tomar_medicamentos"]:checked').val();
+    const sienteMal = $('input[name="test_morisky_siente_mal_deja_tomarlos"]:checked').val();
+    const psicologia = $('input[name="test_morisky_valoracio_psicologia"]:checked').val();
+    
+    console.log('Respuestas:', { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia });
+    
+    if (!olvida || !horaIndicada || !cuandoEstaBien || !sienteMal || !psicologia) {
+        $('#adherente_si').prop('checked', false);
+        $('#adherente_no').prop('checked', true);
+        $('#explicacion_adherencia').hide();
+        console.log('No todas las preguntas están respondidas');
+        return;
+    }
+    
+    let puntuacion = 0;
+    if (olvida === 'SI') puntuacion += 1;
+    if (horaIndicada === 'NO') puntuacion += 1;
+    if (cuandoEstaBien === 'SI') puntuacion += 1;
+    if (sienteMal === 'SI') puntuacion += 1;
+    
+    let esAdherente = puntuacion === 0;
+    let explicacion = '';
+    
+    if (esAdherente) {
+        $('#adherente_si').prop('checked', true);
+        $('#adherente_no').prop('checked', false);
+        explicacion = `<strong>ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente muestra buena adherencia al tratamiento farmacológico.`;
+    } else {
+        $('#adherente_si').prop('checked', false);
+        $('#adherente_no').prop('checked', true);
+        explicacion = `<strong>NO ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente presenta problemas de adherencia al tratamiento farmacológico.`;
+    }
+    
+    $('#texto_explicacion').html(explicacion);
+    $('#explicacion_adherencia').show();
+    
+    if (!esAdherente || psicologia === 'SI') {
+        $('#texto_explicacion').append('<br><strong>Recomendación:</strong> Considerar valoración por psicología para mejorar adherencia.');
+    }
+    
+    console.log('Test Morisky calculado:', { puntuacion, adherente: esAdherente });
+}
+
+/**
+ * ✅ AGREGAR MEDICAMENTO
+ */
+function agregarMedicamento() {
+    const template = $('#medicamento_template').html();
+    const $medicamento = $(template);
+    
+    $medicamento.find('input[name*="medicamentos"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${medicamentoCounter}]`));
+    });
+    
+    $('#medicamentos_container').append($medicamento);
+    medicamentoCounter++;
+    
+    configurarBusquedaMedicamento($medicamento);
+}
+
+/**
+ * ✅ AGREGAR MEDICAMENTO CON DATOS
+ */
+function agregarMedicamentoConDatos(medicamento) {
+    console.log('💊 Agregando medicamento con datos:', medicamento);
+    
+    agregarMedicamento();
+    
+    const $ultimoMedicamento = $('#medicamentos_container .medicamento-item:last');
+    
+    $ultimoMedicamento.find('.buscar-medicamento').val(medicamento.medicamento.nombre);
+    $ultimoMedicamento.find('.medicamento-id').val(medicamento.medicamento_id);
+    $ultimoMedicamento.find('.medicamento-info').html(`<strong>${medicamento.medicamento.nombre}</strong><br><small>${medicamento.medicamento.principio_activo || ''}</small>`);
+    $ultimoMedicamento.find('.medicamento-seleccionado').show();
+    $ultimoMedicamento.find('input[name*="cantidad"]').val(medicamento.cantidad || '');
+    $ultimoMedicamento.find('input[name*="dosis"]').val(medicamento.dosis || '');
+    
+    console.log('✅ Medicamento agregado exitosamente');
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA MEDICAMENTO
+ */
+function configurarBusquedaMedicamento($container) {
+    const $input = $container.find('.buscar-medicamento');
+    const $resultados = $container.find('.medicamentos-resultados');
+    const $hiddenId = $container.find('.medicamento-id');
+    const $info = $container.find('.medicamento-info');
+    const $alert = $container.find('.medicamento-seleccionado');
+    
+    let medicamentoTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(medicamentoTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        medicamentoTimeout = setTimeout(() => {
+            buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR MEDICAMENTOS
+ */
+function buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-medicamentos") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosMedicamentos(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando medicamentos:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS MEDICAMENTOS
+ */
+function mostrarResultadosMedicamentos(medicamentos, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (medicamentos.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron medicamentos</div>');
+    } else {
+        medicamentos.forEach(function(medicamento) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${medicamento.nombre}</strong><br><small class="text-muted">${medicamento.principio_activo || ''}</small>`)
+                .data('medicamento', medicamento);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR MEDICAMENTO
+ */
+function seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(medicamento.nombre);
+    $hiddenId.val(medicamento.uuid || medicamento.id);
+    $info.html(`<strong>${medicamento.nombre}</strong><br><small>${medicamento.principio_activo || ''}</small>`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅ AGREGAR REMISIÓN
+ */
+function agregarRemision() {
+    const template = $('#remision_template').html();
+    const $remision = $(template);
+    
+    $remision.find('input[name*="remisiones"], textarea[name*="remisiones"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${remisionCounter}]`));
+    });
+    
+    $('#remisiones_container').append($remision);
+    remisionCounter++;
+    
+    configurarBusquedaRemision($remision);
+}
+
+/**
+ * ✅ AGREGAR REMISIÓN CON DATOS
+ */
+function agregarRemisionConDatos(remision) {
+    console.log('📋 Agregando remisión con datos:', remision);
+    
+    agregarRemision();
+    
+    const $ultimaRemision = $('#remisiones_container .remision-item:last');
+    
+    $ultimaRemision.find('.buscar-remision').val(remision.remision.nombre);
+    $ultimaRemision.find('.remision-id').val(remision.remision_id);
+    $ultimaRemision.find('.remision-info').html(`<strong>${remision.remision.nombre}</strong><br><small>${remision.remision.tipo || ''}</small>`);
+    $ultimaRemision.find('.remision-seleccionada').show();
+    $ultimaRemision.find('textarea[name*="remObservacion"]').val(remision.observacion || '');
+    
+    console.log('✅ Remisión agregada exitosamente');
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA REMISIÓN
+ */
+function configurarBusquedaRemision($container) {
+    const $input = $container.find('.buscar-remision');
+    const $resultados = $container.find('.remisiones-resultados');
+    const $hiddenId = $container.find('.remision-id');
+    const $info = $container.find('.remision-info');
+    const $alert = $container.find('.remision-seleccionada');
+    
+    let remisionTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(remisionTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        remisionTimeout = setTimeout(() => {
+            buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR REMISIONES
+ */
+function buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-remisiones") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosRemisiones(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando remisiones:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS REMISIONES
+ */
+function mostrarResultadosRemisiones(remisiones, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (remisiones.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron remisiones</div>');
+    } else {
+        remisiones.forEach(function(remision) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${remision.nombre}</strong><br><small class="text-muted">${remision.tipo || ''}</small>`)
+                .data('remision', remision);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR REMISIÓN
+ */
+function seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(remision.nombre);
+    $hiddenId.val(remision.uuid || remision.id);
+    $info.html(`<strong>${remision.nombre}</strong><br><small>${remision.tipo || ''}</small>`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅ AGREGAR DIAGNÓSTICO ADICIONAL
+ */
+function agregarDiagnosticoAdicional() {
+    const template = $('#diagnostico_adicional_template').html();
+    const $diagnostico = $(template);
+    
+    $diagnostico.find('input[name*="diagnosticos_adicionales"], select[name*="diagnosticos_adicionales"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${diagnosticoAdicionalCounter}]`));
+    });
+    
+    $('#diagnosticos_adicionales_container').append($diagnostico);
+    diagnosticoAdicionalCounter++;
+    
+    configurarBusquedaDiagnosticoAdicional($diagnostico);
+}
+
+/**
+ * ✅ AGREGAR DIAGNÓSTICO ADICIONAL CON DATOS
+ */
+function agregarDiagnosticoAdicionalConDatos(diagnostico) {
+    console.log('🩺 Agregando diagnóstico adicional con datos:', diagnostico);
+    
+    agregarDiagnosticoAdicional();
+    
+    const $ultimoDiagnostico = $('#diagnosticos_adicionales_container .diagnostico-adicional-item:last');
+    
+    $ultimoDiagnostico.find('.buscar-diagnostico-adicional').val(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+    $ultimoDiagnostico.find('.diagnostico-adicional-id').val(diagnostico.diagnostico_id);
+    $ultimoDiagnostico.find('.diagnostico-adicional-info').text(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+    $ultimoDiagnostico.find('.diagnostico-adicional-seleccionado').show();
+    $ultimoDiagnostico.find('select[name*="tipo_diagnostico"]').val(diagnostico.tipo_diagnostico || 'IMPRESION_DIAGNOSTICA');
+    
+    console.log('✅ Diagnóstico adicional agregado exitosamente');
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA DIAGNÓSTICO ADICIONAL
+ */
+function configurarBusquedaDiagnosticoAdicional($container) {
+    const $input = $container.find('.buscar-diagnostico-adicional');
+    const $resultados = $container.find('.diagnosticos-adicionales-resultados');
+    const $hiddenId = $container.find('.diagnostico-adicional-id');
+    const $info = $container.find('.diagnostico-adicional-info');
+    const $alert = $container.find('.diagnostico-adicional-seleccionado');
+    
+    let diagnosticoTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(diagnosticoTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        diagnosticoTimeout = setTimeout(() => {
+            buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR DIAGNÓSTICOS ADICIONALES
+ */
+function buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-diagnosticos") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosDiagnosticosAdicionales(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando diagnósticos adicionales:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS DIAGNÓSTICOS ADICIONALES
+ */
+function mostrarResultadosDiagnosticosAdicionales(diagnosticos, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (diagnosticos.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron diagnósticos</div>');
+    } else {
+        diagnosticos.forEach(function(diagnostico) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${diagnostico.codigo}</strong> - ${diagnostico.nombre}`)
+                .data('diagnostico', diagnostico);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR DIAGNÓSTICO ADICIONAL
+ */
+function seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(`${diagnostico.codigo} - ${diagnostico.nombre}`);
+    $hiddenId.val(diagnostico.uuid || diagnostico.id);
+    $info.text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅ AGREGAR CUPS
+ */
+function agregarCups() {
+    const template = $('#cups_template').html();
+    const $cups = $(template);
+    
+    $cups.find('input[name*="cups"], textarea[name*="cups"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${cupsCounter}]`));
+    });
+    
+    $('#cups_container').append($cups);
+    cupsCounter++;
+    
+    configurarBusquedaCups($cups);
+}
+
+/**
+ * ✅ AGREGAR CUPS CON DATOS
+ */
+function agregarCupsConDatos(cups) {
+    console.log('🏥 Agregando CUPS con datos:', cups);
+    
+    agregarCups();
+    
+    const $ultimoCups = $('#cups_container .cups-item:last');
+    
+    $ultimoCups.find('.buscar-cups').val(`${cups.cups.codigo} - ${cups.cups.nombre}`);
+    $ultimoCups.find('.cups-id').val(cups.cups_id);
+    $ultimoCups.find('.cups-info').text(`${cups.cups.codigo} - ${cups.cups.nombre}`);
+    $ultimoCups.find('.cups-seleccionado').show();
+    $ultimoCups.find('textarea[name*="cupObservacion"]').val(cups.observacion || '');
+    
+    console.log('✅ CUPS agregado exitosamente');
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA CUPS
+ */
+function configurarBusquedaCups($container) {
+    const $input = $container.find('.buscar-cups');
+    const $resultados = $container.find('.cups-resultados');
+    const $hiddenId = $container.find('.cups-id');
+    const $info = $container.find('.cups-info');
+    const $alert = $container.find('.cups-seleccionado');
+    
+    let cupsTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(cupsTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        cupsTimeout = setTimeout(() => {
+            buscarCups(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR CUPS
+ */
+function buscarCups(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-cups") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosCups(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando CUPS:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS CUPS
+ */
+function mostrarResultadosCups(cups, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (cups.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron procedimientos</div>');
+    } else {
+        cups.forEach(function(cup) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${cup.codigo}</strong> - ${cup.nombre}`)
+                .data('cups', cup);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarCups(cup, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR CUPS
+ */
+function seleccionarCups(cups, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(`${cups.codigo} - ${cups.nombre}`);
+    $hiddenId.val(cups.uuid || cups.id);
+    $info.text(`${cups.codigo} - ${cups.nombre}`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+function cargarDiagnosticoPrincipalConDatos(diagnostico) {
+    console.log('🩺 Cargando diagnóstico principal con datos:', diagnostico);
+    
+    try {
+        // ✅ LLENAR EL CAMPO DE BÚSQUEDA
+        $('#buscar_diagnostico').val(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        
+        // ✅ LLENAR EL HIDDEN INPUT
+        $('#idDiagnostico').val(diagnostico.diagnostico_id);
+        
+        // ✅ MOSTRAR LA INFO
+        $('#diagnostico_info').text(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        $('#diagnostico_seleccionado').show();
+        
+        // ✅ SELECCIONAR EL TIPO DE DIAGNÓSTICO
+        if (diagnostico.tipo_diagnostico) {
+            $('#tipo_diagnostico').val(diagnostico.tipo_diagnostico);
+        }
+        
+        console.log('✅ Diagnóstico principal cargado exitosamente');
+        
+    } catch (error) {
+        console.error('❌ Error cargando diagnóstico principal:', error);
+    }
+}
+/**
+ * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL
+ */
+function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
+    try {
+        console.log('🔄 Iniciando carga de datos previos para Medicina General');
+        console.log('📦 Historia previa recibida:', historiaPrevia);
+
+        // ✅ CARGAR MEDICAMENTOS
+        if (historiaPrevia.medicamentos && historiaPrevia.medicamentos.length > 0) {
+            console.log('💊 Cargando medicamentos previos:', historiaPrevia.medicamentos.length);
+            historiaPrevia.medicamentos.forEach(function(medicamento, index) {
+                setTimeout(function() {
+                    agregarMedicamentoConDatos(medicamento);
+                }, index * 200);
+            });
+        }
+
+        // ✅ CARGAR REMISIONES
+        if (historiaPrevia.remisiones && historiaPrevia.remisiones.length > 0) {
+            console.log('📋 Cargando remisiones previas:', historiaPrevia.remisiones.length);
+            historiaPrevia.remisiones.forEach(function(remision, index) {
+                setTimeout(function() {
+                    agregarRemisionConDatos(remision);
+                }, index * 200);
+            });
+        }
+
+        // ✅ CARGAR DIAGNÓSTICOS ADICIONALES
+       if (historiaPrevia.diagnosticos && historiaPrevia.diagnosticos.length > 0) {
+    console.log('🩺 Cargando diagnósticos previos:', historiaPrevia.diagnosticos.length);
+    
+    // ✅ CARGAR DIAGNÓSTICO PRINCIPAL (índice 0)
+    const diagnosticoPrincipal = historiaPrevia.diagnosticos[0];
+    if (diagnosticoPrincipal) {
+        setTimeout(function() {
+            cargarDiagnosticoPrincipalConDatos(diagnosticoPrincipal);
+        }, 100);
+    }
+    
+    // ✅ CARGAR DIAGNÓSTICOS ADICIONALES (desde índice 1)
+    if (historiaPrevia.diagnosticos.length > 1) {
+        for (let i = 1; i < historiaPrevia.diagnosticos.length; i++) {
+            setTimeout(function() {
+                agregarDiagnosticoAdicionalConDatos(historiaPrevia.diagnosticos[i]);
+            }, (i + 1) * 200); // +1 para dar tiempo después del principal
+        }
+    }
+}
+        // ✅ CARGAR CUPS
+        if (historiaPrevia.cups && historiaPrevia.cups.length > 0) {
+            console.log('🏥 Cargando CUPS previos:', historiaPrevia.cups.length);
+            historiaPrevia.cups.forEach(function(cups, index) {
+                setTimeout(function() {
+                    agregarCupsConDatos(cups);
+                }, index * 200);
+            });
+        }
+
+        // ✅ CARGAR TALLA
+        if (historiaPrevia.talla) {
+            $('#talla').val(historiaPrevia.talla);
+            console.log('📏 Talla cargada:', historiaPrevia.talla);
+        }
+
+        // ✅ CARGAR ANTECEDENTES PERSONALES - HTA
+        if (historiaPrevia.hipertension_arterial_personal) {
+            $('input[name="hipertension_arterial_personal"][value="' + historiaPrevia.hipertension_arterial_personal + '"]').prop('checked', true).trigger('change');
+            if (historiaPrevia.obs_hipertension_arterial_personal) {
+                $('#obs_hipertension_arterial_personal').val(historiaPrevia.obs_hipertension_arterial_personal);
+            }
+        }
+
+        // ✅ CARGAR ANTECEDENTES PERSONALES - DM
+        if (historiaPrevia.diabetes_mellitus_personal) {
+            $('input[name="diabetes_mellitus_personal"][value="' + historiaPrevia.diabetes_mellitus_personal + '"]').prop('checked', true).trigger('change');
+            if (historiaPrevia.obs_diabetes_mellitus_personal) {
+                $('#obs_diabetes_mellitus_personal').val(historiaPrevia.obs_diabetes_mellitus_personal);
+            }
+        }
+
+        // ✅ CARGAR CLASIFICACIONES
+        if (historiaPrevia.clasificacion_estado_metabolico) {
+            $('#ClasificacionEstadoMetabolico').val(historiaPrevia.clasificacion_estado_metabolico);
+        }
+        if (historiaPrevia.clasificacion_hta) {
+            $('#clasificacion_hta').val(historiaPrevia.clasificacion_hta);
+        }
+        if (historiaPrevia.clasificacion_dm) {
+            $('#clasificacion_dm').val(historiaPrevia.clasificacion_dm);
+        }
+        if (historiaPrevia.clasificacion_rcv) {
+            $('#clasificacion_rcv').val(historiaPrevia.clasificacion_rcv);
+        }
+        if (historiaPrevia.clasificacion_erc_estado) {
+            $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
+        }
+        if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
+            $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
+        }
+
+        // ✅ CARGAR TASAS DE FILTRACIÓN
+        if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
+            $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
+        }
+        if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
+            $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+        }
+
+        // ✅ CARGAR TEST DE MORISKY
+        if (historiaPrevia.test_morisky_olvida_tomar_medicamentos) {
+            $('input[name="test_morisky_olvida_tomar_medicamentos"][value="' + historiaPrevia.test_morisky_olvida_tomar_medicamentos + '"]').prop('checked', true);
+        }
+        if (historiaPrevia.test_morisky_toma_medicamentos_hora_indicada) {
+            $('input[name="test_morisky_toma_medicamentos_hora_indicada"][value="' + historiaPrevia.test_morisky_toma_medicamentos_hora_indicada + '"]').prop('checked', true);
+        }
+        if (historiaPrevia.test_morisky_cuando_esta_bien_deja_tomar_medicamentos) {
+            $('input[name="test_morisky_cuando_esta_bien_deja_tomar_medicamentos"][value="' + historiaPrevia.test_morisky_cuando_esta_bien_deja_tomar_medicamentos + '"]').prop('checked', true);
+        }
+        if (historiaPrevia.test_morisky_siente_mal_deja_tomarlos) {
+            $('input[name="test_morisky_siente_mal_deja_tomarlos"][value="' + historiaPrevia.test_morisky_siente_mal_deja_tomarlos + '"]').prop('checked', true);
+        }
+        if (historiaPrevia.test_morisky_valoracio_psicologia) {
+            $('input[name="test_morisky_valoracio_psicologia"][value="' + historiaPrevia.test_morisky_valoracio_psicologia + '"]').prop('checked', true);
+        }
+        if (historiaPrevia.adherente) {
+            $('input[name="adherente"][value="' + historiaPrevia.adherente + '"]').prop('checked', true);
+        }
+
+        // ✅ RECALCULAR ADHERENCIA
+        setTimeout(function() {
+            calcularAdherenciaMorisky();
+        }, 1000);
+
+        const camposEducacion = [
+    'alimentacion',
+    'disminucion_consumo_sal_azucar',
+    'fomento_actividad_fisica',
+    'importancia_adherencia_tratamiento',
+    'consumo_frutas_verduras',
+    'manejo_estres',
+    'disminucion_consumo_cigarrillo',
+    'disminucion_peso'
+];
+
+camposEducacion.forEach(function(campo) {
+    if (historiaPrevia[campo]) {
+        $('input[name="' + campo + '"][value="' + historiaPrevia[campo] + '"]').prop('checked', true);
+        console.log('✅ Campo educación cargado:', campo, '=', historiaPrevia[campo]);
+    }
+});
+
+        console.log('✅ Datos previos cargados exitosamente');
+
+    } catch (error) {
+        console.error('❌ Error cargando datos previos:', error);
+    }
+}
+
+// ============================================
+// ✅ DOCUMENT.READY
+// ============================================
+$(document).ready(function() {
+    console.log('🔍 Iniciando script de control.blade.php');
+    console.log('🔍 Datos de la vista:', {
+        especialidad: '{{ $especialidad ?? "N/A" }}',
+        tipo_consulta: '{{ $tipo_consulta ?? "N/A" }}',
+        tiene_historia_previa: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }}
+    });
+
+    // ✅ CARGAR DATOS PREVIOS SOLO PARA MEDICINA GENERAL
+    @if(isset($historiaPrevia) && !empty($historiaPrevia) && ($especialidad ?? '') === 'MEDICINA GENERAL')
+        console.log('🔄 Cargando datos previos para Medicina General');
+        const historiaPrevia = @json($historiaPrevia);
+        console.log('📦 Datos:', historiaPrevia);
+        
+        setTimeout(function() {
+            cargarDatosPreviosMedicinaGeneral(historiaPrevia);
+        }, 500);
+    @else
+        console.log('ℹ️ No se cargan datos previos', {
+            tiene_historia: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }},
+            es_medicina_general: {{ ($especialidad ?? '') === 'MEDICINA GENERAL' ? 'true' : 'false' }}
+        });
+    @endif
+
+    // ============================================
     // ✅ CÁLCULO AUTOMÁTICO DE IMC
+    // ============================================
     $('#peso, #talla').on('input', function() {
         calcularIMC();
     });
@@ -828,8 +1334,15 @@ $(document).ready(function() {
         if (imc < 40) return 'Obesidad grado 2';
         return 'Obesidad grado 3';
     }
-    
+
+    // ✅ CALCULAR IMC AL CARGAR SI YA HAY DATOS
+    if ($('#peso').val() && $('#talla').val()) {
+        calcularIMC();
+    }
+
+    // ============================================
     // ✅ MOSTRAR/OCULTAR DESCRIPCIÓN LESIÓN ÓRGANO BLANCO
+    // ============================================
     $('input[name="lesion_organo_blanco"]').on('change', function() {
         if ($(this).val() === 'SI') {
             $('#descripcion_lesion_container').show();
@@ -839,12 +1352,21 @@ $(document).ready(function() {
         }
     });
 
+    // ============================================
     // ✅ CÁLCULO AUTOMÁTICO DE ADHERENCIA TEST MORISKY
+    // ============================================
     $(document).on('change', '.test-morisky-input', function() {
         calcularAdherenciaMorisky();
     });
 
+    // ✅ CALCULAR ADHERENCIA AL CARGAR SI YA HAY DATOS
+    if ($('.test-morisky-input:checked').length > 0) {
+        calcularAdherenciaMorisky();
+    }
+
+    // ============================================
     // ✅ BÚSQUEDA DE DIAGNÓSTICOS PRINCIPAL
+    // ============================================
     let diagnosticoTimeout;
     $('#buscar_diagnostico').on('input', function() {
         const termino = $(this).val().trim();
@@ -912,419 +1434,67 @@ $(document).ready(function() {
         $('#diagnostico_seleccionado').show();
         $('#diagnosticos_resultados').removeClass('show').empty();
     }
-    
+
+    // ============================================
     // ✅ CERRAR DROPDOWNS AL HACER CLICK FUERA
+    // ============================================
     $(document).on('click', function(e) {
         if (!$(e.target).closest('.dropdown').length) {
             $('.dropdown-menu').removeClass('show');
         }
     });
-    
+
+    // ============================================
     // ✅ AGREGAR DIAGNÓSTICO ADICIONAL
+    // ============================================
     $('#agregar_diagnostico_adicional').on('click', function() {
         agregarDiagnosticoAdicional();
     });
-    
-    function agregarDiagnosticoAdicional() {
-        const template = $('#diagnostico_adicional_template').html();
-        const $diagnostico = $(template);
-        
-        // Actualizar índices de los arrays
-        $diagnostico.find('input[name*="diagnosticos_adicionales"], select[name*="diagnosticos_adicionales"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${diagnosticoAdicionalCounter}]`));
-        });
-        
-        $('#diagnosticos_adicionales_container').append($diagnostico);
-        diagnosticoAdicionalCounter++;
-        
-        // Configurar búsqueda para este diagnóstico
-        configurarBusquedaDiagnosticoAdicional($diagnostico);
-    }
-    
-    function configurarBusquedaDiagnosticoAdicional($container) {
-        const $input = $container.find('.buscar-diagnostico-adicional');
-        const $resultados = $container.find('.diagnosticos-adicionales-resultados');
-        const $hiddenId = $container.find('.diagnostico-adicional-id');
-        const $info = $container.find('.diagnostico-adicional-info');
-        const $alert = $container.find('.diagnostico-adicional-seleccionado');
-        
-        let diagnosticoTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(diagnosticoTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            diagnosticoTimeout = setTimeout(() => {
-                buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-diagnosticos") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosDiagnosticosAdicionales(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando diagnósticos adicionales:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando diagnósticos adicionales:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosDiagnosticosAdicionales(diagnosticos, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (diagnosticos.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron diagnósticos</div>');
-        } else {
-            diagnosticos.forEach(function(diagnostico) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${diagnostico.codigo}</strong> - ${diagnostico.nombre}`)
-                    .data('diagnostico', diagnostico);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(`${diagnostico.codigo} - ${diagnostico.nombre}`);
-        $hiddenId.val(diagnostico.uuid || diagnostico.id);
-        $info.text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
 
     // ✅ ELIMINAR DIAGNÓSTICO ADICIONAL
     $(document).on('click', '.eliminar-diagnostico-adicional', function() {
         $(this).closest('.diagnostico-adicional-item').remove();
     });
-    
+
+    // ============================================
     // ✅ AGREGAR MEDICAMENTO
+    // ============================================
     $('#agregar_medicamento').on('click', function() {
         agregarMedicamento();
     });
-    
-    function agregarMedicamento() {
-        const template = $('#medicamento_template').html();
-        const $medicamento = $(template);
-        
-        // Actualizar índices de los arrays
-        $medicamento.find('input[name*="medicamentos"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${medicamentoCounter}]`));
-        });
-        
-        $('#medicamentos_container').append($medicamento);
-        medicamentoCounter++;
-        
-        // Configurar búsqueda para este medicamento
-        configurarBusquedaMedicamento($medicamento);
-    }
-    
-    function configurarBusquedaMedicamento($container) {
-        const $input = $container.find('.buscar-medicamento');
-        const $resultados = $container.find('.medicamentos-resultados');
-        const $hiddenId = $container.find('.medicamento-id');
-        const $info = $container.find('.medicamento-info');
-        const $alert = $container.find('.medicamento-seleccionado');
-        
-        let medicamentoTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(medicamentoTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            medicamentoTimeout = setTimeout(() => {
-                buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-medicamentos") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosMedicamentos(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando medicamentos:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando medicamentos:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosMedicamentos(medicamentos, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (medicamentos.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron medicamentos</div>');
-        } else {
-            medicamentos.forEach(function(medicamento) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${medicamento.nombre}</strong><br><small class="text-muted">${medicamento.principio_activo || ''}</small>`)
-                    .data('medicamento', medicamento);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(medicamento.nombre);
-        $hiddenId.val(medicamento.uuid || medicamento.id);
-        $info.html(`<strong>${medicamento.nombre}</strong><br><small>${medicamento.principio_activo || ''}</small>`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
 
     // ✅ ELIMINAR MEDICAMENTO
     $(document).on('click', '.eliminar-medicamento', function() {
         $(this).closest('.medicamento-item').remove();
     });
-    
+
+    // ============================================
     // ✅ AGREGAR REMISIÓN
+    // ============================================
     $('#agregar_remision').on('click', function() {
         agregarRemision();
     });
-    
-    function agregarRemision() {
-        const template = $('#remision_template').html();
-        const $remision = $(template);
-        
-        // Actualizar índices de los arrays
-        $remision.find('input[name*="remisiones"], textarea[name*="remisiones"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${remisionCounter}]`));
-        });
-        
-        $('#remisiones_container').append($remision);
-        remisionCounter++;
-        
-        // Configurar búsqueda para esta remisión
-        configurarBusquedaRemision($remision);
-    }
-    
-    function configurarBusquedaRemision($container) {
-        const $input = $container.find('.buscar-remision');
-        const $resultados = $container.find('.remisiones-resultados');
-        const $hiddenId = $container.find('.remision-id');
-        const $info = $container.find('.remision-info');
-        const $alert = $container.find('.remision-seleccionada');
-        
-        let remisionTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(remisionTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            remisionTimeout = setTimeout(() => {
-                buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-remisiones") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosRemisiones(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando remisiones:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando remisiones:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosRemisiones(remisiones, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (remisiones.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron remisiones</div>');
-        } else {
-            remisiones.forEach(function(remision) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${remision.nombre}</strong><br><small class="text-muted">${remision.tipo || ''}</small>`)
-                    .data('remision', remision);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(remision.nombre);
-        $hiddenId.val(remision.uuid || remision.id);
-        $info.html(`<strong>${remision.nombre}</strong><br><small>${remision.tipo || ''}</small>`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
-    
+
     // ✅ ELIMINAR REMISIÓN
     $(document).on('click', '.eliminar-remision', function() {
         $(this).closest('.remision-item').remove();
     });
-    
+
+    // ============================================
     // ✅ AGREGAR CUPS
+    // ============================================
     $('#agregar_cups').on('click', function() {
         agregarCups();
     });
-    
-    function agregarCups() {
-        const template = $('#cups_template').html();
-        const $cups = $(template);
-        
-        // Actualizar índices de los arrays
-        $cups.find('input[name*="cups"], textarea[name*="cups"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${cupsCounter}]`));
-        });
-        
-        $('#cups_container').append($cups);
-        cupsCounter++;
-        
-        // Configurar búsqueda para este CUPS
-        configurarBusquedaCups($cups);
-    }
-    
-    function configurarBusquedaCups($container) {
-        const $input = $container.find('.buscar-cups');
-        const $resultados = $container.find('.cups-resultados');
-        const $hiddenId = $container.find('.cups-id');
-        const $info = $container.find('.cups-info');
-        const $alert = $container.find('.cups-seleccionado');
-        
-        let cupsTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(cupsTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            cupsTimeout = setTimeout(() => {
-                buscarCups(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarCups(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-cups") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosCups(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando CUPS:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando CUPS:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosCups(cups, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (cups.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron procedimientos</div>');
-        } else {
-            cups.forEach(function(cup) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${cup.codigo}</strong> - ${cup.nombre}`)
-                    .data('cups', cup);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarCups(cup, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarCups(cups, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(`${cups.codigo} - ${cups.nombre}`);
-        $hiddenId.val(cups.uuid || cups.id);
-        $info.text(`${cups.codigo} - ${cups.nombre}`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
-    
+
     // ✅ ELIMINAR CUPS
     $(document).on('click', '.eliminar-cups', function() {
         $(this).closest('.cups-item').remove();
     });
 
+    // ============================================
     // ✅ RECONOCIMIENTO DE VOZ PARA OBSERVACIONES
+    // ============================================
     const botonMicrofono = document.getElementById('microfono');
     const campoTexto = document.getElementById('observaciones_generales');
 
@@ -1362,17 +1532,46 @@ $(document).ready(function() {
         });
     }
 
-    // ✅ CALCULAR IMC AL CARGAR SI YA HAY DATOS
-    if ($('#peso').val() && $('#talla').val()) {
-        calcularIMC();
+    // ============================================
+    // ✅ MANEJAR ANTECEDENTES PERSONALES - HTA
+    // ============================================
+    $('input[name="hipertension_arterial_personal"]').on('change', function() {
+        const $obsField = $('#obs_hipertension_arterial_personal');
+        if ($(this).val() === 'SI') {
+            $obsField.prop('disabled', false).attr('placeholder', 'Describa los antecedentes de hipertensión arterial...');
+        } else {
+            $obsField.prop('disabled', true).val('').attr('placeholder', '');
+        }
+    });
+
+    // ============================================
+    // ✅ MANEJAR ANTECEDENTES PERSONALES - DIABETES
+    // ============================================
+    $('input[name="diabetes_mellitus_personal"]').on('change', function() {
+        const $obsField = $('#obs_diabetes_mellitus_personal');
+        if ($(this).val() === 'SI') {
+            $obsField.prop('disabled', false).attr('placeholder', 'Describa los antecedentes de diabetes mellitus...');
+        } else {
+            $obsField.prop('disabled', true).val('').attr('placeholder', '');
+        }
+    });
+
+    // ✅ INICIALIZAR ESTADO AL CARGAR LA PÁGINA
+    if ($('input[name="hipertension_arterial_personal"]:checked').val() === 'SI') {
+        $('#obs_hipertension_arterial_personal').prop('disabled', false);
+    } else {
+        $('#obs_hipertension_arterial_personal').prop('disabled', true);
     }
 
-    // ✅ CALCULAR ADHERENCIA AL CARGAR SI YA HAY DATOS
-    if ($('.test-morisky-input:checked').length > 0) {
-        calcularAdherenciaMorisky();
+    if ($('input[name="diabetes_mellitus_personal"]:checked').val() === 'SI') {
+        $('#obs_diabetes_mellitus_personal').prop('disabled', false);
+    } else {
+        $('#obs_diabetes_mellitus_personal').prop('disabled', true);
     }
 
+    // ============================================
     // ✅ FUNCIÓN PARA CALCULAR PRESIÓN ARTERIAL
+    // ============================================
     $('#ef_pa_sistolica_sentado_pie, #ef_pa_distolica_sentado_pie').on('change', function() {
         calcularPresionArterial();
     });
@@ -1400,7 +1599,9 @@ $(document).ready(function() {
         }
     }
 
+    // ============================================
     // ✅ ENVÍO DEL FORMULARIO
+    // ============================================
     $('#historiaClinicaForm').on('submit', function(e) {
         e.preventDefault();
         
@@ -1474,7 +1675,9 @@ $(document).ready(function() {
         });
     });
 
+    // ============================================
     // ✅ FUNCIÓN DE VALIDACIÓN ESPECÍFICA PARA CONTROL
+    // ============================================
     function validarFormularioControl() {
         // Validar peso
         if (!$('#peso').val()) {
@@ -1649,24 +1852,30 @@ $(document).ready(function() {
             }
         }
         
-        // Validar campos de educación
-        const camposEducacion = [
-            'alimentacion', 'fomento_actividad_fisica', 'importancia_adherencia_tratamiento',
-            'disminucion_consumo_sal_azucar', 'disminucion_consumo_cigarrillo', 
-            'disminucion_peso', 'consumo_frutas_verduras'
-        ];
-        
-        for (let campo of camposEducacion) {
-            if (!$('#' + campo).val().trim()) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Campo requerido',
-                    text: `Debe completar el campo ${$('#' + campo).prev('label').text().replace(' *', '')}`
-                });
-                $('#' + campo).focus();
-                return false;
-            }
-        }
+       // ✅ VALIDACIÓN CORRECTA PARA RADIO BUTTONS
+const camposEducacion = [
+    'alimentacion', 
+    'fomento_actividad_fisica', 
+    'importancia_adherencia_tratamiento',
+    'disminucion_consumo_sal_azucar', 
+    'disminucion_consumo_cigarrillo', 
+    'disminucion_peso', 
+    'consumo_frutas_verduras',
+    'manejo_estres'
+];
+
+for (let campo of camposEducacion) {
+    // ✅ Verificar si algún radio button está seleccionado
+    if (!$('input[name="' + campo + '"]:checked').length) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Campo requerido',
+            text: `Debe seleccionar una opción para: ${campo.replace(/_/g, ' ').toUpperCase()}`
+        });
+        $('input[name="' + campo + '"]').first().focus();
+        return false;
+    }
+}
         
         // Validar test de Morisky
         const preguntasMorisky = [
@@ -1703,77 +1912,7 @@ $(document).ready(function() {
         return true;
     }
 
-}); // ✅ CERRAR $(document).ready
-
-// ✅ FUNCIÓN DE CÁLCULO DE ADHERENCIA MORISKY - FUERA DEL DOCUMENT.READY
-function calcularAdherenciaMorisky() {
-    console.log('Calculando adherencia Morisky...');
-    
-    // ✅ OBTENER RESPUESTAS
-    const olvida = $('input[name="test_morisky_olvida_tomar_medicamentos"]:checked').val();
-    const horaIndicada = $('input[name="test_morisky_toma_medicamentos_hora_indicada"]:checked').val();
-    const cuandoEstaBien = $('input[name="test_morisky_cuando_esta_bien_deja_tomar_medicamentos"]:checked').val();
-    const sienteMal = $('input[name="test_morisky_siente_mal_deja_tomarlos"]:checked').val();
-    const psicologia = $('input[name="test_morisky_valoracio_psicologia"]:checked').val();
-    
-    console.log('Respuestas:', { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia });
-    
-    // ✅ VERIFICAR QUE TODAS LAS PREGUNTAS ESTÉN RESPONDIDAS
-    if (!olvida || !horaIndicada || !cuandoEstaBien || !sienteMal || !psicologia) {
-        // Si no están todas respondidas, resetear
-        $('#adherente_si').prop('checked', false);
-        $('#adherente_no').prop('checked', true);
-        $('#explicacion_adherencia').hide();
-        console.log('No todas las preguntas están respondidas');
-        return;
-    }
-    
-    // ✅ CALCULAR PUNTUACIÓN MORISKY
-    let puntuacion = 0;
-    
-    // Pregunta 1: ¿Olvida alguna vez tomar los medicamentos? (SI = 1 punto)
-    if (olvida === 'SI') puntuacion += 1;
-    
-    // Pregunta 2: ¿Toma los medicamentos a la hora indicada? (NO = 1 punto)
-    if (horaIndicada === 'NO') puntuacion += 1;
-    
-    // Pregunta 3: ¿Cuando se encuentra bien, deja de tomar los medicamentos? (SI = 1 punto)
-    if (cuandoEstaBien === 'SI') puntuacion += 1;
-    
-    // Pregunta 4: ¿Si alguna vez se siente mal, deja de tomarlos? (SI = 1 punto)
-    if (sienteMal === 'SI') puntuacion += 1;
-    
-    // ✅ DETERMINAR ADHERENCIA
-    // Puntuación 0 = Adherente
-    // Puntuación 1-4 = No adherente
-    let esAdherente = puntuacion === 0;
-    let explicacion = '';
-    
-    if (esAdherente) {
-        $('#adherente_si').prop('checked', true);
-        $('#adherente_no').prop('checked', false);
-        explicacion = `<strong>ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente muestra buena adherencia al tratamiento farmacológico.`;
-    } else {
-        $('#adherente_si').prop('checked', false);
-        $('#adherente_no').prop('checked', true);
-        explicacion = `<strong>NO ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente presenta problemas de adherencia al tratamiento farmacológico.`;
-    }
-    
-    // ✅ MOSTRAR EXPLICACIÓN
-    $('#texto_explicacion').html(explicacion);
-    $('#explicacion_adherencia').show();
-    
-    // ✅ AGREGAR RECOMENDACIÓN PARA PSICOLOGÍA SI ES NECESARIO
-    if (!esAdherente || psicologia === 'SI') {
-        $('#texto_explicacion').append('<br><strong>Recomendación:</strong> Considerar valoración por psicología para mejorar adherencia.');
-    }
-    
-    console.log('Test Morisky calculado:', {
-        puntuacion: puntuacion,
-        adherente: esAdherente,
-        respuestas: { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia }
-    });
-}
+}); // ✅ FIN DOCUMENT.READY
 </script>
 @endpush
 
