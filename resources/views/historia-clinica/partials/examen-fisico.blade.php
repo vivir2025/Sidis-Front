@@ -29,7 +29,7 @@
                     <label for="{{ $examen['key'] }}" class="form-label">{{ $examen['label'] }}</label>
                     <select class="form-select" id="{{ $examen['key'] }}" name="{{ $examen['key'] }}">
                         <option value="">Seleccione...</option>
-                        <option value="NORMAL">Normal</option>
+                        <option value="NORMAL" selected>Normal</option>
                         <option value="ANORMAL">Anormal</option>
                         <option value="NO_EVALUADO">No Evaluado</option>
                     </select>

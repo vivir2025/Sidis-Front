@@ -1600,80 +1600,122 @@ $(document).ready(function() {
     }
 
     // ============================================
-    // ✅ ENVÍO DEL FORMULARIO
-    // ============================================
-    $('#historiaClinicaForm').on('submit', function(e) {
-        e.preventDefault();
-        
-        // ✅ HABILITAR CAMPO ADHERENTE ANTES DEL ENVÍO
-        $('input[name="adherente"]').prop('readonly', false);
-        
-        // Validaciones específicas para control
-        if (!validarFormularioControl()) {
-            $('input[name="adherente"]').prop('readonly', true);
-            return;
-        }
-        
-        // Mostrar loading
-        $('#loading_overlay').show();
-        
-        // Preparar datos
-        const formData = new FormData(this);
-        
-        $.ajax({
-            url: $(this).attr('action'),
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                $('#loading_overlay').hide();
-                
-                if (response.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: '¡Éxito!',
-                        text: response.message,
-                        confirmButtonText: 'Continuar'
-                    }).then((result) => {
-                        if (response.redirect_url) {
-                            window.location.href = response.redirect_url;
-                        }
-                    });
-                } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: response.error || 'Error guardando el control'
-                    });
-                }
-            },
-            error: function(xhr) {
-                $('#loading_overlay').hide();
-                
-                let errorMessage = 'Error interno del servidor';
-                
-                if (xhr.status === 422) {
-                    const errors = xhr.responseJSON?.errors;
-                    if (errors) {
-                        errorMessage = Object.values(errors).flat().join('\n');
+// ✅ ENVÍO DEL FORMULARIO (VERSIÓN MEJORADA)
+// ============================================
+$('#historiaClinicaForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    console.log('📤 Iniciando envío del formulario...');
+    
+    // ✅ HABILITAR CAMPO ADHERENTE ANTES DEL ENVÍO
+    $('input[name="adherente"]').prop('readonly', false);
+    
+    // Validaciones específicas para control
+    if (!validarFormularioControl()) {
+        $('input[name="adherente"]').prop('readonly', true);
+        console.log('❌ Validación fallida');
+        return;
+    }
+    
+    console.log('✅ Validación exitosa, preparando envío...');
+    
+    // Mostrar loading
+    $('#loading_overlay').show();
+    
+    // Preparar datos
+    const formData = new FormData(this);
+    
+    // ✅ AGREGAR TIMEOUT PARA EVITAR ESPERA INFINITA
+    const timeoutId = setTimeout(function() {
+        console.log('⏰ Timeout alcanzado (10s), ocultando loading...');
+        $('#loading_overlay').hide();
+        Swal.fire({
+            icon: 'warning',
+            title: 'Procesando...',
+            text: 'La historia clínica se está guardando. Por favor espere...',
+            timer: 3000,
+            showConfirmButton: false
+        }).then(() => {
+            window.location.href = '{{ route("cronograma.index") }}';
+        });
+    }, 10000); // 10 segundos de timeout
+    
+    $.ajax({
+        url: $(this).attr('action'),
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        timeout: 30000, // ✅ TIMEOUT DE 30 SEGUNDOS
+        success: function(response) {
+            clearTimeout(timeoutId);
+            $('#loading_overlay').hide();
+            
+            console.log('✅ Respuesta recibida:', response);
+            
+            if (response.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: response.message || 'Control guardado exitosamente',
+                    confirmButtonText: 'Continuar',
+                    allowOutsideClick: false
+                }).then((result) => {
+                    if (response.redirect_url) {
+                        window.location.href = response.redirect_url;
+                    } else {
+                        window.location.href = '{{ route("cronograma.index") }}';
                     }
-                } else if (xhr.responseJSON?.error) {
-                    errorMessage = xhr.responseJSON.error;
-                }
-                
+                });
+            } else {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: errorMessage
+                    text: response.error || 'Error guardando el control',
+                    confirmButtonText: 'Entendido'
                 });
-            },
-            complete: function() {
-                // ✅ VOLVER A DESHABILITAR DESPUÉS DEL ENVÍO
-                $('input[name="adherente"]').prop('readonly', true);
             }
-        });
+        },
+        error: function(xhr, status, error) {
+            clearTimeout(timeoutId);
+            $('#loading_overlay').hide();
+            
+            console.error('❌ Error en AJAX:', {
+                status: xhr.status,
+                statusText: status,
+                error: error,
+                responseText: xhr.responseText
+            });
+            
+            let errorMessage = 'Error interno del servidor';
+            
+            if (status === 'timeout') {
+                errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado. Por favor verifique.';
+            } else if (xhr.status === 422) {
+                const errors = xhr.responseJSON?.errors;
+                if (errors) {
+                    errorMessage = Object.values(errors).flat().join('\n');
+                }
+            } else if (xhr.responseJSON?.error) {
+                errorMessage = xhr.responseJSON.error;
+            } else if (xhr.status === 0) {
+                errorMessage = 'No se pudo conectar con el servidor. Verifique su conexión.';
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                html: errorMessage.replace(/\n/g, '<br>'),
+                confirmButtonText: 'Entendido'
+            });
+        },
+        complete: function() {
+            console.log('🏁 Petición completada');
+            // ✅ VOLVER A DESHABILITAR DESPUÉS DEL ENVÍO
+            $('input[name="adherente"]').prop('readonly', true);
+        }
     });
+});
 
     // ============================================
     // ✅ FUNCIÓN DE VALIDACIÓN ESPECÍFICA PARA CONTROL

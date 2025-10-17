@@ -63,7 +63,7 @@
         <div class="row">
             <div class="col-md-6">
                 <div class="mb-3">
-                    <label for="clasificacion_erc_estado" class="form-label">Clasificación ERC Estado <span class="text-danger">*</span></label>
+                    <label for="clasificacion_erc_estado" class="form-label">Clasificación ERC Estadio <span class="text-danger">*</span></label>
                     <select class="form-select" id="clasificacion_erc_estado" name="clasificacion_erc_estado" required>
                         <option value="">Seleccione...</option>
                         <option value="ESTADIO_1" {{ ($historiaPrevia['clasificacion_erc_estado'] ?? '') === 'ESTADIO_1' ? 'selected' : '' }}>Estadio 1</option>

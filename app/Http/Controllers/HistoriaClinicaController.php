@@ -286,73 +286,125 @@ private function formatearCupsParaFormulario(array $cups): array
 }
 
     /**
-     * ✅ GUARDAR HISTORIA CLÍNICA
-     */
-    public function store(Request $request)
-    {
-        try {
-            $usuario = $this->authService->usuario();
+ * ✅ GUARDAR HISTORIA CLÍNICA - CORREGIDO
+ */
+public function store(Request $request)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        
+        Log::info('💾 Guardando historia clínica', [
+            'cita_uuid' => $request->cita_uuid,
+            'usuario' => $usuario['nombre_completo']
+        ]);
+
+        // ✅ VALIDAR DATOS BÁSICOS
+        $validatedData = $this->validateHistoriaClinica($request);
+
+        // ✅ PREPARAR DATOS PARA ENVÍO
+        $historiaData = $this->prepareHistoriaData($validatedData, $usuario);
+
+        // ✅ INTENTAR GUARDAR ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            Log::info('🌐 Intentando guardar online...');
             
-            Log::info('💾 Guardando historia clínica', [
-                'cita_uuid' => $request->cita_uuid,
-                'usuario' => $usuario['nombre_completo']
-            ]);
-
-            // ✅ VALIDAR DATOS BÁSICOS
-            $validatedData = $this->validateHistoriaClinica($request);
-
-            // ✅ PREPARAR DATOS PARA ENVÍO
-            $historiaData = $this->prepareHistoriaData($validatedData, $usuario);
-
-            // ✅ INTENTAR GUARDAR ONLINE PRIMERO
-            if ($this->apiService->isOnline()) {
+            try {
                 $result = $this->saveOnline($historiaData);
                 
                 if ($result['success']) {
+                    Log::info('✅ Historia guardada online exitosamente', [
+                        'uuid' => $result['data']['uuid'] ?? 'N/A'
+                    ]);
+                    
                     // ✅ GUARDAR OFFLINE COMO BACKUP
                     $this->saveOffline($historiaData, false);
                     
+                    // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
+                    $especialidadesConComplementaria = [
+                        'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
+                        'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
+                    ];
+
+                    $especialidad = $this->obtenerEspecialidadDesdeCita($request->cita_uuid);
+
+                    if (in_array($especialidad, $especialidadesConComplementaria)) {
+                        Log::info('📋 Creando historia complementaria para: ' . $especialidad);
+                        
+                        // ✅ USAR EL UUID DE LA HISTORIA GUARDADA
+                        $historiaUuid = $result['data']['uuid'] ?? null;
+                        
+                        if ($historiaUuid) {
+                            $this->crearHistoriaComplementaria($historiaUuid, $request);
+                        }
+                    }
+                    
+                    // ✅ RETORNAR RESPUESTA EXITOSA
                     return response()->json([
                         'success' => true,
                         'message' => 'Historia clínica guardada exitosamente',
-                        'redirect_url' => route('historia-clinica.show', $result['data']['uuid'])
-                    ]);
+                        'redirect_url' => route('cronograma.index'),
+                        'historia_uuid' => $result['data']['uuid'] ?? null
+                    ], 200);
                 }
+                
+                // ✅ SI FALLA ONLINE, CONTINUAR A OFFLINE
+                Log::warning('⚠️ Fallo guardado online, intentando offline...');
+                
+            } catch (\Exception $e) {
+                Log::error('❌ Error en guardado online:', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                // ✅ CONTINUAR A GUARDADO OFFLINE
             }
-
-            // ✅ GUARDAR OFFLINE
-            $result = $this->saveOffline($historiaData, true);
-            // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
-                $especialidadesConComplementaria = [
-                    'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
-                    'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
-                ];
-
-                $especialidad = $this->obtenerEspecialidadDesdeCita($request->cita_uuid);
-
-                if (in_array($especialidad, $especialidadesConComplementaria)) {
-                    // Crear registro complementario si hay datos
-                    $this->crearHistoriaComplementaria($historia->id, $request);
-                }
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Historia clínica guardada offline (se sincronizará cuando vuelva la conexión)',
-                'redirect_url' => route('cronograma.index')
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error guardando historia clínica', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error guardando historia clínica: ' . $e->getMessage()
-            ], 500);
+        } else {
+            Log::info('📴 Sin conexión, guardando offline directamente');
         }
+
+        // ✅ GUARDAR OFFLINE
+        Log::info('💾 Guardando offline...');
+        $result = $this->saveOffline($historiaData, true);
+        
+        if (!$result['success']) {
+            throw new \Exception('Error guardando offline: ' . ($result['error'] ?? 'Error desconocido'));
+        }
+        
+        Log::info('✅ Historia guardada offline exitosamente');
+        
+        // ✅ RETORNAR RESPUESTA EXITOSA OFFLINE
+        return response()->json([
+            'success' => true,
+            'message' => 'Historia clínica guardada offline (se sincronizará cuando vuelva la conexión)',
+            'redirect_url' => route('cronograma.index'),
+            'offline' => true
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::error('❌ Error de validación:', [
+            'errors' => $e->errors()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => 'Error de validación',
+            'errors' => $e->errors()
+        ], 422);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error guardando historia clínica', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error guardando historia clínica: ' . $e->getMessage()
+        ], 500);
     }
+}
+
 /**
  * ✅ OBTENER DATOS DE LA CITA PARA EXTRAER PACIENTE_ID
  */
