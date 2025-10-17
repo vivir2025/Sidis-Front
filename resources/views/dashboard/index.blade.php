@@ -1,7 +1,5 @@
 @extends('layouts.app')
-@include('layouts.partials.sidebar')
 @section('title', 'Dashboard - SIDIS')
-
 @section('content')
 <div class="container-fluid">
    
