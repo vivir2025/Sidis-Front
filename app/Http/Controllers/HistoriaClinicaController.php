@@ -2219,19 +2219,55 @@ private function determinarVistaEspecifica(string $especialidad, string $tipoCon
 /**
  * ✅ OBTENER ESPECIALIDAD DESDE CITA UUID
  */
+/**
+ * ✅ OBTENER ESPECIALIDAD DESDE CITA UUID - CORREGIDO
+ */
 private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
 {
     try {
+        Log::info('🔍 Obteniendo especialidad desde cita', [
+            'cita_uuid' => $citaUuid
+        ]);
+        
         $citaResult = $this->citaService->show($citaUuid);
-        if ($citaResult['success']) {
-            return $this->obtenerEspecialidadMedico($citaResult['data']);
+        
+        if (!$citaResult['success']) {
+            Log::warning('⚠️ No se pudo obtener la cita', [
+                'cita_uuid' => $citaUuid
+            ]);
+            return null;
         }
-        return null;
+        
+        $cita = $citaResult['data'];
+        
+        // ✅ INTENTAR OBTENER ESPECIALIDAD DE MÚLTIPLES FUENTES
+        $especialidad = $cita['agenda']['medico']['especialidad']['nombre'] ?? 
+                       $cita['agenda']['usuario_medico']['especialidad']['nombre'] ?? 
+                       $cita['medico']['especialidad']['nombre'] ?? 
+                       $cita['especialidad']['nombre'] ?? 
+                       $cita['especialidad_nombre'] ?? 
+                       null;
+        
+        Log::info('🔍 Especialidad detectada desde cita', [
+            'cita_uuid' => $citaUuid,
+            'especialidad' => $especialidad,
+            'estructura_cita_keys' => array_keys($cita),
+            'tiene_agenda' => isset($cita['agenda']),
+            'tiene_medico' => isset($cita['medico'])
+        ]);
+        
+        return $especialidad;
+        
     } catch (\Exception $e) {
-        Log::error('Error obteniendo especialidad desde cita', ['error' => $e->getMessage()]);
+        Log::error('❌ Error obteniendo especialidad desde cita', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+        
         return null;
     }
 }
+
 
 /**
  * ✅ CREAR HISTORIA COMPLEMENTARIA
