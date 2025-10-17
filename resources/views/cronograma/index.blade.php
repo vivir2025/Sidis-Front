@@ -1595,10 +1595,17 @@ function sincronizarCambiosPendientes() {
     }
 }
 
-// ✅ ACTUALIZAR CITA EN INTERFAZ CON BOTÓN DE HISTORIA CLÍNICA
 function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
     const citaCard = document.querySelector(`[data-cita-uuid="${citaUuid}"]`);
-    if (!citaCard) return;
+    if (!citaCard) {
+        console.log('⚠️ Tarjeta de cita no encontrada en interfaz:', citaUuid);
+        return;
+    }
+    
+    console.log('🔄 Actualizando interfaz de cita:', {
+        citaUuid: citaUuid,
+        nuevoEstado: nuevoEstado
+    });
     
     // Actualizar badge de estado
     const badge = citaCard.querySelector('.badge');
@@ -1615,7 +1622,7 @@ function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
         card.className = card.className.replace(/border-\w+/, `border-${estadoInfo.color}`);
     }
     
-    // ✅ ACTUALIZAR BOTONES DE ACCIÓN INCLUYENDO HISTORIA CLÍNICA
+    // ✅ ACTUALIZAR BOTONES DE ACCIÓN
     const botonesContainer = citaCard.querySelector('.d-flex.gap-1');
     if (botonesContainer) {
         const nuevosBotones = generarBotonesAccion(citaUuid, nuevoEstado);
@@ -1624,11 +1631,49 @@ function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
         botonesContainer.insertAdjacentHTML('beforeend', nuevosBotones);
     }
     
+    // ✅ REMOVER INDICADORES DE CAMBIOS PENDIENTES SI LA CITA ESTÁ ATENDIDA
+    if (nuevoEstado === 'ATENDIDA') {
+        const iconoSync = citaCard.querySelector('.fa-sync-alt');
+        if (iconoSync) {
+            iconoSync.remove();
+        }
+        
+        const textoPendiente = citaCard.querySelector('.cambios-pendientes-text');
+        if (textoPendiente) {
+            textoPendiente.remove();
+        }
+        
+        if (card) {
+            card.classList.remove('cambios-pendientes');
+            card.style.borderLeft = '';
+        }
+    }
+    
     // Actualizar estadísticas globales si vienen
     if (datosActualizados && datosActualizados.estadisticas_globales) {
         actualizarEstadisticasGlobales(datosActualizados.estadisticas_globales);
     }
+    
+    console.log('✅ Interfaz de cita actualizada correctamente');
 }
+
+// ✅ ESCUCHAR EVENTOS DE GUARDADO DE HISTORIA CLÍNICA
+window.addEventListener('historiaClinicaGuardada', function(event) {
+    const citaUuid = event.detail.cita_uuid;
+    
+    console.log('📋 Historia clínica guardada, actualizando cita:', citaUuid);
+    
+    // ✅ ACTUALIZAR INTERFAZ INMEDIATAMENTE
+    actualizarCitaEnInterfaz(citaUuid, 'ATENDIDA', {});
+    
+    // ✅ MOSTRAR NOTIFICACIÓN
+    mostrarAlerta('success', 'Historia clínica guardada. Cita marcada como atendida.');
+    
+    // ✅ ACTUALIZAR ESTADÍSTICAS GLOBALES
+    setTimeout(() => {
+        actualizarCronograma();
+    }, 1000);
+});
 
 // ✅ DETECTOR DE CONECTIVIDAD MEJORADO
 function initDetectorConectividad() {
@@ -1997,7 +2042,7 @@ function generarBotonesEstado(citaUuid, estadoActual) {
     return botones;
 }
 
-// ✅ GENERAR BOTONES DE ACCIÓN CON HISTORIA CLÍNICA
+
 function generarBotonesAccion(citaUuid, estado) {
     if (isOffline) {
         return `
@@ -2011,10 +2056,13 @@ function generarBotonesAccion(citaUuid, estado) {
     
     // ✅ BOTÓN DE HISTORIA CLÍNICA PARA ESTADOS APROPIADOS
     if (estado === 'EN_ATENCION' || estado === 'ATENDIDA') {
+        const textoBoton = estado === 'ATENDIDA' ? 'Ver HC' : 'Crear HC';
+        const colorBoton = estado === 'ATENDIDA' ? 'success' : 'info';
+        
         botones += `
-            <button type="button" class="btn btn-success btn-sm btn-historia-clinica"
-                    data-cita-uuid="${citaUuid}" title="Crear Historia Clínica">
-                <i class="fas fa-file-medical"></i>
+            <button type="button" class="btn btn-${colorBoton} btn-sm btn-historia-clinica"
+                    data-cita-uuid="${citaUuid}" title="${textoBoton}">
+                <i class="fas fa-file-medical"></i> ${textoBoton}
             </button>
         `;
     }

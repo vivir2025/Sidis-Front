@@ -285,10 +285,7 @@ private function formatearCupsParaFormulario(array $cups): array
     }, $cups);
 }
 
-    /**
- * ✅ GUARDAR HISTORIA CLÍNICA - CORREGIDO
- */
-public function store(Request $request)
+   public function store(Request $request)
 {
     try {
         $usuario = $this->authService->usuario();
@@ -319,6 +316,9 @@ public function store(Request $request)
                     // ✅ GUARDAR OFFLINE COMO BACKUP
                     $this->saveOffline($historiaData, false);
                     
+                    // ✅✅✅ NUEVO: CAMBIAR ESTADO DE LA CITA A ATENDIDA ✅✅✅
+                    $this->marcarCitaComoAtendida($request->cita_uuid);
+                    
                     // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
                     $especialidadesConComplementaria = [
                         'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
@@ -330,7 +330,6 @@ public function store(Request $request)
                     if (in_array($especialidad, $especialidadesConComplementaria)) {
                         Log::info('📋 Creando historia complementaria para: ' . $especialidad);
                         
-                        // ✅ USAR EL UUID DE LA HISTORIA GUARDADA
                         $historiaUuid = $result['data']['uuid'] ?? null;
                         
                         if ($historiaUuid) {
@@ -341,13 +340,12 @@ public function store(Request $request)
                     // ✅ RETORNAR RESPUESTA EXITOSA
                     return response()->json([
                         'success' => true,
-                        'message' => 'Historia clínica guardada exitosamente',
+                        'message' => 'Historia clínica guardada exitosamente. Cita marcada como atendida.',
                         'redirect_url' => route('cronograma.index'),
                         'historia_uuid' => $result['data']['uuid'] ?? null
                     ], 200);
                 }
                 
-                // ✅ SI FALLA ONLINE, CONTINUAR A OFFLINE
                 Log::warning('⚠️ Fallo guardado online, intentando offline...');
                 
             } catch (\Exception $e) {
@@ -355,7 +353,6 @@ public function store(Request $request)
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString()
                 ]);
-                // ✅ CONTINUAR A GUARDADO OFFLINE
             }
         } else {
             Log::info('📴 Sin conexión, guardando offline directamente');
@@ -371,10 +368,13 @@ public function store(Request $request)
         
         Log::info('✅ Historia guardada offline exitosamente');
         
+        // ✅✅✅ NUEVO: CAMBIAR ESTADO OFFLINE TAMBIÉN ✅✅✅
+        $this->marcarCitaComoAtendida($request->cita_uuid);
+        
         // ✅ RETORNAR RESPUESTA EXITOSA OFFLINE
         return response()->json([
             'success' => true,
-            'message' => 'Historia clínica guardada offline (se sincronizará cuando vuelva la conexión)',
+            'message' => 'Historia clínica guardada offline. Cita marcada como atendida (se sincronizará cuando vuelva la conexión)',
             'redirect_url' => route('cronograma.index'),
             'offline' => true
         ], 200);
@@ -405,6 +405,95 @@ public function store(Request $request)
     }
 }
 
+/**
+ * ✅✅✅ NUEVO MÉTODO: MARCAR CITA COMO ATENDIDA ✅✅✅
+ */
+private function marcarCitaComoAtendida(string $citaUuid): void
+{
+    try {
+        Log::info('🏁 Marcando cita como ATENDIDA', [
+            'cita_uuid' => $citaUuid
+        ]);
+
+        // ✅ INTENTAR CAMBIAR ESTADO ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->post("/citas/{$citaUuid}/estado", [
+                    'estado' => 'ATENDIDA'
+                ]);
+
+                if ($response['success']) {
+                    Log::info('✅ Cita marcada como ATENDIDA online', [
+                        'cita_uuid' => $citaUuid
+                    ]);
+                    
+                    // ✅ ACTUALIZAR TAMBIÉN OFFLINE PARA SINCRONIZACIÓN
+                    $this->actualizarCitaOffline($citaUuid, 'ATENDIDA');
+                    return;
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error marcando cita online, usando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ FALLBACK: MARCAR OFFLINE
+        $this->actualizarCitaOffline($citaUuid, 'ATENDIDA');
+        
+        Log::info('✅ Cita marcada como ATENDIDA offline', [
+            'cita_uuid' => $citaUuid
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error marcando cita como atendida', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+        
+        // ✅ NO LANZAR EXCEPCIÓN PARA NO INTERRUMPIR EL GUARDADO DE LA HISTORIA
+    }
+}
+/**
+ * ✅ ACTUALIZAR CITA OFFLINE
+ */
+private function actualizarCitaOffline(string $citaUuid, string $nuevoEstado): void
+{
+    try {
+        // ✅ OBTENER CITA ACTUAL
+        $citaActual = $this->offlineService->getCitaOffline($citaUuid);
+        
+        if (!$citaActual) {
+            Log::warning('⚠️ Cita no encontrada offline para actualizar', [
+                'cita_uuid' => $citaUuid
+            ]);
+            return;
+        }
+
+        // ✅ ACTUALIZAR ESTADO
+        $citaActual['estado'] = $nuevoEstado;
+        $citaActual['updated_at'] = now()->toISOString();
+        
+        // ✅ MARCAR PARA SINCRONIZACIÓN SI ESTABA SINCRONIZADA
+        if (isset($citaActual['sync_status']) && $citaActual['sync_status'] === 'synced') {
+            $citaActual['sync_status'] = 'pending';
+        }
+
+        // ✅ GUARDAR CAMBIOS OFFLINE
+        $this->offlineService->storeCitaOffline($citaActual, true);
+        
+        Log::info('✅ Cita actualizada offline', [
+            'cita_uuid' => $citaUuid,
+            'nuevo_estado' => $nuevoEstado
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando cita offline', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+    }
+}
 /**
  * ✅ OBTENER DATOS DE LA CITA PARA EXTRAER PACIENTE_ID
  */

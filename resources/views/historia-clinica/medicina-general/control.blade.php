@@ -1091,21 +1091,19 @@ function seleccionarCups(cups, $input, $hiddenId, $info, $alert, $resultados) {
     $alert.show();
     $resultados.removeClass('show').empty();
 }
+
+/**
+ * ✅ CARGAR DIAGNÓSTICO PRINCIPAL CON DATOS
+ */
 function cargarDiagnosticoPrincipalConDatos(diagnostico) {
     console.log('🩺 Cargando diagnóstico principal con datos:', diagnostico);
     
     try {
-        // ✅ LLENAR EL CAMPO DE BÚSQUEDA
         $('#buscar_diagnostico').val(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
-        
-        // ✅ LLENAR EL HIDDEN INPUT
         $('#idDiagnostico').val(diagnostico.diagnostico_id);
-        
-        // ✅ MOSTRAR LA INFO
         $('#diagnostico_info').text(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
         $('#diagnostico_seleccionado').show();
         
-        // ✅ SELECCIONAR EL TIPO DE DIAGNÓSTICO
         if (diagnostico.tipo_diagnostico) {
             $('#tipo_diagnostico').val(diagnostico.tipo_diagnostico);
         }
@@ -1116,6 +1114,29 @@ function cargarDiagnosticoPrincipalConDatos(diagnostico) {
         console.error('❌ Error cargando diagnóstico principal:', error);
     }
 }
+
+/**
+ * ✅✅✅ NUEVA FUNCIÓN: DISPARAR EVENTO DE HISTORIA GUARDADA ✅✅✅
+ */
+function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
+    console.log('📋 Disparando evento historiaClinicaGuardada', {
+        citaUuid: citaUuid,
+        historiaUuid: historiaUuid,
+        offline: offline
+    });
+    
+    // ✅ DISPARAR EVENTO PERSONALIZADO PARA EL CRONOGRAMA
+    window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
+        detail: {
+            cita_uuid: citaUuid,
+            historia_uuid: historiaUuid,
+            offline: offline || false
+        }
+    }));
+    
+    console.log('✅ Evento disparado exitosamente');
+}
+
 /**
  * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL
  */
@@ -1144,27 +1165,26 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
             });
         }
 
-        // ✅ CARGAR DIAGNÓSTICOS ADICIONALES
-       if (historiaPrevia.diagnosticos && historiaPrevia.diagnosticos.length > 0) {
-    console.log('🩺 Cargando diagnósticos previos:', historiaPrevia.diagnosticos.length);
-    
-    // ✅ CARGAR DIAGNÓSTICO PRINCIPAL (índice 0)
-    const diagnosticoPrincipal = historiaPrevia.diagnosticos[0];
-    if (diagnosticoPrincipal) {
-        setTimeout(function() {
-            cargarDiagnosticoPrincipalConDatos(diagnosticoPrincipal);
-        }, 100);
-    }
-    
-    // ✅ CARGAR DIAGNÓSTICOS ADICIONALES (desde índice 1)
-    if (historiaPrevia.diagnosticos.length > 1) {
-        for (let i = 1; i < historiaPrevia.diagnosticos.length; i++) {
-            setTimeout(function() {
-                agregarDiagnosticoAdicionalConDatos(historiaPrevia.diagnosticos[i]);
-            }, (i + 1) * 200); // +1 para dar tiempo después del principal
+        // ✅ CARGAR DIAGNÓSTICOS
+        if (historiaPrevia.diagnosticos && historiaPrevia.diagnosticos.length > 0) {
+            console.log('🩺 Cargando diagnósticos previos:', historiaPrevia.diagnosticos.length);
+            
+            const diagnosticoPrincipal = historiaPrevia.diagnosticos[0];
+            if (diagnosticoPrincipal) {
+                setTimeout(function() {
+                    cargarDiagnosticoPrincipalConDatos(diagnosticoPrincipal);
+                }, 100);
+            }
+            
+            if (historiaPrevia.diagnosticos.length > 1) {
+                for (let i = 1; i < historiaPrevia.diagnosticos.length; i++) {
+                    setTimeout(function() {
+                        agregarDiagnosticoAdicionalConDatos(historiaPrevia.diagnosticos[i]);
+                    }, (i + 1) * 200);
+                }
+            }
         }
-    }
-}
+
         // ✅ CARGAR CUPS
         if (historiaPrevia.cups && historiaPrevia.cups.length > 0) {
             console.log('🏥 Cargando CUPS previos:', historiaPrevia.cups.length);
@@ -1212,7 +1232,7 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
         }
         if (historiaPrevia.clasificacion_erc_estado) {
             $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
-        }
+                    }
         if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
             $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
         }
@@ -1250,23 +1270,24 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
             calcularAdherenciaMorisky();
         }, 1000);
 
+        // ✅ CARGAR CAMPOS DE EDUCACIÓN
         const camposEducacion = [
-    'alimentacion',
-    'disminucion_consumo_sal_azucar',
-    'fomento_actividad_fisica',
-    'importancia_adherencia_tratamiento',
-    'consumo_frutas_verduras',
-    'manejo_estres',
-    'disminucion_consumo_cigarrillo',
-    'disminucion_peso'
-];
+            'alimentacion',
+            'disminucion_consumo_sal_azucar',
+            'fomento_actividad_fisica',
+            'importancia_adherencia_tratamiento',
+            'consumo_frutas_verduras',
+            'manejo_estres',
+            'disminucion_consumo_cigarrillo',
+            'disminucion_peso'
+        ];
 
-camposEducacion.forEach(function(campo) {
-    if (historiaPrevia[campo]) {
-        $('input[name="' + campo + '"][value="' + historiaPrevia[campo] + '"]').prop('checked', true);
-        console.log('✅ Campo educación cargado:', campo, '=', historiaPrevia[campo]);
-    }
-});
+        camposEducacion.forEach(function(campo) {
+            if (historiaPrevia[campo]) {
+                $('input[name="' + campo + '"][value="' + historiaPrevia[campo] + '"]').prop('checked', true);
+                console.log('✅ Campo educación cargado:', campo, '=', historiaPrevia[campo]);
+            }
+        });
 
         console.log('✅ Datos previos cargados exitosamente');
 
@@ -1599,13 +1620,15 @@ $(document).ready(function() {
         }
     }
 
-    // ============================================
-// ✅ ENVÍO DEL FORMULARIO (VERSIÓN MEJORADA)
-// ============================================
-$('#historiaClinicaForm').on('submit', function(e) {
+   $('#historiaClinicaForm').on('submit', function(e) {
     e.preventDefault();
     
     console.log('📤 Iniciando envío del formulario...');
+    
+    // ✅ OBTENER CITA UUID ANTES DE TODO
+    const citaUuid = $('input[name="cita_uuid"]').val();
+    
+    console.log('🔍 Cita UUID detectado:', citaUuid);
     
     // ✅ HABILITAR CAMPO ADHERENTE ANTES DEL ENVÍO
     $('input[name="adherente"]').prop('readonly', false);
@@ -1625,20 +1648,35 @@ $('#historiaClinicaForm').on('submit', function(e) {
     // Preparar datos
     const formData = new FormData(this);
     
-    // ✅ AGREGAR TIMEOUT PARA EVITAR ESPERA INFINITA
+    // ✅ VARIABLE PARA CONTROLAR SI YA SE PROCESÓ LA RESPUESTA
+    let respuestaProcesada = false;
+    
+    // ✅ TIMEOUT MEJORADO CON CONTROL DE ESTADO
     const timeoutId = setTimeout(function() {
-        console.log('⏰ Timeout alcanzado (10s), ocultando loading...');
+        if (respuestaProcesada) {
+            console.log('⏰ Timeout ignorado - respuesta ya procesada');
+            return;
+        }
+        
+        console.log('⏰ Timeout alcanzado (15s), procesando...');
+        respuestaProcesada = true;
+        
         $('#loading_overlay').hide();
+        
+        // ✅ DISPARAR EVENTO INCLUSO EN TIMEOUT
+        dispararEventoHistoriaGuardada(citaUuid, null, false);
+        
         Swal.fire({
-            icon: 'warning',
+            icon: 'info',
             title: 'Procesando...',
-            text: 'La historia clínica se está guardando. Por favor espere...',
-            timer: 3000,
-            showConfirmButton: false
+            text: 'La historia clínica se está guardando. Será redirigido al cronograma.',
+            timer: 2000,
+            showConfirmButton: false,
+            allowOutsideClick: false
         }).then(() => {
             window.location.href = '{{ route("cronograma.index") }}';
         });
-    }, 10000); // 10 segundos de timeout
+    }, 15000); // 15 segundos de timeout
     
     $.ajax({
         url: $(this).attr('action'),
@@ -1648,37 +1686,64 @@ $('#historiaClinicaForm').on('submit', function(e) {
         contentType: false,
         timeout: 30000, // ✅ TIMEOUT DE 30 SEGUNDOS
         success: function(response) {
+            // ✅ VERIFICAR SI YA SE PROCESÓ
+            if (respuestaProcesada) {
+                console.log('⚠️ Respuesta ignorada - ya se procesó por timeout');
+                return;
+            }
+            
+            respuestaProcesada = true;
             clearTimeout(timeoutId);
-            $('#loading_overlay').hide();
             
             console.log('✅ Respuesta recibida:', response);
             
+            // ✅ OCULTAR LOADING INMEDIATAMENTE
+            $('#loading_overlay').hide();
+            
             if (response.success) {
+                // ✅✅✅ DISPARAR EVENTO DE HISTORIA GUARDADA ✅✅✅
+                dispararEventoHistoriaGuardada(
+                    citaUuid,
+                    response.historia_uuid || null,
+                    response.offline || false
+                );
+                
+                // ✅ MOSTRAR MENSAJE Y REDIRIGIR SIN ESPERAR CONFIRMACIÓN
                 Swal.fire({
                     icon: 'success',
                     title: '¡Éxito!',
-                    text: response.message || 'Control guardado exitosamente',
-                    confirmButtonText: 'Continuar',
+                    text: response.message || 'Control guardado exitosamente. Cita marcada como atendida.',
+                    timer: 2000,
+                    showConfirmButton: false,
                     allowOutsideClick: false
-                }).then((result) => {
+                }).then(() => {
+                    // ✅ REDIRIGIR DESPUÉS DEL MENSAJE
                     if (response.redirect_url) {
                         window.location.href = response.redirect_url;
                     } else {
                         window.location.href = '{{ route("cronograma.index") }}';
                     }
                 });
+                
             } else {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
                     text: response.error || 'Error guardando el control',
-                    confirmButtonText: 'Entendido'
+                    confirmButtonText: 'Entendido',
+                    allowOutsideClick: false
                 });
             }
         },
         error: function(xhr, status, error) {
+            // ✅ VERIFICAR SI YA SE PROCESÓ
+            if (respuestaProcesada) {
+                console.log('⚠️ Error ignorado - ya se procesó por timeout');
+                return;
+            }
+            
+            respuestaProcesada = true;
             clearTimeout(timeoutId);
-            $('#loading_overlay').hide();
             
             console.error('❌ Error en AJAX:', {
                 status: xhr.status,
@@ -1687,10 +1752,18 @@ $('#historiaClinicaForm').on('submit', function(e) {
                 responseText: xhr.responseText
             });
             
+            // ✅ OCULTAR LOADING INMEDIATAMENTE
+            $('#loading_overlay').hide();
+            
             let errorMessage = 'Error interno del servidor';
+            let shouldRedirect = false;
             
             if (status === 'timeout') {
-                errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado. Por favor verifique.';
+                errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado correctamente.';
+                shouldRedirect = true;
+                // ✅ DISPARAR EVENTO INCLUSO EN TIMEOUT
+                dispararEventoHistoriaGuardada(citaUuid, null, false);
+                
             } else if (xhr.status === 422) {
                 const errors = xhr.responseJSON?.errors;
                 if (errors) {
@@ -1703,20 +1776,30 @@ $('#historiaClinicaForm').on('submit', function(e) {
             }
             
             Swal.fire({
-                icon: 'error',
-                title: 'Error',
+                icon: shouldRedirect ? 'warning' : 'error',
+                title: shouldRedirect ? 'Atención' : 'Error',
                 html: errorMessage.replace(/\n/g, '<br>'),
-                confirmButtonText: 'Entendido'
+                confirmButtonText: 'Entendido',
+                allowOutsideClick: false
+            }).then(() => {
+                if (shouldRedirect) {
+                    window.location.href = '{{ route("cronograma.index") }}';
+                }
             });
         },
         complete: function() {
-            console.log('🏁 Petición completada');
+            console.log('🏁 Petición AJAX completada');
+            
+            // ✅ ASEGURAR QUE EL LOADING SE OCULTE
+            setTimeout(function() {
+                $('#loading_overlay').hide();
+            }, 100);
+            
             // ✅ VOLVER A DESHABILITAR DESPUÉS DEL ENVÍO
             $('input[name="adherente"]').prop('readonly', true);
         }
     });
 });
-
     // ============================================
     // ✅ FUNCIÓN DE VALIDACIÓN ESPECÍFICA PARA CONTROL
     // ============================================
@@ -1894,30 +1977,31 @@ $('#historiaClinicaForm').on('submit', function(e) {
             }
         }
         
-       // ✅ VALIDACIÓN CORRECTA PARA RADIO BUTTONS
-const camposEducacion = [
-    'alimentacion', 
-    'fomento_actividad_fisica', 
-    'importancia_adherencia_tratamiento',
-    'disminucion_consumo_sal_azucar', 
-    'disminucion_consumo_cigarrillo', 
-    'disminucion_peso', 
-    'consumo_frutas_verduras',
-    'manejo_estres'
-];
+        // ✅ VALIDACIÓN CORRECTA PARA RADIO BUTTONS
+        const camposEducacion = [
+            'alimentacion', 
+            'fomento_actividad_fisica', 
+            'importancia_adherencia_tratamiento',
+            'disminucion_consumo_sal_azucar', 
+            'disminucion_consumo_cigarrillo', 
+            'disminucion_peso', 
+            'consumo_frutas_verduras',
+            'manejo_estres'
+        ];
 
-for (let campo of camposEducacion) {
-    // ✅ Verificar si algún radio button está seleccionado
-    if (!$('input[name="' + campo + '"]:checked').length) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Campo requerido',
-            text: `Debe seleccionar una opción para: ${campo.replace(/_/g, ' ').toUpperCase()}`
-        });
-        $('input[name="' + campo + '"]').first().focus();
-        return false;
-    }
-}
+        for (let campo of camposEducacion) {
+            // ✅ Verificar si algún radio button está seleccionado
+            if (!$('input[name="'
+             + campo + '"]:checked').length) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Campo requerido',
+                    text: `Debe seleccionar una opción para: ${campo.replace(/_/g, ' ').toUpperCase()}`
+                });
+                $('input[name="' + campo + '"]').first().focus();
+                return false;
+            }
+        }
         
         // Validar test de Morisky
         const preguntasMorisky = [

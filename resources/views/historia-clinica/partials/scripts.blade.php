@@ -7,6 +7,27 @@ $(document).ready(function() {
     let cupsCounter = 0;
     let diagnosticoSeleccionado = null;
     
+    // ============================================
+    // ✅✅✅ FUNCIÓN PARA DISPARAR EVENTO DE HISTORIA GUARDADA ✅✅✅
+    // ============================================
+    function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
+        console.log('📋 Disparando evento historiaClinicaGuardada', {
+            citaUuid: citaUuid,
+            historiaUuid: historiaUuid,
+            offline: offline
+        });
+        
+        window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
+            detail: {
+                cita_uuid: citaUuid,
+                historia_uuid: historiaUuid,
+                offline: offline || false
+            }
+        }));
+        
+        console.log('✅ Evento disparado exitosamente');
+    }
+    
     // ✅ CÁLCULO AUTOMÁTICO DE IMC
     $('#peso, #talla').on('input', function() {
         calcularIMC();
@@ -168,7 +189,7 @@ $(document).ready(function() {
         
         $('#buscar_diagnostico').val(`${diagnostico.codigo} - ${diagnostico.nombre}`);
         $('#idDiagnostico').val(diagnostico.uuid || diagnostico.id);
-               $('#diagnostico_info').text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
+        $('#diagnostico_info').text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
         $('#diagnostico_seleccionado').show();
         $('#diagnosticos_resultados').removeClass('show').empty();
     }
@@ -584,9 +605,18 @@ $(document).ready(function() {
         $(this).closest('.cups-item').remove();
     });
     
-    // ✅ ENVÍO DEL FORMULARIO
+    // ============================================
+    // ✅✅✅ ENVÍO DEL FORMULARIO CON EVENTO DE HISTORIA GUARDADA - VERSIÓN CORREGIDA ✅✅✅
+    // ============================================
     $('#historiaClinicaForm').on('submit', function(e) {
         e.preventDefault();
+        
+        console.log('📤 Iniciando envío del formulario...');
+        
+        // ✅ OBTENER CITA UUID ANTES DE TODO
+        const citaUuid = $('input[name="cita_uuid"]').val();
+        
+        console.log('🔍 Cita UUID detectado:', citaUuid);
         
         // ✅ HABILITAR CAMPO ADHERENTE ANTES DEL ENVÍO
         $('input[name="adherente"]').prop('readonly', false);
@@ -601,8 +631,11 @@ $(document).ready(function() {
             
             // ✅ VOLVER A DESHABILITAR SI HAY ERROR
             $('input[name="adherente"]').prop('readonly', true);
+            console.log('❌ Validación fallida - falta diagnóstico principal');
             return;
         }
+        
+        console.log('✅ Validación exitosa, preparando envío...');
         
         // Mostrar loading
         $('#loading_overlay').show();
@@ -613,55 +646,153 @@ $(document).ready(function() {
         // ✅ LOGGING PARA VERIFICAR QUE SE ENVÍA
         console.log('Adherente value:', $('input[name="adherente"]:checked').val());
         
+        // ✅ VARIABLE PARA CONTROLAR SI YA SE PROCESÓ LA RESPUESTA
+        let respuestaProcesada = false;
+        
+        // ✅ TIMEOUT MEJORADO CON CONTROL DE ESTADO
+        const timeoutId = setTimeout(function() {
+            if (respuestaProcesada) {
+                console.log('⏰ Timeout ignorado - respuesta ya procesada');
+                return;
+            }
+            
+            console.log('⏰ Timeout alcanzado (15s), procesando...');
+            respuestaProcesada = true;
+            
+            $('#loading_overlay').hide();
+            
+            // ✅ DISPARAR EVENTO INCLUSO EN TIMEOUT
+            dispararEventoHistoriaGuardada(citaUuid, null, false);
+            
+            Swal.fire({
+                icon: 'info',
+                title: 'Procesando...',
+                text: 'La historia clínica se está guardando. Será redirigido al cronograma.',
+                timer: 2000,
+                showConfirmButton: false,
+                allowOutsideClick: false
+            }).then(() => {
+                window.location.href = '{{ route("cronograma.index") }}';
+            });
+        }, 15000); // 15 segundos de timeout
+        
         $.ajax({
             url: $(this).attr('action'),
             method: 'POST',
             data: formData,
             processData: false,
             contentType: false,
+            timeout: 30000, // ✅ TIMEOUT DE 30 SEGUNDOS
             success: function(response) {
+                // ✅ VERIFICAR SI YA SE PROCESÓ
+                if (respuestaProcesada) {
+                    console.log('⚠️ Respuesta ignorada - ya se procesó por timeout');
+                    return;
+                }
+                
+                respuestaProcesada = true;
+                clearTimeout(timeoutId);
+                
+                console.log('✅ Respuesta recibida:', response);
+                
+                // ✅ OCULTAR LOADING INMEDIATAMENTE
                 $('#loading_overlay').hide();
                 
                 if (response.success) {
+                    // ✅✅✅ DISPARAR EVENTO DE HISTORIA GUARDADA ✅✅✅
+                    dispararEventoHistoriaGuardada(
+                        citaUuid,
+                        response.historia_uuid || null,
+                        response.offline || false
+                    );
+                    
+                    // ✅ MOSTRAR MENSAJE Y REDIRIGIR SIN ESPERAR CONFIRMACIÓN
                     Swal.fire({
                         icon: 'success',
                         title: '¡Éxito!',
-                        text: response.message,
-                        confirmButtonText: 'Continuar'
-                    }).then((result) => {
+                        text: response.message || 'Historia clínica guardada exitosamente. Cita marcada como atendida.',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        allowOutsideClick: false
+                    }).then(() => {
+                        // ✅ REDIRIGIR DESPUÉS DEL MENSAJE
                         if (response.redirect_url) {
                             window.location.href = response.redirect_url;
+                        } else {
+                            window.location.href = '{{ route("cronograma.index") }}';
                         }
                     });
+                    
                 } else {
                     Swal.fire({
                         icon: 'error',
                         title: 'Error',
-                        text: response.error || 'Error guardando la historia clínica'
+                        text: response.error || 'Error guardando la historia clínica',
+                        confirmButtonText: 'Entendido',
+                                                allowOutsideClick: false
                     });
                 }
             },
-            error: function(xhr) {
+            error: function(xhr, status, error) {
+                // ✅ VERIFICAR SI YA SE PROCESÓ
+                if (respuestaProcesada) {
+                    console.log('⚠️ Error ignorado - ya se procesó por timeout');
+                    return;
+                }
+                
+                respuestaProcesada = true;
+                clearTimeout(timeoutId);
+                
+                console.error('❌ Error en AJAX:', {
+                    status: xhr.status,
+                    statusText: status,
+                    error: error,
+                    responseText: xhr.responseText
+                });
+                
+                // ✅ OCULTAR LOADING INMEDIATAMENTE
                 $('#loading_overlay').hide();
                 
                 let errorMessage = 'Error interno del servidor';
+                let shouldRedirect = false;
                 
-                if (xhr.status === 422) {
+                if (status === 'timeout') {
+                    errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado correctamente.';
+                    shouldRedirect = true;
+                    // ✅ DISPARAR EVENTO INCLUSO EN TIMEOUT
+                    dispararEventoHistoriaGuardada(citaUuid, null, false);
+                    
+                } else if (xhr.status === 422) {
                     const errors = xhr.responseJSON?.errors;
                     if (errors) {
                         errorMessage = Object.values(errors).flat().join('\n');
                     }
                 } else if (xhr.responseJSON?.error) {
                     errorMessage = xhr.responseJSON.error;
+                } else if (xhr.status === 0) {
+                    errorMessage = 'No se pudo conectar con el servidor. Verifique su conexión.';
                 }
                 
                 Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: errorMessage
+                    icon: shouldRedirect ? 'warning' : 'error',
+                    title: shouldRedirect ? 'Atención' : 'Error',
+                    html: errorMessage.replace(/\n/g, '<br>'),
+                    confirmButtonText: 'Entendido',
+                    allowOutsideClick: false
+                }).then(() => {
+                    if (shouldRedirect) {
+                        window.location.href = '{{ route("cronograma.index") }}';
+                    }
                 });
             },
             complete: function() {
+                console.log('🏁 Petición AJAX completada');
+                
+                // ✅ ASEGURAR QUE EL LOADING SE OCULTE
+                setTimeout(function() {
+                    $('#loading_overlay').hide();
+                }, 100);
+                
                 // ✅ VOLVER A DESHABILITAR DESPUÉS DEL ENVÍO
                 $('input[name="adherente"]').prop('readonly', true);
             }
@@ -670,9 +801,11 @@ $(document).ready(function() {
 
 }); // ✅ CERRAR $(document).ready
 
-// ✅ FUNCIÓN DE CÁLCULO DE ADHERENCIA MORISKY - FUERA DEL DOCUMENT.READY
+// ============================================
+// ✅✅✅ FUNCIÓN DE CÁLCULO DE ADHERENCIA MORISKY - FUERA DEL DOCUMENT.READY ✅✅✅
+// ============================================
 function calcularAdherenciaMorisky() {
-    console.log('Calculando adherencia Morisky...');
+    console.log('📊 Calculando adherencia Morisky...');
     
     // ✅ OBTENER RESPUESTAS
     const olvida = $('input[name="test_morisky_olvida_tomar_medicamentos"]:checked').val();
@@ -681,7 +814,7 @@ function calcularAdherenciaMorisky() {
     const sienteMal = $('input[name="test_morisky_siente_mal_deja_tomarlos"]:checked').val();
     const psicologia = $('input[name="test_morisky_valoracio_psicologia"]:checked').val();
     
-    console.log('Respuestas:', { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia });
+    console.log('Respuestas Test Morisky:', { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia });
     
     // ✅ VERIFICAR QUE TODAS LAS PREGUNTAS ESTÉN RESPONDIDAS
     if (!olvida || !horaIndicada || !cuandoEstaBien || !sienteMal || !psicologia) {
@@ -689,7 +822,7 @@ function calcularAdherenciaMorisky() {
         $('#adherente_si').prop('checked', false);
         $('#adherente_no').prop('checked', true);
         $('#explicacion_adherencia').hide();
-        console.log('No todas las preguntas están respondidas');
+        console.log('⚠️ No todas las preguntas están respondidas');
         return;
     }
     
@@ -717,11 +850,11 @@ function calcularAdherenciaMorisky() {
     if (esAdherente) {
         $('#adherente_si').prop('checked', true);
         $('#adherente_no').prop('checked', false);
-        explicacion = `<strong>ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente muestra buena adherencia al tratamiento farmacológico.`;
+        explicacion = `<strong class="text-success">✅ ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente muestra buena adherencia al tratamiento farmacológico.`;
     } else {
         $('#adherente_si').prop('checked', false);
         $('#adherente_no').prop('checked', true);
-        explicacion = `<strong>NO ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente presenta problemas de adherencia al tratamiento farmacológico.`;
+        explicacion = `<strong class="text-danger">❌ NO ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente presenta problemas de adherencia al tratamiento farmacológico.`;
     }
     
     // ✅ MOSTRAR EXPLICACIÓN
@@ -730,10 +863,10 @@ function calcularAdherenciaMorisky() {
     
     // ✅ AGREGAR RECOMENDACIÓN PARA PSICOLOGÍA SI ES NECESARIO
     if (!esAdherente || psicologia === 'SI') {
-        $('#texto_explicacion').append('<br><strong>Recomendación:</strong> Considerar valoración por psicología para mejorar adherencia.');
+        $('#texto_explicacion').append('<br><strong class="text-warning">⚠️ Recomendación:</strong> Considerar valoración por psicología para mejorar adherencia.');
     }
     
-    console.log('Test Morisky calculado:', {
+    console.log('✅ Test Morisky calculado:', {
         puntuacion: puntuacion,
         adherente: esAdherente,
         respuestas: { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia }
