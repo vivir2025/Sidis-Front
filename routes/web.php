@@ -16,20 +16,17 @@ use App\Http\Controllers\{
     HistoriaClinicaController
 };
 
-// ====================================================================
-// 🔥 RUTAS PÚBLICAS SIN MIDDLEWARE (DEBEN IR PRIMERO)
-// ====================================================================
+// Rutas públicas (para usuarios no autenticados)
+Route::middleware('custom.guest')->group(function () {
+    Route::get('/', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/', [AuthController::class, 'login'])->name('login.post'); // ✅ AGREGAR nombre
+    
+    // ✅ NUEVA: Ruta para obtener datos recordados
+    Route::get('/remembered-data', [AuthController::class, 'getRememberedData'])->name('remembered.data');
+});
 
-// ✅ FIRMA MÓVIL - ACCESIBLE SIN AUTENTICACIÓN
-Route::get('/firma-movil/{token}', [FirmaQRController::class, 'mostrarPaginaMovil'])
-    ->name('firma.movil')
-    ->where('token', '[a-zA-Z0-9_-]+');
-
-Route::post('/firma-movil/{token}', [FirmaQRController::class, 'guardarFirmaMovil'])
-    ->name('firma.guardar-movil')
-    ->where('token', '[a-zA-Z0-9_-]+');
-
-// ✅ HEALTH CHECK - ACCESIBLE SIN AUTENTICACIÓN
+// ✅ NUEVAS: Rutas de verificación sin autenticación (accesibles siempre)
+Route::get('/check-connection', [AuthController::class, 'checkConnection'])->name('check-connection');
 Route::get('/health-check', function() {
     return response()->json([
         'status' => 'ok',
@@ -69,8 +66,7 @@ Route::middleware('custom.auth')->group(function () {
     
     // ✅ DASHBOARD
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::get('/dashboard/activity', [DashboardController::class, 'recentActivity'])
-        ->name('dashboard.activity');
+    Route::get('/dashboard/activity', [DashboardController::class, 'recentActivity'])->name('dashboard.activity');
     
     // ✅ FIRMA CON QR (DENTRO DE LA APLICACIÓN)
     Route::post('/usuarios/generar-qr-firma', [FirmaQRController::class, 'generarQR'])
@@ -102,17 +98,30 @@ Route::middleware('custom.auth')->group(function () {
             ->name('search');
         Route::get('stats', [PacienteController::class, 'stats'])
             ->name('stats');
-        Route::post('sync-all', [PacienteController::class, 'syncAllPendingChanges'])
-            ->name('sync.all');
-        Route::get('pending-count', [PacienteController::class, 'getPendingCount'])
-            ->name('pending.count');
-        Route::post('sync-pending', [PacienteController::class, 'syncPendingPacientes'])
-            ->name('sync');
-        Route::post('test-sync-manual', [PacienteController::class, 'testSyncManual'])
-            ->name('test-sync');
+            
+
+
     });
 
-    // ✅ AGENDAS
+    // ✅ ESTAS SON LAS RUTAS QUE FALTAN
+Route::post('pacientes/sync-all', [PacienteController::class, 'syncAllPendingChanges'])
+    ->name('pacientes.sync.all');
+
+Route::get('pacientes/pending-count', [PacienteController::class, 'getPendingCount'])
+    ->name('pacientes.pending.count');
+
+Route::post('pacientes/sync-pending', [PacienteController::class, 'syncPendingPacientes'])
+    ->name('pacientes.sync');
+    
+Route::post('pacientes/test-sync-manual', [PacienteController::class, 'testSyncManual'])
+    ->name('pacientes.test-sync');
+
+  // Rutas de sincronización
+    Route::post('/agendas/sync-pending', [AgendaController::class, 'syncPending'])->name('agendas.sync-pending');
+    Route::get('/agendas/pending-count', [AgendaController::class, 'pendingCount'])->name('agendas.pending-count');
+    Route::post('/sync-agendas', [AgendaController::class, 'syncPendingAgendas'])->name('agendas.sync');
+Route::get('/agendas/test-sync', [AgendaController::class, 'testSyncManual'])->name('agendas.test-sync');
+     // Agendas
     Route::prefix('agendas')->name('agendas.')->group(function () {
         Route::get('/', [AgendaController::class, 'index'])->name('index');
         Route::get('/create', [AgendaController::class, 'create'])->name('create');
