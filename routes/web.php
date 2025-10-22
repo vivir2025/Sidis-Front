@@ -12,17 +12,39 @@ use App\Http\Controllers\{
     CronogramaController,
     CupsController,
     UsuarioController,
+    FirmaQRController,
     HistoriaClinicaController
 };
 
-// Rutas públicas (para usuarios no autenticados)
+// ====================================================================
+// 🔥 RUTAS PÚBLICAS SIN MIDDLEWARE (DEBEN IR PRIMERO)
+// ====================================================================
+
+// ✅ FIRMA MÓVIL - ACCESIBLE SIN AUTENTICACIÓN
+Route::get('/firma-movil/{token}', [FirmaQRController::class, 'mostrarPaginaMovil'])
+    ->name('firma.movil')
+    ->where('token', '[a-zA-Z0-9_-]+');
+
+Route::post('/firma-movil/{token}', [FirmaQRController::class, 'guardarFirmaMovil'])
+    ->name('firma.guardar-movil')
+    ->where('token', '[a-zA-Z0-9_-]+');
+
+// ✅ HEALTH CHECK - ACCESIBLE SIN AUTENTICACIÓN
+Route::get('/check-connection', [AuthController::class, 'checkConnection'])
+    ->name('check-connection');
+
+
+// ====================================================================
+// 🔐 RUTAS PARA USUARIOS NO AUTENTICADOS (GUEST)
+// ====================================================================
+
 Route::middleware('custom.guest')->group(function () {
     Route::get('/', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/', [AuthController::class, 'login'])->name('login.post'); // ✅ AGREGAR nombre
-    
-    // ✅ NUEVA: Ruta para obtener datos recordados
-    Route::get('/remembered-data', [AuthController::class, 'getRememberedData'])->name('remembered.data');
+    Route::post('/', [AuthController::class, 'login'])->name('login.post');
+    Route::get('/remembered-data', [AuthController::class, 'getRememberedData'])
+        ->name('remembered.data');
 });
+
 
 // ✅ NUEVAS: Rutas de verificación sin autenticación (accesibles siempre)
 Route::get('/check-connection', [AuthController::class, 'checkConnection'])->name('check-connection');
@@ -48,6 +70,12 @@ Route::middleware('custom.auth')->group(function () {
     // ✅ DASHBOARD
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/activity', [DashboardController::class, 'recentActivity'])->name('dashboard.activity');
+
+        // ✅ FIRMA CON QR (DENTRO DE LA APLICACIÓN)
+    Route::post('/usuarios/generar-qr-firma', [FirmaQRController::class, 'generarQR'])
+        ->name('firma.generar-qr');
+    Route::get('/usuarios/verificar-firma/{token}', [FirmaQRController::class, 'verificarFirma'])
+        ->name('firma.verificar');
     
     // ✅ NUEVAS: Rutas de datos maestros
     Route::prefix('master-data')->name('master.')->group(function () {
@@ -76,7 +104,11 @@ Route::middleware('custom.auth')->group(function () {
 
 
     });
-
+    // ✅ FIRMA CON QR (DENTRO DE LA APLICACIÓN)
+    Route::post('/usuarios/generar-qr-firma', [FirmaQRController::class, 'generarQR'])
+        ->name('firma.generar-qr');
+    Route::get('/usuarios/verificar-firma/{token}', [FirmaQRController::class, 'verificarFirma'])
+        ->name('firma.verificar');
     // ✅ ESTAS SON LAS RUTAS QUE FALTAN
 Route::post('pacientes/sync-all', [PacienteController::class, 'syncAllPendingChanges'])
     ->name('pacientes.sync.all');
