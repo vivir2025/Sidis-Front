@@ -16,28 +16,23 @@
 </div>
 
 {{-- ✅ TEMPLATE PARA DIAGNÓSTICOS ADICIONALES --}}
-<script type="text/html" id="diagnostico_adicional_template">
-    <div class="diagnostico-adicional-item border rounded p-3 mb-3" style="background-color: #f8f9fa;">
+<template id="diagnostico_adicional_template">
+    <div class="diagnostico-adicional-item border rounded p-3 mb-5" style="background-color: #f8f9fa; position: relative;">
         <div class="row">
             <div class="col-md-10">
                 {{-- Buscador de Diagnóstico --}}
-                <div class="mb-3">
+                <div class="mb-3 diagnostico-adicional-search-wrapper" style="position: relative;">
                     <label class="form-label">Buscar Diagnóstico Adicional <span class="text-danger">*</span></label>
-                    <div class="position-relative">
-                        <input type="text" 
-                               class="form-control buscar-diagnostico-adicional" 
-                               placeholder="Escriba código o nombre del diagnóstico..." 
-                               autocomplete="off">
-                        
-                        <input type="hidden" 
-                               class="diagnostico-adicional-id" 
-                               name="diagnosticos_adicionales[][idDiagnostico]">  {{-- ✅ CAMBIADO --}}
-                        
-                        {{-- Dropdown de resultados --}}
-                        <div class="dropdown-menu diagnosticos-adicionales-resultados" 
-                             style="width: 100%; max-height: 300px; overflow-y: auto;">
-                        </div>
-                    </div>
+                    <input type="text" 
+                           class="form-control buscar-diagnostico-adicional" 
+                           placeholder="Escriba código o nombre del diagnóstico..." 
+                           autocomplete="off">
+                    
+                    <div class="dropdown-menu diagnosticos-adicionales-resultados w-100"></div>
+                    
+                    <input type="hidden" 
+                           class="diagnostico-adicional-id" 
+                           name="diagnosticos_adicionales[][idDiagnostico]">
                     
                     {{-- Alerta de diagnóstico seleccionado --}}
                     <div class="alert alert-info mt-2 diagnostico-adicional-seleccionado" style="display: none;">
@@ -66,4 +61,66 @@
             </div>
         </div>
     </div>
-</script>
+</template>
+
+{{-- 🎨 ESTILOS PARA DIAGNÓSTICOS ADICIONALES DROPDOWN --}}
+<style>
+.diagnostico-adicional-search-wrapper {
+    position: relative;
+}
+
+.diagnosticos-adicionales-resultados.dropdown-menu {
+    max-height: 300px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: block !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 1050 !important;
+    margin-top: 2px !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.diagnosticos-adicionales-resultados.dropdown-menu:empty {
+    display: none !important;
+}
+
+.diagnosticos-adicionales-resultados .dropdown-item {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    padding: 0.75rem 1rem !important;
+    line-height: 1.4 !important;
+}
+
+.diagnosticos-adicionales-resultados .dropdown-item:hover {
+    background-color: #fff3cd !important;
+    cursor: pointer !important;
+}
+
+.diagnosticos-adicionales-resultados .dropdown-item small {
+    display: block;
+    color: #6c757d;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.diagnosticos-adicionales-resultados .dropdown-item strong {
+    color: #856404;
+    font-weight: 600;
+}
+
+/* Asegurar espacio suficiente para el dropdown */
+.diagnostico-adicional-item {
+    margin-bottom: 2rem !important;
+}
+
+/* Estilo para el alerta de selección */
+.diagnostico-adicional-seleccionado {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+}
+</style>

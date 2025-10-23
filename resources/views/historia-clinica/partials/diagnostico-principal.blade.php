@@ -8,13 +8,14 @@
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
-                <div class="mb-3">
+                <div class="mb-3 diagnostico-search-wrapper" style="position: relative;">
                     <label for="buscar_diagnostico" class="form-label">Buscar Diagnóstico <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="buscar_diagnostico" 
-                           placeholder="Escriba código o nombre del diagnóstico..." required>
-                    <div id="diagnosticos_resultados" class="dropdown-menu w-100" style="max-height: 200px; overflow-y: auto;"></div>
+                           placeholder="Escriba código o nombre del diagnóstico..." 
+                           autocomplete="off" required>
+                    <div id="diagnosticos_resultados" class="dropdown-menu w-100"></div>
+                    <input type="hidden" id="idDiagnostico" name="idDiagnostico" required>
                 </div>
-                <input type="hidden" id="idDiagnostico" name="idDiagnostico" required>
             </div>
             <div class="col-md-6">
                 <div class="mb-3">
@@ -38,3 +39,54 @@
         </div>
     </div>
 </div>
+
+{{-- 🎨 ESTILOS PARA DIAGNÓSTICO DROPDOWN --}}
+<style>
+.diagnostico-search-wrapper {
+    position: relative;
+}
+
+#diagnosticos_resultados.dropdown-menu {
+    max-height: 300px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: block !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 1050 !important;
+    margin-top: 2px !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+#diagnosticos_resultados.dropdown-menu:empty {
+    display: none !important;
+}
+
+#diagnosticos_resultados .dropdown-item {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    padding: 0.75rem 1rem !important;
+    line-height: 1.4 !important;
+}
+
+#diagnosticos_resultados .dropdown-item:hover {
+    background-color: #f8f9fa !important;
+    cursor: pointer !important;
+}
+
+#diagnosticos_resultados .dropdown-item small {
+    display: block;
+    color: #6c757d;
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+}
+
+#diagnosticos_resultados .dropdown-item strong {
+    color: #dc3545;
+    font-weight: 600;
+}
+</style>
