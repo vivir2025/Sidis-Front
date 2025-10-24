@@ -321,8 +321,8 @@ private function formatearCupsParaFormulario(array $cups): array
                     
                     // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
                     $especialidadesConComplementaria = [
-                        'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
-                        'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
+                        'REFORMULACION', 'NUTRICIONISTA', 'PSICOLOGIA', 'NEFROLOGIA', 
+                        'INTERNISTA', 'FISIOTERAPIA', 'TRABAJO SOCIAL'
                     ];
 
                     $especialidad = $this->obtenerEspecialidadDesdeCita($request->cita_uuid);
@@ -1852,8 +1852,8 @@ public function determinarVista(Request $request, string $citaUuid)
         $vistaInfo = [
             'vista' => $this->determinarVistaOffline($especialidad, $tipoConsulta),
             'usa_complementaria' => in_array($especialidad, [
-                'CARDIOLOGÍA', 'PEDIATRÍA', 'GINECOLOGÍA', 'NEUROLOGÍA', 
-                'DERMATOLOGÍA', 'ORTOPEDIA', 'PSIQUIATRÍA'
+                'REFORMULACION', 'NUTRICIONISTA', 'PSICOLOGIA', 'NEFROLOGIA', 
+                'INTERNISTA', 'FISIOTERAPIA', 'TRABAJO SOCIAL'
             ]),
             'especialidad' => $especialidad,
             'tipo_consulta' => $tipoConsulta
@@ -2187,13 +2187,13 @@ private function determinarVistaEspecifica(string $especialidad, string $tipoCon
 {
     // ✅ ESPECIALIDADES QUE USAN TABLA COMPLEMENTARIA
     $especialidadesConComplementaria = [
-        'CARDIOLOGÍA',
-        'PEDIATRÍA', 
-        'GINECOLOGÍA',
-        'NEUROLOGÍA',
-        'DERMATOLOGÍA',
-        'ORTOPEDIA',
-        'PSIQUIATRÍA'
+        'REFORMULACION',
+        'NUTRICIONISTA', 
+        'PSICOLOGIA',
+        'NEFROLOGIA',
+        'INTERNISTA',
+        'FISIOTERAPIA',
+        'TRABAJO SOCIAL'
     ];
 
     $usaComplementaria = in_array($especialidad, $especialidadesConComplementaria);
@@ -2211,79 +2211,79 @@ private function determinarVistaEspecifica(string $especialidad, string $tipoCon
                 ));
             }
 
-        case 'CARDIOLOGÍA':
+        case 'REFORMULACION':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.cardiologia.primera-vez', compact(
+                return view('historia-clinica.reformulacion.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.cardiologia.control', compact(
+                return view('historia-clinica.reformulacion.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'PEDIATRÍA':
+        case 'NUTRICIONISTA':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.pediatria.primera-vez', compact(
+                return view('historia-clinica.nutricionista.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.pediatria.control', compact(
+                return view('historia-clinica.nutricionista.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'GINECOLOGÍA':
+        case 'PSICOLOGIA':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.ginecologia.primera-vez', compact(
+                return view('historia-clinica.psicologia.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.ginecologia.control', compact(
+                return view('historia-clinica.psicologia.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'NEUROLOGÍA':
+        case 'NEFROLOGIA':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.neurologia.primera-vez', compact(
+                return view('historia-clinica.nefrologia.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.neurologia.control', compact(
+                return view('historia-clinica.nefrologia.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'DERMATOLOGÍA':
+        case 'INTERNISTA':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.dermatologia.primera-vez', compact(
+                return view('historia-clinica.internista.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.dermatologia.control', compact(
+                return view('historia-clinica.internista.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'ORTOPEDIA':
+        case 'FISIOTERAPIA':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.ortopedia.primera-vez', compact(
+                return view('historia-clinica.fisioterapia.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.ortopedia.control', compact(
+                return view('historia-clinica.fisioterapia.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
 
-        case 'PSIQUIATRÍA':
+        case 'TRABAJO SOCIAL':
             if ($tipoConsulta === 'PRIMERA VEZ') {
-                return view('historia-clinica.psiquiatria.primera-vez', compact(
+                return view('historia-clinica.trabajo-social.primera-vez', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'usaComplementaria'
                 ));
             } else {
-                return view('historia-clinica.psiquiatria.control', compact(
+                return view('historia-clinica.trabajo-social.control', compact(
                     'cita', 'usuario', 'isOffline', 'masterData', 'historiaPrevia', 'usaComplementaria'
                 ));
             }
@@ -2492,33 +2492,33 @@ private function determinarVistaOffline(string $especialidad, string $tipoConsul
             'PRIMERA VEZ' => 'medicina-general.primera-vez',
             'CONTROL' => 'medicina-general.control'
         ],
-        'CARDIOLOGÍA' => [
-            'PRIMERA VEZ' => 'cardiologia.primera-vez',
-            'CONTROL' => 'cardiologia.control'
+        'REFORMULACION' => [
+            'PRIMERA VEZ' => 'reformulacion.primera-vez',
+            'CONTROL' => 'reformulacion.control'
         ],
-        'PEDIATRÍA' => [
-            'PRIMERA VEZ' => 'pediatria.primera-vez',
-            'CONTROL' => 'pediatria.control'
+        'NUTRICIONISTA' => [
+            'PRIMERA VEZ' => 'nutricionista.primera-vez',
+            'CONTROL' => 'nutricionista.control'
         ],
-        'GINECOLOGÍA' => [
-            'PRIMERA VEZ' => 'ginecologia.primera-vez',
-            'CONTROL' => 'ginecologia.control'
+        'PSICOLOGIA' => [
+            'PRIMERA VEZ' => 'psicologia.primera-vez',
+            'CONTROL' => 'psicologia.control'
         ],
-        'NEUROLOGÍA' => [
-            'PRIMERA VEZ' => 'neurologia.primera-vez',
-            'CONTROL' => 'neurologia.control'
+        'NEFROLOGIA' => [
+            'PRIMERA VEZ' => 'nefrologia.primera-vez',
+            'CONTROL' => 'nefrologia.control'
         ],
-        'DERMATOLOGÍA' => [
-            'PRIMERA VEZ' => 'dermatologia.primera-vez',
-            'CONTROL' => 'dermatologia.control'
+        'INTERNISTA' => [
+            'PRIMERA VEZ' => 'internista.primera-vez',
+            'CONTROL' => 'internista.control'
         ],
-        'ORTOPEDIA' => [
-            'PRIMERA VEZ' => 'ortopedia.primera-vez',
-            'CONTROL' => 'ortopedia.control'
+        'FISIOTERAPIA' => [
+            'PRIMERA VEZ' => 'fisioterapia.primera-vez',
+            'CONTROL' => 'fisioterapia.control'
         ],
-        'PSIQUIATRÍA' => [
-            'PRIMERA VEZ' => 'psiquiatria.primera-vez',
-            'CONTROL' => 'psiquiatria.control'
+        'TRABAJO SOCIAL' => [
+            'PRIMERA VEZ' => 'trabajo-social.primera-vez',
+            'CONTROL' => 'trabajo-social.control'
         ]
     ];
 

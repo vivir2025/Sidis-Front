@@ -118,13 +118,20 @@ Route::middleware('custom.auth')->group(function () {
         Route::post('test-sync-manual', [PacienteController::class, 'testSyncManual'])
             ->name('test-sync');
     });
-
+Route::post('/sync-agendas', [AgendaController::class, 'syncPendingAgendas'])
+        ->name('sync-agendas');
     // ✅ AGENDAS
     Route::prefix('agendas')->name('agendas.')->group(function () {
         Route::get('/', [AgendaController::class, 'index'])->name('index');
         Route::get('/create', [AgendaController::class, 'create'])->name('create');
         Route::post('/', [AgendaController::class, 'store'])->name('store');
         Route::get('/disponibles', [AgendaController::class, 'disponibles'])->name('disponibles');
+         
+        Route::get('/test-sync', [AgendaController::class, 'testSyncManual'])
+        ->name('test-sync');
+
+         
+
          Route::get('/{uuid}/citas', [AgendaController::class, 'getCitas'])
         ->name('citas')
         ->where('uuid', '[0-9a-f-]{36}');
