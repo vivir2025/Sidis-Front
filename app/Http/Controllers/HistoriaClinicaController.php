@@ -285,7 +285,7 @@ private function formatearCupsParaFormulario(array $cups): array
     }, $cups);
 }
 
-   public function store(Request $request)
+ public function store(Request $request)
 {
     try {
         $usuario = $this->authService->usuario();
@@ -316,26 +316,11 @@ private function formatearCupsParaFormulario(array $cups): array
                     // ✅ GUARDAR OFFLINE COMO BACKUP
                     $this->saveOffline($historiaData, false);
                     
-                    // ✅✅✅ NUEVO: CAMBIAR ESTADO DE LA CITA A ATENDIDA ✅✅✅
+                    // ✅ CAMBIAR ESTADO DE LA CITA A ATENDIDA
                     $this->marcarCitaComoAtendida($request->cita_uuid);
                     
-                    // ✅ VERIFICAR SI NECESITA DATOS COMPLEMENTARIOS
-                    $especialidadesConComplementaria = [
-                        'REFORMULACION', 'NUTRICIONISTA', 'PSICOLOGIA', 'NEFROLOGIA', 
-                        'INTERNISTA', 'FISIOTERAPIA', 'TRABAJO SOCIAL'
-                    ];
-
-                    $especialidad = $this->obtenerEspecialidadDesdeCita($request->cita_uuid);
-
-                    if (in_array($especialidad, $especialidadesConComplementaria)) {
-                        Log::info('📋 Creando historia complementaria para: ' . $especialidad);
-                        
-                        $historiaUuid = $result['data']['uuid'] ?? null;
-                        
-                        if ($historiaUuid) {
-                            $this->crearHistoriaComplementaria($historiaUuid, $request);
-                        }
-                    }
+                    // ✅✅✅ ELIMINADO: Ya no se crea complementaria aquí
+                    // El BACK lo maneja automáticamente en store()
                     
                     // ✅ RETORNAR RESPUESTA EXITOSA
                     return response()->json([
@@ -368,7 +353,7 @@ private function formatearCupsParaFormulario(array $cups): array
         
         Log::info('✅ Historia guardada offline exitosamente');
         
-        // ✅✅✅ NUEVO: CAMBIAR ESTADO OFFLINE TAMBIÉN ✅✅✅
+        // ✅ CAMBIAR ESTADO OFFLINE TAMBIÉN
         $this->marcarCitaComoAtendida($request->cita_uuid);
         
         // ✅ RETORNAR RESPUESTA EXITOSA OFFLINE
@@ -404,6 +389,7 @@ private function formatearCupsParaFormulario(array $cups): array
         ], 500);
     }
 }
+
 
 /**
  * ✅✅✅ NUEVO MÉTODO: MARCAR CITA COMO ATENDIDA ✅✅✅
@@ -725,6 +711,15 @@ private function validateHistoriaClinica(Request $request): array
         'observaciones_generales' => 'nullable|string|max:2000',
         'finalidad' => 'nullable|string|max:100',
         'causa_externa' => 'nullable|string|max:200',
+        'actitud' => 'nullable|string|max:500',
+        'evaluacion_d' => 'nullable|string|max:1000',
+        'evaluacion_p' => 'nullable|string|max:1000',
+        'estado' => 'nullable|string|max:500',
+        'evaluacion_dolor' => 'nullable|string|max:1000',
+        'evaluacion_os' => 'nullable|string|max:1000',
+        'evaluacion_neu' => 'nullable|string|max:1000',
+        'comitante' => 'nullable|string|max:500',
+        'plan_seguir' => 'nullable|string|max:2000',
         
          'medicamentos' => 'nullable|array',
         'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
@@ -1131,6 +1126,18 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         
         // ✅ OTROS
         'observaciones_generales' => $validatedData['observaciones_generales'] ?? null,
+
+        // ✅✅✅ CAMPOS DE FISIOTERAPIA ✅✅✅
+        'actitud' => $validatedData['actitud'] ?? null,
+        'evaluacion_d' => $validatedData['evaluacion_d'] ?? null,
+        'evaluacion_p' => $validatedData['evaluacion_p'] ?? null,
+        'estado' => $validatedData['estado'] ?? null,
+        'evaluacion_dolor' => $validatedData['evaluacion_dolor'] ?? null,
+        'evaluacion_os' => $validatedData['evaluacion_os'] ?? null,
+        'evaluacion_neu' => $validatedData['evaluacion_neu'] ?? null,
+        'comitante' => $validatedData['comitante'] ?? null,
+        'plan_seguir' => $validatedData['plan_seguir'] ?? null,
+
         
         // ✅ ARRAYS RELACIONADOS (mantén los métodos que ya tienes)
         'diagnosticos' => $this->prepareDiagnosticos($validatedData),
@@ -2306,10 +2313,7 @@ private function determinarVistaEspecifica(string $especialidad, string $tipoCon
     }
 }
 /**
- * ✅ OBTENER ESPECIALIDAD DESDE CITA UUID
- */
-/**
- * ✅ OBTENER ESPECIALIDAD DESDE CITA UUID - CORREGIDO
+ * ✅✅✅ OBTENER ESPECIALIDAD DESDE CITA - VERSIÓN CORREGIDA ✅✅✅
  */
 private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
 {
@@ -2318,6 +2322,7 @@ private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
             'cita_uuid' => $citaUuid
         ]);
         
+        // ✅ 1. OBTENER LA CITA
         $citaResult = $this->citaService->show($citaUuid);
         
         if (!$citaResult['success']) {
@@ -2329,28 +2334,130 @@ private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
         
         $cita = $citaResult['data'];
         
-        // ✅ INTENTAR OBTENER ESPECIALIDAD DE MÚLTIPLES FUENTES
-        $especialidad = $cita['agenda']['medico']['especialidad']['nombre'] ?? 
+        // ✅ 2. BUSCAR ESPECIALIDAD EN LA CITA DIRECTAMENTE
+        $especialidad = $cita['agenda']['proceso']['nombre'] ?? 
+                       $cita['proceso']['nombre'] ?? 
+                       $cita['agenda']['medico']['especialidad']['nombre'] ?? 
                        $cita['agenda']['usuario_medico']['especialidad']['nombre'] ?? 
                        $cita['medico']['especialidad']['nombre'] ?? 
                        $cita['especialidad']['nombre'] ?? 
                        $cita['especialidad_nombre'] ?? 
                        null;
         
-        Log::info('🔍 Especialidad detectada desde cita', [
-            'cita_uuid' => $citaUuid,
-            'especialidad' => $especialidad,
-            'estructura_cita_keys' => array_keys($cita),
-            'tiene_agenda' => isset($cita['agenda']),
-            'tiene_medico' => isset($cita['medico'])
+        if ($especialidad) {
+            Log::info('✅ Especialidad encontrada en cita', [
+                'especialidad' => $especialidad
+            ]);
+            return $especialidad;
+        }
+        
+        // ✅ 3. BUSCAR EN LA AGENDA
+        $agendaUuid = $cita['agenda_uuid'] ?? $cita['agenda']['uuid'] ?? null;
+        
+        if (!$agendaUuid) {
+            Log::warning('⚠️ No se encontró agenda_uuid en la cita');
+            return null;
+        }
+        
+        Log::info('🔍 Buscando especialidad en agenda', [
+            'agenda_uuid' => $agendaUuid
         ]);
         
-        return $especialidad;
+        // ✅ 4. BUSCAR EN AGENDA OFFLINE (JSON)
+        $agendaPath = storage_path("app/offline/agendas/{$agendaUuid}.json");
+        
+        if (file_exists($agendaPath)) {
+            $agendaContent = file_get_contents($agendaPath);
+            $agenda = json_decode($agendaContent, true);
+            
+            if ($agenda && json_last_error() === JSON_ERROR_NONE) {
+                // 🔥 BUSCAR EN PROCESO PRIMERO (es donde está en tu caso)
+                $especialidad = $agenda['proceso']['nombre'] ?? 
+                               $agenda['usuario_medico']['especialidad']['nombre'] ?? 
+                               $agenda['medico']['especialidad']['nombre'] ?? 
+                               $agenda['usuario']['especialidad']['nombre'] ?? 
+                               $agenda['especialidad']['nombre'] ?? 
+                               null;
+                
+                if ($especialidad) {
+                    Log::info('✅ Especialidad encontrada en agenda offline (JSON)', [
+                        'especialidad' => $especialidad,
+                        'agenda_uuid' => $agendaUuid,
+                        'fuente' => 'proceso'
+                    ]);
+                    return $especialidad;
+                }
+            }
+        }
+        
+        // ✅ 5. BUSCAR EN SQLITE
+        try {
+            $agendaOffline = $this->offlineService->getAgendaOffline($agendaUuid);
+            
+            if ($agendaOffline) {
+                $especialidad = $agendaOffline['proceso']['nombre'] ?? 
+                               $agendaOffline['usuario_medico']['especialidad']['nombre'] ?? 
+                               $agendaOffline['medico']['especialidad']['nombre'] ?? 
+                               $agendaOffline['usuario']['especialidad']['nombre'] ?? 
+                               $agendaOffline['especialidad']['nombre'] ?? 
+                               null;
+                
+                if ($especialidad) {
+                    Log::info('✅ Especialidad encontrada en SQLite', [
+                        'especialidad' => $especialidad,
+                        'agenda_uuid' => $agendaUuid
+                    ]);
+                    return $especialidad;
+                }
+            }
+        } catch (\Exception $offlineError) {
+            Log::debug('ℹ️ No se pudo buscar en SQLite', [
+                'error' => $offlineError->getMessage()
+            ]);
+        }
+        
+        // ✅ 6. ÚLTIMO INTENTO: CONSULTAR AGENDA AL API
+        if ($this->apiService->isOnline()) {
+            try {
+                $agendaResponse = $this->apiService->get("/agendas/{$agendaUuid}");
+                
+                if ($agendaResponse['success']) {
+                    $agendaAPI = $agendaResponse['data'];
+                    
+                    $especialidad = $agendaAPI['proceso']['nombre'] ?? 
+                                   $agendaAPI['usuario_medico']['especialidad']['nombre'] ?? 
+                                   $agendaAPI['medico']['especialidad']['nombre'] ?? 
+                                   $agendaAPI['usuario']['especialidad']['nombre'] ?? 
+                                   $agendaAPI['especialidad']['nombre'] ?? 
+                                   null;
+                    
+                    if ($especialidad) {
+                        Log::info('✅ Especialidad encontrada en agenda desde API', [
+                            'especialidad' => $especialidad,
+                            'agenda_uuid' => $agendaUuid
+                        ]);
+                        return $especialidad;
+                    }
+                }
+            } catch (\Exception $apiError) {
+                Log::debug('ℹ️ No se pudo consultar agenda al API', [
+                    'error' => $apiError->getMessage()
+                ]);
+            }
+        }
+        
+        Log::warning('⚠️ No se pudo encontrar la especialidad en ninguna fuente', [
+            'cita_uuid' => $citaUuid,
+            'agenda_uuid' => $agendaUuid
+        ]);
+        
+        return null;
         
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo especialidad desde cita', [
             'error' => $e->getMessage(),
-            'cita_uuid' => $citaUuid
+            'cita_uuid' => $citaUuid,
+            'trace' => $e->getTraceAsString()
         ]);
         
         return null;
@@ -2358,129 +2465,8 @@ private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
 }
 
 
-/**
- * ✅ CREAR HISTORIA COMPLEMENTARIA
- */
-private function crearHistoriaComplementaria(int $historiaId, Request $request): void
-{
-    try {
-        $datosComplementarios = $request->only([
-            // ✅ ANTECEDENTES PATOLÓGICOS
-            'sistema_nervioso_nefro_inter', 'sistema_hemolinfatico', 'aparato_digestivo',
-            'organo_sentido', 'endocrino_metabolico', 'inmunologico', 
-            'cancer_tumores_radioterapia_quimio', 'glandula_mamaria', 
-            'hipertension_diabetes_erc', 'reacciones_alergica', 'cardio_vasculares',
-            'respiratorios', 'urinarias', 'osteoarticulares', 'infecciosos',
-            'cirugia_trauma', 'tratamiento_medicacion', 'antecedente_quirurgico',
-            'antecedentes_familiares', 'consumo_tabaco', 'antecedentes_alcohol',
-            'sedentarismo', 'ginecologico', 'citologia_vaginal', 'menarquia',
-            'gestaciones', 'parto', 'aborto', 'cesaria', 'metodo_conceptivo',
-            'metodo_conceptivo_cual', 'antecedente_personal',
-            
-            // ✅ DESCRIPCIONES DETALLADAS
-            'descripcion_sistema_nervioso', 'descripcion_sistema_hemolinfatico',
-            'descripcion_aparato_digestivo', 'descripcion_organos_sentidos',
-            'descripcion_endocrino_metabolico', 'descripcion_inmunologico',
-            'descripcion_cancer_tumores_radio_quimioterapia', 'descripcion_glandulas_mamarias',
-            'descripcion_hipertension_diabetes_erc', 'descripcion_reacion_alergica',
-            'descripcion_cardio_vasculares', 'descripcion_respiratorios',
-            'descripcion_urinarias', 'descripcion_osteoarticulares',
-            'descripcion_infecciosos', 'descripcion_cirugias_traumas',
-            'descripcion_tratamiento_medicacion', 'descripcion_antecedentes_quirurgicos',
-            'descripcion_antecedentes_familiares', 'descripcion_consumo_tabaco',
-            'descripcion_antecedentes_alcohol', 'descripcion_sedentarismo',
-            'descripcion_ginecologicos', 'descripcion_citologia_vaginal',
-            
-            // ✅ NEUROLÓGICO Y ESTADO MENTAL
-            'neurologico_estado_mental', 'obs_neurologico_estado_mental',
-            
-            // ✅ ESTRUCTURA FAMILIAR
-            'estructura_familiar', 'cantidad_habitantes', 'cantidad_conforman_familia',
-            'composicion_familiar',
-            
-            // ✅ VIVIENDA
-            'tipo_vivienda', 'tenencia_vivienda', 'material_paredes', 'material_pisos',
-            'espacios_sala', 'comedor', 'banio', 'cocina', 'patio', 'cantidad_dormitorios',
-            'cantidad_personas_ocupan_cuarto',
-            
-            // ✅ SERVICIOS PÚBLICOS
-            'energia_electrica', 'alcantarillado', 'gas_natural', 'centro_atencion',
-            'acueducto', 'centro_culturales', 'ventilacion', 'organizacion',
-            'centro_educacion', 'centro_recreacion_esparcimiento',
-            
-            // ✅ EVALUACIÓN PSICOSOCIAL
-            'dinamica_familiar', 'diagnostico', 'acciones_seguir', 'motivo_consulta',
-            'psicologia_descripcion_problema', 'psicologia_red_apoyo',
-            'psicologia_plan_intervencion_recomendacion', 'psicologia_tratamiento_actual_adherencia',
-            'analisis_conclusiones', 'psicologia_comportamiento_consulta',
-            
-            // ✅ SEGUIMIENTO
-            'objetivo_visita', 'situacion_encontrada', 'compromiso', 'recomendaciones',
-            'siguiente_seguimiento', 'enfermedad_diagnostica',
-            
-            // ✅ ANTECEDENTES ADICIONALES
-            'habito_intestinal', 'quirurgicos', 'quirurgicos_observaciones',
-            'alergicos', 'alergicos_observaciones', 'familiares', 'familiares_observaciones',
-            'psa', 'psa_observaciones', 'farmacologicos', 'farmacologicos_observaciones',
-            'sueno', 'sueno_observaciones', 'tabaquismo_observaciones',
-            'ejercicio', 'ejercicio_observaciones',
-            
-            // ✅ GINECO-OBSTÉTRICOS
-            'embarazo_actual', 'semanas_gestacion', 'climatero',
-            
-            // ✅ EVALUACIÓN NUTRICIONAL
-            'tolerancia_via_oral', 'percepcion_apetito', 'percepcion_apetito_observacion',
-            'alimentos_preferidos', 'alimentos_rechazados', 'suplemento_nutricionales',
-            'dieta_especial', 'dieta_especial_cual',
-            
-            // ✅ HORARIOS DE COMIDA
-            'desayuno_hora', 'desayuno_hora_observacion', 'media_manana_hora',
-            'media_manana_hora_observacion', 'almuerzo_hora', 'almuerzo_hora_observacion',
-            'media_tarde_hora', 'media_tarde_hora_observacion', 'cena_hora',
-            'cena_hora_observacion', 'refrigerio_nocturno_hora', 'refrigerio_nocturno_hora_observacion',
-            
-            // ✅ EVALUACIÓN NUTRICIONAL DETALLADA
-            'peso_ideal', 'interpretacion', 'meta_meses', 'analisis_nutricional',
-            'plan_seguir', 'avance_paciente',
-            
-            // ✅ FRECUENCIA DE CONSUMO
-            'comida_desayuno', 'comida_almuerzo', 'comida_medio_almuerzo',
-            'comida_cena', 'comida_medio_desayuno',
-            
-            // ✅ GRUPOS DE ALIMENTOS
-            'lacteo', 'lacteo_observacion', 'huevo', 'huevo_observacion',
-            'embutido', 'embutido_observacion', 'carne_roja', 'carne_blanca',
-            'carne_vicera', 'carne_observacion', 'leguminosas', 'leguminosas_observacion',
-            'frutas_jugo', 'frutas_porcion', 'frutas_observacion', 'verduras_hortalizas',
-            'vh_observacion', 'cereales', 'cereales_observacion', 'rtp', 'rtp_observacion',
-            'azucar_dulce', 'ad_observacion',
-            
-            // ✅ DIAGNÓSTICO NUTRICIONAL
-            'diagnostico_nutri', 'plan_seguir_nutri',
-            
-            // ✅ EVALUACIÓN FÍSICA Y TERAPÉUTICA
-            'actitud', 'evaluacion_d', 'evaluacion_p', 'estado', 'evaluacion_dolor',
-            'evaluacion_os', 'evaluacion_neu', 'comitante'
-        ]);
 
-        if (!empty(array_filter($datosComplementarios))) {
-            \App\Models\HistoriaClinicaComplementaria::create([
-                'historia_clinica_id' => $historiaId,
-                ...$datosComplementarios
-            ]);
-            
-            Log::info('✅ Historia complementaria creada', [
-                'historia_id' => $historiaId,
-                'campos_completados' => count(array_filter($datosComplementarios))
-            ]);
-        }
-    } catch (\Exception $e) {
-        Log::error('❌ Error creando historia complementaria', [
-            'error' => $e->getMessage(),
-            'historia_id' => $historiaId
-        ]);
-    }
-}
+
 
 /**
  * ✅ DETERMINAR VISTA OFFLINE

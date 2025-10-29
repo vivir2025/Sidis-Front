@@ -21,8 +21,8 @@
             </div>
             <div class="col-md-4">
                 <div class="mb-3">
-                    <label for="telefono_acudiente" class="form-label">Teléfono</label>
-                    <input type="tel" class="form-control" id="telefono_acudiente" name="telefono_acudiente">
+                    <label for="acu_telefono" class="form-label">Teléfono</label>
+                    <input type="tel" class="form-control" id="acu_telefono" name="acu_telefono">
                 </div>
             </div>
         </div>

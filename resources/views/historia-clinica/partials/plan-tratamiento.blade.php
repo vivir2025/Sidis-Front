@@ -7,9 +7,9 @@
     </div>
     <div class="card-body">
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-12">
                 <textarea class="form-control" name="plan_seguir" 
-                          placeholder="plan a seguir" 
+                          placeholder="Plan a seguir" 
                           required rows="2" id="plan_seguir"></textarea>
             </div>
         </div>

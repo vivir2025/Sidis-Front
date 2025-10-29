@@ -1,14 +1,13 @@
 <script>
 $(document).ready(function() {
     // ✅ VARIABLES GLOBALES
-    let medicamentoCounter = 0;
     let diagnosticoAdicionalCounter = 0;
     let remisionCounter = 0;
     let cupsCounter = 0;
     let diagnosticoSeleccionado = null;
     
     // ============================================
-    // ✅✅✅ FUNCIÓN PARA DISPARAR EVENTO DE HISTORIA GUARDADA ✅✅✅
+    // ✅ FUNCIÓN PARA DISPARAR EVENTO DE HISTORIA GUARDADA
     // ============================================
     function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
         console.log('📋 Disparando evento historiaClinicaGuardada', {
@@ -28,7 +27,9 @@ $(document).ready(function() {
         console.log('✅ Evento disparado exitosamente');
     }
     
+    // ============================================
     // ✅ CÁLCULO AUTOMÁTICO DE IMC
+    // ============================================
     $('#peso, #talla').on('input', function() {
         calcularIMC();
     });
@@ -59,73 +60,9 @@ $(document).ready(function() {
         return 'Obesidad grado III';
     }
     
-    // ✅ HABILITAR/DESHABILITAR CAMPOS DE ANTECEDENTES FAMILIARES
-    $('.antecedente-familiar').on('change', function() {
-        const name = $(this).attr('name');
-        const value = $(this).val();
-        const textareaId = 'parentesco_' + name;
-        
-        if (value === 'SI') {
-            $('#' + textareaId).prop('disabled', false).focus();
-        } else {
-            $('#' + textareaId).prop('disabled', true).val('');
-        }
-    });
-
-    // ✅ HABILITAR/DESHABILITAR CAMPOS DE ANTECEDENTES PERSONALES
-    $('.antecedente-personal').on('change', function() {
-        const name = $(this).attr('name');
-        const value = $(this).val();
-        const textareaId = 'obs_' + name;
-        
-        if (value === 'SI') {
-            $('#' + textareaId).prop('disabled', false).focus();
-        } else {
-            $('#' + textareaId).prop('disabled', true).val('');
-        }
-    });
-    
-    // ✅ HABILITAR/DESHABILITAR CAMPO DE DROGA
-    $('input[name="drogodependiente"]').on('change', function() {
-        if ($(this).val() === 'SI') {
-            $('#drogodependiente_cual').prop('disabled', false).focus();
-        } else {
-            $('#drogodependiente_cual').prop('disabled', true).val('');
-        }
-    });
-
-    // ✅ HABILITAR/DESHABILITAR CAMPO DE LESIÓN ÓRGANO BLANCO
-    $('input[name="lesion_organo_blanco"]').on('change', function() {
-        if ($(this).val() === 'SI') {
-            $('#descripcion_lesion_organo_blanco').prop('disabled', false).focus();
-        } else {
-            $('#descripcion_lesion_organo_blanco').prop('disabled', true).val('');
-        }
-    });
-
-    // ✅ HABILITAR/DESHABILITAR CAMPOS DE HTA Y DM PERSONAL
-    $('input[name="hipertension_arterial_personal"]').on('change', function() {
-        if ($(this).val() === 'SI') {
-            $('#obs_hipertension_arterial_personal').prop('disabled', false).focus();
-        } else {
-            $('#obs_hipertension_arterial_personal').prop('disabled', true).val('');
-        }
-    });
-
-    $('input[name="diabetes_mellitus_personal"]').on('change', function() {
-        if ($(this).val() === 'SI') {
-            $('#obs_diabetes_mellitus_personal').prop('disabled', false).focus();
-        } else {
-            $('#obs_diabetes_mellitus_personal').prop('disabled', true).val('');
-        }
-    });
-    
-    // ✅ CÁLCULO AUTOMÁTICO DE ADHERENCIA TEST MORISKY
-    $(document).on('change', '.test-morisky-input', function() {
-        calcularAdherenciaMorisky();
-    });
-    
-    // ✅ BÚSQUEDA DE DIAGNÓSTICOS PRINCIPAL
+    // ============================================
+    // ✅ BÚSQUEDA DE DIAGNÓSTICO PRINCIPAL
+    // ============================================
     let diagnosticoTimeout;
     $('#buscar_diagnostico').on('input', function() {
         const termino = $(this).val().trim();
@@ -194,14 +131,18 @@ $(document).ready(function() {
         $('#diagnosticos_resultados').removeClass('show').empty();
     }
     
+    // ============================================
     // ✅ CERRAR DROPDOWNS AL HACER CLICK FUERA
+    // ============================================
     $(document).on('click', function(e) {
         if (!$(e.target).closest('.dropdown').length) {
             $('.dropdown-menu').removeClass('show');
         }
     });
     
-    // ✅ AGREGAR DIAGNÓSTICO ADICIONAL
+    // ============================================
+    // ✅ DIAGNÓSTICOS ADICIONALES
+    // ============================================
     $('#agregar_diagnostico_adicional').on('click', function() {
         agregarDiagnosticoAdicional();
     });
@@ -302,108 +243,9 @@ $(document).ready(function() {
         $(this).closest('.diagnostico-adicional-item').remove();
     });
     
-    // ✅ AGREGAR MEDICAMENTO
-    $('#agregar_medicamento').on('click', function() {
-        agregarMedicamento();
-    });
-    
-    function agregarMedicamento() {
-        const template = $('#medicamento_template').html();
-        const $medicamento = $(template);
-        
-        // Actualizar índices de los arrays
-        $medicamento.find('input[name*="medicamentos"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${medicamentoCounter}]`));
-        });
-        
-        $('#medicamentos_container').append($medicamento);
-        medicamentoCounter++;
-        
-        // Configurar búsqueda para este medicamento
-        configurarBusquedaMedicamento($medicamento);
-    }
-    
-    function configurarBusquedaMedicamento($container) {
-        const $input = $container.find('.buscar-medicamento');
-        const $resultados = $container.find('.medicamentos-resultados');
-        const $hiddenId = $container.find('.medicamento-id');
-        const $info = $container.find('.medicamento-info');
-        const $alert = $container.find('.medicamento-seleccionado');
-        
-        let medicamentoTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(medicamentoTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            medicamentoTimeout = setTimeout(() => {
-                buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-medicamentos") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosMedicamentos(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando medicamentos:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando medicamentos:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosMedicamentos(medicamentos, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (medicamentos.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron medicamentos</div>');
-        } else {
-            medicamentos.forEach(function(medicamento) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${medicamento.nombre}</strong><br><small class="text-muted">${medicamento.principio_activo || ''}</small>`)
-                    .data('medicamento', medicamento);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(medicamento.nombre);
-        $hiddenId.val(medicamento.uuid || medicamento.id);
-        $info.html(`<strong>${medicamento.nombre}</strong><br><small>${medicamento.principio_activo || ''}</small>`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
-
-    // ✅ ELIMINAR MEDICAMENTO
-    $(document).on('click', '.eliminar-medicamento', function() {
-        $(this).closest('.medicamento-item').remove();
-    });
-    
-    // ✅ AGREGAR REMISIÓN
+    // ============================================
+    // ✅ REMISIONES
+    // ============================================
     $('#agregar_remision').on('click', function() {
         agregarRemision();
     });
@@ -504,7 +346,9 @@ $(document).ready(function() {
         $(this).closest('.remision-item').remove();
     });
     
-    // ✅ AGREGAR CUPS
+    // ============================================
+    // ✅ CUPS
+    // ============================================
     $('#agregar_cups').on('click', function() {
         agregarCups();
     });
@@ -606,20 +450,17 @@ $(document).ready(function() {
     });
     
     // ============================================
-    // ✅✅✅ ENVÍO DEL FORMULARIO CON EVENTO DE HISTORIA GUARDADA - VERSIÓN CORREGIDA ✅✅✅
+    // ✅✅✅ ENVÍO DEL FORMULARIO - IGUAL A MEDICINA GENERAL ✅✅✅
     // ============================================
     $('#historiaClinicaForm').on('submit', function(e) {
         e.preventDefault();
         
-        console.log('📤 Iniciando envío del formulario...');
+        console.log('📤 Iniciando envío del formulario de FISIOTERAPIA...');
         
         // ✅ OBTENER CITA UUID ANTES DE TODO
         const citaUuid = $('input[name="cita_uuid"]').val();
         
         console.log('🔍 Cita UUID detectado:', citaUuid);
-        
-        // ✅ HABILITAR CAMPO ADHERENTE ANTES DEL ENVÍO
-        $('input[name="adherente"]').prop('readonly', false);
         
         // Validar diagnóstico principal
         if (!$('#idDiagnostico').val()) {
@@ -629,8 +470,6 @@ $(document).ready(function() {
                 text: 'Debe seleccionar un diagnóstico principal'
             });
             
-            // ✅ VOLVER A DESHABILITAR SI HAY ERROR
-            $('input[name="adherente"]').prop('readonly', true);
             console.log('❌ Validación fallida - falta diagnóstico principal');
             return;
         }
@@ -642,9 +481,6 @@ $(document).ready(function() {
         
         // Preparar datos
         const formData = new FormData(this);
-        
-        // ✅ LOGGING PARA VERIFICAR QUE SE ENVÍA
-        console.log('Adherente value:', $('input[name="adherente"]:checked').val());
         
         // ✅ VARIABLE PARA CONTROLAR SI YA SE PROCESÓ LA RESPUESTA
         let respuestaProcesada = false;
@@ -710,7 +546,7 @@ $(document).ready(function() {
                     Swal.fire({
                         icon: 'success',
                         title: '¡Éxito!',
-                        text: response.message || 'Historia clínica guardada exitosamente. Cita marcada como atendida.',
+                        text: response.message || 'Historia clínica de fisioterapia guardada exitosamente. Cita marcada como atendida.',
                         timer: 2000,
                         showConfirmButton: false,
                         allowOutsideClick: false
@@ -727,9 +563,9 @@ $(document).ready(function() {
                     Swal.fire({
                         icon: 'error',
                         title: 'Error',
-                        text: response.error || 'Error guardando la historia clínica',
+                        text: response.error || 'Error guardando la historia clínica de fisioterapia',
                         confirmButtonText: 'Entendido',
-                                                allowOutsideClick: false
+                        allowOutsideClick: false
                     });
                 }
             },
@@ -743,7 +579,7 @@ $(document).ready(function() {
                 respuestaProcesada = true;
                 clearTimeout(timeoutId);
                 
-                console.error('❌ Error en AJAX:', {
+                console.error('❌ Error en AJAX FISIOTERAPIA:', {
                     status: xhr.status,
                     statusText: status,
                     error: error,
@@ -786,91 +622,15 @@ $(document).ready(function() {
                 });
             },
             complete: function() {
-                console.log('🏁 Petición AJAX completada');
+                console.log('🏁 Petición AJAX FISIOTERAPIA completada');
                 
                 // ✅ ASEGURAR QUE EL LOADING SE OCULTE
                 setTimeout(function() {
                     $('#loading_overlay').hide();
                 }, 100);
-                
-                // ✅ VOLVER A DESHABILITAR DESPUÉS DEL ENVÍO
-                $('input[name="adherente"]').prop('readonly', true);
             }
         });
     });
 
 }); // ✅ CERRAR $(document).ready
-
-// ============================================
-// ✅✅✅ FUNCIÓN DE CÁLCULO DE ADHERENCIA MORISKY - FUERA DEL DOCUMENT.READY ✅✅✅
-// ============================================
-function calcularAdherenciaMorisky() {
-    console.log('📊 Calculando adherencia Morisky...');
-    
-    // ✅ OBTENER RESPUESTAS
-    const olvida = $('input[name="test_morisky_olvida_tomar_medicamentos"]:checked').val();
-    const horaIndicada = $('input[name="test_morisky_toma_medicamentos_hora_indicada"]:checked').val();
-    const cuandoEstaBien = $('input[name="test_morisky_cuando_esta_bien_deja_tomar_medicamentos"]:checked').val();
-    const sienteMal = $('input[name="test_morisky_siente_mal_deja_tomarlos"]:checked').val();
-    const psicologia = $('input[name="test_morisky_valoracio_psicologia"]:checked').val();
-    
-    console.log('Respuestas Test Morisky:', { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia });
-    
-    // ✅ VERIFICAR QUE TODAS LAS PREGUNTAS ESTÉN RESPONDIDAS
-    if (!olvida || !horaIndicada || !cuandoEstaBien || !sienteMal || !psicologia) {
-        // Si no están todas respondidas, resetear
-        $('#adherente_si').prop('checked', false);
-        $('#adherente_no').prop('checked', true);
-        $('#explicacion_adherencia').hide();
-        console.log('⚠️ No todas las preguntas están respondidas');
-        return;
-    }
-    
-    // ✅ CALCULAR PUNTUACIÓN MORISKY
-    let puntuacion = 0;
-    
-    // Pregunta 1: ¿Olvida alguna vez tomar los medicamentos? (SI = 1 punto)
-    if (olvida === 'SI') puntuacion += 1;
-    
-    // Pregunta 2: ¿Toma los medicamentos a la hora indicada? (NO = 1 punto)
-    if (horaIndicada === 'NO') puntuacion += 1;
-    
-    // Pregunta 3: ¿Cuando se encuentra bien, deja de tomar los medicamentos? (SI = 1 punto)
-    if (cuandoEstaBien === 'SI') puntuacion += 1;
-    
-    // Pregunta 4: ¿Si alguna vez se siente mal, deja de tomarlos? (SI = 1 punto)
-    if (sienteMal === 'SI') puntuacion += 1;
-    
-    // ✅ DETERMINAR ADHERENCIA
-    // Puntuación 0 = Adherente
-    // Puntuación 1-4 = No adherente
-    let esAdherente = puntuacion === 0;
-    let explicacion = '';
-    
-    if (esAdherente) {
-        $('#adherente_si').prop('checked', true);
-        $('#adherente_no').prop('checked', false);
-        explicacion = `<strong class="text-success">✅ ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente muestra buena adherencia al tratamiento farmacológico.`;
-    } else {
-        $('#adherente_si').prop('checked', false);
-        $('#adherente_no').prop('checked', true);
-        explicacion = `<strong class="text-danger">❌ NO ADHERENTE:</strong> Puntuación: ${puntuacion}/4. El paciente presenta problemas de adherencia al tratamiento farmacológico.`;
-    }
-    
-    // ✅ MOSTRAR EXPLICACIÓN
-    $('#texto_explicacion').html(explicacion);
-    $('#explicacion_adherencia').show();
-    
-    // ✅ AGREGAR RECOMENDACIÓN PARA PSICOLOGÍA SI ES NECESARIO
-    if (!esAdherente || psicologia === 'SI') {
-        $('#texto_explicacion').append('<br><strong class="text-warning">⚠️ Recomendación:</strong> Considerar valoración por psicología para mejorar adherencia.');
-    }
-    
-    console.log('✅ Test Morisky calculado:', {
-        puntuacion: puntuacion,
-        adherente: esAdherente,
-        respuestas: { olvida, horaIndicada, cuandoEstaBien, sienteMal, psicologia }
-    });
-}
 </script>
-

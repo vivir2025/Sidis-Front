@@ -9,8 +9,8 @@
         <div class="row">
             {{-- Actitud Postural --}}
             <div class="col-md-6 mb-3">
-                <label for="Actitud" class="form-label">Actitud Postural</label>
-                <select name="Actitud" id="Actitud" required class="form-select">
+                <label for="actitud" class="form-label">Actitud Postural</label>
+                <select name="actitud" id="actitud" required class="form-select">
                     <option value="NORMAL">Normal</option>
                     <option value="ALTERADA">Alterada</option>
                 </select>
@@ -18,8 +18,8 @@
 
             {{-- Evaluación de Sensibilidad --}}
             <div class="col-md-6 mb-3">
-                <label for="Evaluaciond" class="form-label">Evaluación de Sensibilidad</label>
-                <select name="Evaluaciond" id="Evaluaciond" required class="form-select">
+                <label for="evaluacion_d" class="form-label">Evaluación de Sensibilidad</label>
+                <select name="evaluacion_d" id="evaluacion_d" required class="form-select">
                     <option value="SUPERFICIAL">Superficial</option>
                     <option value="PROFUNDA">Profunda</option>
                 </select>
@@ -27,8 +27,8 @@
 
             {{-- Evaluación de Piel --}}
             <div class="col-md-6 mb-3">
-                <label for="Evaluacionp" class="form-label">Evaluación de Piel</label>
-                <select name="Evaluacionp" id="Evaluacionp" required class="form-select">
+                <label for="evaluacion_p" class="form-label">Evaluación de Piel</label>
+                <select name="evaluacion_p" id="evaluacion_p" required class="form-select">
                     <option value="COLOR">Color</option>
                     <option value="ERIMATOSA">Eritematosa</option>
                     <option value="EQUIMOSIS">Equimosis</option>
@@ -37,8 +37,8 @@
 
             {{-- Estado --}}
             <div class="col-md-6 mb-3">
-                <label for="Estado" class="form-label">Estado</label>
-                <select name="Estado" id="Estado" required class="form-select">
+                <label for="estado" class="form-label">Estado</label>
+                <select name="estado" id="estado" required class="form-select">
                     <option value="SECA">Seca</option>
                     <option value="BRILLANTE">Brillante</option>
                 </select>
@@ -46,31 +46,30 @@
 
             {{-- Evaluación del Dolor --}}
             <div class="col-md-6 mb-3">
-                <label for="Evaluacion_dolor" class="form-label">Evaluación del Dolor</label>
+                <label for="evaluacion_dolor" class="form-label">Evaluación del Dolor</label>
                 <textarea class="form-control" placeholder="Escribir" 
-                          id="Evaluacion_dolor" name="Evaluacion_dolor" rows="3"></textarea>
+                          id="evaluacion_dolor" name="evaluacion_dolor" rows="3"></textarea>
             </div>
 
             {{-- Evaluación Osteoarticular --}}
             <div class="col-md-6 mb-3">
-                <label for="Evaluacionos" class="form-label">Evaluación Osteoarticular</label>
+                <label for="evaluacion_os" class="form-label">Evaluación Osteoarticular</label>
                 <textarea class="form-control" placeholder="Escribir" 
-                          id="Evaluacionos" name="Evaluacionos" rows="3"></textarea>
+                          id="evaluacion_os" name="evaluacion_os" rows="3"></textarea>
             </div>
 
             {{-- Evaluación Neuromuscular --}}
             <div class="col-md-6 mb-3">
-                <label for="Evaluacionneu" class="form-label">Evaluación Neuromuscular</label>
+                <label for="evaluacion_neu" class="form-label">Evaluación Neuromuscular</label>
                 <textarea class="form-control" placeholder="Escribir" 
-                          id="Evaluacionneu" name="Evaluacionneu" rows="3"></textarea>
+                          id="evaluacion_neu" name="evaluacion_neu" rows="3"></textarea>
             </div>
 
-           
             {{-- Enfermedad Concomitante --}}
             <div class="col-md-12 mb-3">
-                <label for="Comitante" class="form-label">Padece de una Enfermedad Concomitante</label>
+                <label for="comitante" class="form-label">Padece de una Enfermedad Concomitante</label>
                 <textarea class="form-control" placeholder="Escribir" 
-                          id="Comitante" name="Comitante" rows="3"></textarea>
+                          id="comitante" name="comitante" rows="3"></textarea>
             </div>
         </div>
     </div>
