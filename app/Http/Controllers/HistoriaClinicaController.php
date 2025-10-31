@@ -720,6 +720,13 @@ private function validateHistoriaClinica(Request $request): array
         'evaluacion_neu' => 'nullable|string|max:1000',
         'comitante' => 'nullable|string|max:500',
         'plan_seguir' => 'nullable|string|max:2000',
+        'estructura_familiar' => 'nullable|string|max:2000',
+        'psicologia_red_apoyo' => 'nullable|string|max:2000',
+        'psicologia_comportamiento_consulta' => 'nullable|string|max:2000',
+        'psicologia_tratamiento_actual_adherencia' => 'nullable|string|max:2000',
+        'psicologia_descripcion_problema' => 'required|string|max:5000',
+        'analisis_conclusiones' => 'nullable|string|max:5000',
+        'psicologia_plan_intervencion_recomendacion' => 'required|string|max:5000',
         
          'medicamentos' => 'nullable|array',
         'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
@@ -1137,6 +1144,16 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'evaluacion_neu' => $validatedData['evaluacion_neu'] ?? null,
         'comitante' => $validatedData['comitante'] ?? null,
         'plan_seguir' => $validatedData['plan_seguir'] ?? null,
+
+         // ✅✅✅ CAMPOS DE PSICOLOGÍA ✅✅✅
+        'estructura_familiar' => $validatedData['estructura_familiar'] ?? null,
+        'psicologia_red_apoyo' => $validatedData['psicologia_red_apoyo'] ?? null,
+        'psicologia_comportamiento_consulta' => $validatedData['psicologia_comportamiento_consulta'] ?? null,
+        'psicologia_tratamiento_actual_adherencia' => $validatedData['psicologia_tratamiento_actual_adherencia'] ?? null,
+        'psicologia_descripcion_problema' => $validatedData['psicologia_descripcion_problema'] ?? null,
+        'analisis_conclusiones' => $validatedData['analisis_conclusiones'] ?? null,
+        'psicologia_plan_intervencion_recomendacion' => $validatedData['psicologia_plan_intervencion_recomendacion'] ?? null,
+        
 
         
         // ✅ ARRAYS RELACIONADOS (mantén los métodos que ya tienes)
