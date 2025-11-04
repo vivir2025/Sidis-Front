@@ -726,9 +726,9 @@ private function validateHistoriaClinica(Request $request): array
         'psicologia_tratamiento_actual_adherencia' => 'nullable|string|max:2000',
         'psicologia_descripcion_problema' => 'required|string|max:5000',
         'analisis_conclusiones' => 'nullable|string|max:5000',
-        'psicologia_plan_intervencion_recomendacion' => 'required|string|max:5000',
-        
-         'medicamentos' => 'nullable|array',
+        'psicologia_plan_intervencion_recomendacion' => 'nullable|string|max:5000',
+        'avance_paciente' => 'nullable|string|max:2000',
+        'medicamentos' => 'nullable|array',
         'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
         'medicamentos.*.cantidad' => 'required|string|max:50',
         'medicamentos.*.dosis' => 'required|string|max:200',
@@ -1153,6 +1153,7 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'psicologia_descripcion_problema' => $validatedData['psicologia_descripcion_problema'] ?? null,
         'analisis_conclusiones' => $validatedData['analisis_conclusiones'] ?? null,
         'psicologia_plan_intervencion_recomendacion' => $validatedData['psicologia_plan_intervencion_recomendacion'] ?? null,
+        'avance_paciente' => $validatedData['avance_paciente'] ?? null,
         
 
         
