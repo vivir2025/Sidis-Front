@@ -724,21 +724,115 @@ private function validateHistoriaClinica(Request $request): array
         'psicologia_red_apoyo' => 'nullable|string|max:2000',
         'psicologia_comportamiento_consulta' => 'nullable|string|max:2000',
         'psicologia_tratamiento_actual_adherencia' => 'nullable|string|max:2000',
-        'psicologia_descripcion_problema' => 'required|string|max:5000',
+        'psicologia_descripcion_problema' => 'nullable|string|max:5000',
         'analisis_conclusiones' => 'nullable|string|max:5000',
         'psicologia_plan_intervencion_recomendacion' => 'nullable|string|max:5000',
         'avance_paciente' => 'nullable|string|max:2000',
+
+         // ✅✅✅ NUTRICIONISTA - PRIMERA VEZ ✅✅✅
+        'enfermedad_diagnostica' => 'nullable|string|max:2000',
+        'habito_intestinal' => 'nullable|string|max:500',
+        'quirurgicos' => 'nullable|string|max:1000',
+        'quirurgicos_observaciones' => 'nullable|string|max:1000',
+        'alergicos' => 'nullable|string|max:1000',
+        'alergicos_observaciones' => 'nullable|string|max:1000',
+        'familiares' => 'nullable|string|max:1000',
+        'familiares_observaciones' => 'nullable|string|max:1000',
+        'psa' => 'nullable|string|max:500',
+        'psa_observaciones' => 'nullable|string|max:1000',
+        'farmacologicos' => 'nullable|string|max:1000',
+        'farmacologicos_observaciones' => 'nullable|string|max:1000',
+        'sueno' => 'nullable|string|max:500',
+        'sueno_observaciones' => 'nullable|string|max:1000',
+        'tabaquismo_observaciones' => 'nullable|string|max:1000',
+        'tabaquismo' => 'nullable|string|max:500',
+        'ejercicio' => 'nullable|string|max:500',
+        'ejercicio_observaciones' => 'nullable|string|max:1000',
+        
+        // Gineco-obstétricos
+        'metodo_conceptivo' => 'nullable|string|max:200',
+        'metodo_conceptivo_cual' => 'nullable|string|max:200',
+        'embarazo_actual' => 'nullable|in:SI,NO',
+        'semanas_gestacion' => 'nullable|integer|min:0|max:42',
+        'climatero' => 'nullable|string|max:200',
+        
+        // Evaluación dietética
+        'tolerancia_via_oral' => 'nullable|string|max:500',
+        'percepcion_apetito' => 'nullable|string|max:200',
+        'percepcion_apetito_observacion' => 'nullable|string|max:1000',
+        'alimentos_preferidos' => 'nullable|string|max:1000',
+        'alimentos_rechazados' => 'nullable|string|max:1000',
+        'suplemento_nutricionales' => 'nullable|string|max:1000',
+        'dieta_especial' => 'nullable|in:SI,NO',
+        'dieta_especial_cual' => 'nullable|string|max:500',
+        
+        // Horarios de comida
+        'desayuno_hora' => 'nullable|string|max:50',
+        'desayuno_hora_observacion' => 'nullable|string|max:1000',
+        'media_manana_hora' => 'nullable|string|max:50',
+        'media_manana_hora_observacion' => 'nullable|string|max:1000',
+        'almuerzo_hora' => 'nullable|string|max:50',
+        'almuerzo_hora_observacion' => 'nullable|string|max:1000',
+        'media_tarde_hora' => 'nullable|string|max:50',
+        'media_tarde_hora_observacion' => 'nullable|string|max:1000',
+        'cena_hora' => 'nullable|string|max:50',
+        'cena_hora_observacion' => 'nullable|string|max:1000',
+        'refrigerio_nocturno_hora' => 'nullable|string|max:50',
+        'refrigerio_nocturno_hora_observacion' => 'nullable|string|max:1000',
+        
+        // Plan nutricional
+        'peso_ideal' => 'nullable|numeric|min:0|max:300',
+        'interpretacion' => 'nullable|string|max:2000',
+        'meta_meses' => 'nullable|integer|min:0|max:24',
+        'analisis_nutricional' => 'nullable|string|max:5000',
+        'plan_seguir_nutri' => 'nullable|string|max:5000',
+
+        // ✅✅✅ NUTRICIONISTA - CONTROL ✅✅✅
+        // Recordatorio 24h
+        'comida_desayuno' => 'nullable|string|max:2000',
+        'comida_medio_desayuno' => 'nullable|string|max:2000',
+        'comida_almuerzo' => 'nullable|string|max:2000',
+        'comida_medio_almuerzo' => 'nullable|string|max:2000',
+        'comida_cena' => 'nullable|string|max:2000',
+        
+        // Frecuencia de consumo
+        'lacteo' => 'nullable|string|max:200',
+        'lacteo_observacion' => 'nullable|string|max:1000',
+        'huevo' => 'nullable|string|max:200',
+        'huevo_observacion' => 'nullable|string|max:1000',
+        'embutido' => 'nullable|string|max:200',
+        'embutido_observacion' => 'nullable|string|max:1000',
+        'carne_roja' => 'nullable|string|max:200',
+        'carne_blanca' => 'nullable|string|max:200',
+        'carne_vicera' => 'nullable|string|max:200',
+        'carne_observacion' => 'nullable|string|max:1000',
+        'leguminosas' => 'nullable|string|max:200',
+        'leguminosas_observacion' => 'nullable|string|max:1000',
+        'frutas_jugo' => 'nullable|string|max:200',
+        'frutas_porcion' => 'nullable|string|max:200',
+        'frutas_observacion' => 'nullable|string|max:1000',
+        'verduras_hortalizas' => 'nullable|string|max:200',
+        'vh_observacion' => 'nullable|string|max:1000',
+        'cereales' => 'nullable|string|max:200',
+        'cereales_observacion' => 'nullable|string|max:1000',
+        'rtp' => 'nullable|string|max:200',
+        'rtp_observacion' => 'nullable|string|max:1000',
+        'azucar_dulce' => 'nullable|string|max:200',
+        'ad_observacion' => 'nullable|string|max:1000',
+        // Plan de seguimiento
+        'diagnostico_nutri' => 'nullable|string|max:2000',
+
         'medicamentos' => 'nullable|array',
         'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
         'medicamentos.*.cantidad' => 'required|string|max:50',
         'medicamentos.*.dosis' => 'required|string|max:200',
         
-         'remisiones' => 'nullable|array',
+        'remisiones' => 'nullable|array',
         'remisiones.*.idRemision' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
         'remisiones.*.remObservacion' => 'nullable|string|max:500',
         
         
-         'cups' => 'nullable|array',
+        'cups' => 'nullable|array',
         'cups.*.idCups' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
         'cups.*.cupObservacion' => 'nullable|string|max:500',
         
@@ -1154,6 +1248,99 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'analisis_conclusiones' => $validatedData['analisis_conclusiones'] ?? null,
         'psicologia_plan_intervencion_recomendacion' => $validatedData['psicologia_plan_intervencion_recomendacion'] ?? null,
         'avance_paciente' => $validatedData['avance_paciente'] ?? null,
+
+         // ✅✅✅ NUTRICIONISTA - PRIMERA VEZ ✅✅✅
+        'enfermedad_diagnostica' => $validatedData['enfermedad_diagnostica'] ?? null,
+        'habito_intestinal' => $validatedData['habito_intestinal'] ?? null,
+        'quirurgicos' => $validatedData['quirurgicos'] ?? null,
+        'quirurgicos_observaciones' => $validatedData['quirurgicos_observaciones'] ?? null,
+        'alergicos' => $validatedData['alergicos'] ?? null,
+        'alergicos_observaciones' => $validatedData['alergicos_observaciones'] ?? null,
+        'familiares' => $validatedData['familiares'] ?? null,
+        'familiares_observaciones' => $validatedData['familiares_observaciones'] ?? null,
+        'psa' => $validatedData['psa'] ?? null,
+        'psa_observaciones' => $validatedData['psa_observaciones'] ?? null,
+        'farmacologicos' => $validatedData['farmacologicos'] ?? null,
+        'farmacologicos_observaciones' => $validatedData['farmacologicos_observaciones'] ?? null,
+        'sueno' => $validatedData['sueno'] ?? null,
+        'sueno_observaciones' => $validatedData['sueno_observaciones'] ?? null,
+        'tabaquismo_observaciones' => $validatedData['tabaquismo_observaciones'] ?? null,
+        'tabaquismo' => $validatedData['tabaquismo'] ?? null,
+        'ejercicio' => $validatedData['ejercicio'] ?? null,
+        'ejercicio_observaciones' => $validatedData['ejercicio_observaciones'] ?? null,
+        
+        // Gineco-obstétricos
+        'metodo_conceptivo' => $validatedData['metodo_conceptivo'] ?? null,
+        'metodo_conceptivo_cual' => $validatedData['metodo_conceptivo_cual'] ?? null,
+        'embarazo_actual' => $validatedData['embarazo_actual'] ?? null,
+        'semanas_gestacion' => $validatedData['semanas_gestacion'] ?? null,
+        'climatero' => $validatedData['climatero'] ?? null,
+        
+        // Evaluación dietética
+        'tolerancia_via_oral' => $validatedData['tolerancia_via_oral'] ?? null,
+        'percepcion_apetito' => $validatedData['percepcion_apetito'] ?? null,
+        'percepcion_apetito_observacion' => $validatedData['percepcion_apetito_observacion'] ?? null,
+        'alimentos_preferidos' => $validatedData['alimentos_preferidos'] ?? null,
+        'alimentos_rechazados' => $validatedData['alimentos_rechazados'] ?? null,
+        'suplemento_nutricionales' => $validatedData['suplemento_nutricionales'] ?? null,
+        'dieta_especial' => $validatedData['dieta_especial'] ?? null,
+        'dieta_especial_cual' => $validatedData['dieta_especial_cual'] ?? null,
+        
+        // Horarios de comida
+        'desayuno_hora' => $validatedData['desayuno_hora'] ?? null,
+        'desayuno_hora_observacion' => $validatedData['desayuno_hora_observacion'] ?? null,
+        'media_manana_hora' => $validatedData['media_manana_hora'] ?? null,
+        'media_manana_hora_observacion' => $validatedData['media_manana_hora_observacion'] ?? null,
+        'almuerzo_hora' => $validatedData['almuerzo_hora'] ?? null,
+        'almuerzo_hora_observacion' => $validatedData['almuerzo_hora_observacion'] ?? null,
+        'media_tarde_hora' => $validatedData['media_tarde_hora'] ?? null,
+        'media_tarde_hora_observacion' => $validatedData['media_tarde_hora_observacion'] ?? null,
+        'cena_hora' => $validatedData['cena_hora'] ?? null,
+        'cena_hora_observacion' => $validatedData['cena_hora_observacion'] ?? null,
+        'refrigerio_nocturno_hora' => $validatedData['refrigerio_nocturno_hora'] ?? null,
+        'refrigerio_nocturno_hora_observacion' => $validatedData['refrigerio_nocturno_hora_observacion'] ?? null,
+        
+        // Plan nutricional
+        'peso_ideal' => $validatedData['peso_ideal'] ?? null,
+        'interpretacion' => $validatedData['interpretacion'] ?? null,
+        'meta_meses' => $validatedData['meta_meses'] ?? null,
+        'analisis_nutricional' => $validatedData['analisis_nutricional'] ?? null,
+        'plan_seguir_nutri' => $validatedData['plan_seguir_nutri'] ?? null,
+
+        // ✅✅✅ NUTRICIONISTA - CONTROL ✅✅✅
+        // Recordatorio 24h
+        'comida_desayuno' => $validatedData['comida_desayuno'] ?? null,
+        'comida_medio_desayuno' => $validatedData['comida_medio_desayuno'] ?? null,
+        'comida_almuerzo' => $validatedData['comida_almuerzo'] ?? null,
+        'comida_medio_almuerzo' => $validatedData['comida_medio_almuerzo'] ?? null,
+        'comida_cena' => $validatedData['comida_cena'] ?? null,
+        
+        // Frecuencia de consumo
+        'lacteo' => $validatedData['lacteo'] ?? null,
+        'lacteo_observacion' => $validatedData['lacteo_observacion'] ?? null,
+        'huevo' => $validatedData['huevo'] ?? null,
+        'huevo_observacion' => $validatedData['huevo_observacion'] ?? null,
+        'embutido' => $validatedData['embutido'] ?? null,
+        'embutido_observacion' => $validatedData['embutido_observacion'] ?? null,
+        'carne_roja' => $validatedData['carne_roja'] ?? null,
+        'carne_blanca' => $validatedData['carne_blanca'] ?? null,
+        'carne_vicera' => $validatedData['carne_vicera'] ?? null,
+        'carne_observacion' => $validatedData['carne_observacion'] ?? null,
+        'leguminosas' => $validatedData['leguminosas'] ?? null,
+        'leguminosas_observacion' => $validatedData['leguminosas_observacion'] ?? null,
+        'frutas_jugo' => $validatedData['frutas_jugo'] ?? null,
+        'frutas_porcion' => $validatedData['frutas_porcion'] ?? null,
+        'frutas_observacion' => $validatedData['frutas_observacion'] ?? null,
+        'verduras_hortalizas' => $validatedData['verduras_hortalizas'] ?? null,
+        'vh_observacion' => $validatedData['vh_observacion'] ?? null,
+        'cereales' => $validatedData['cereales'] ?? null,
+        'cereales_observacion' => $validatedData['cereales_observacion'] ?? null,
+        'rtp' => $validatedData['rtp'] ?? null,
+        'rtp_observacion' => $validatedData['rtp_observacion'] ?? null,
+        'azucar_dulce' => $validatedData['azucar_dulce'] ?? null,
+        'ad_observacion' => $validatedData['ad_observacion'] ?? null,
+        // Plan de seguimiento
+        'diagnostico_nutri' => $validatedData['diagnostico_nutri'] ?? null,
         
 
         
