@@ -819,6 +819,62 @@ private function validateHistoriaClinica(Request $request): array
         'rtp_observacion' => 'nullable|string|max:1000',
         'azucar_dulce' => 'nullable|string|max:200',
         'ad_observacion' => 'nullable|string|max:1000',
+
+        'descripcion_sistema_nervioso' => 'nullable|string|max:2000',
+        'sistema_hemolinfatico' => 'nullable|in:SI,NO',
+        'descripcion_sistema_hemolinfatico' => 'nullable|string|max:2000',
+        'aparato_digestivo' => 'nullable|in:SI,NO',
+        'descripcion_aparato_digestivo' => 'nullable|string|max:2000',
+        'organo_sentido' => 'nullable|in:SI,NO',
+        'descripcion_organos_sentidos' => 'nullable|string|max:2000',
+        'endocrino_metabolico' => 'nullable|in:SI,NO',
+        'descripcion_endocrino_metabolico' => 'nullable|string|max:2000',
+        'inmunologico' => 'nullable|in:SI,NO',
+        'descripcion_inmunologico' => 'nullable|string|max:2000',
+        'cancer_tumores_radioterapia_quimio' => 'nullable|in:SI,NO',
+        'descripcion_cancer_tumores_radio_quimioterapia' => 'nullable|string|max:2000',
+        'glandula_mamaria' => 'nullable|in:SI,NO',
+        'descripcion_glandulas_mamarias' => 'nullable|string|max:2000',
+        'hipertension_diabetes_erc' => 'nullable|in:SI,NO',
+        'descripcion_hipertension_diabetes_erc' => 'nullable|string|max:2000',
+        'reacciones_alergica' => 'nullable|in:SI,NO',
+        'descripcion_reacion_alergica' => 'nullable|string|max:2000',
+        'cardio_vasculares' => 'nullable|in:SI,NO',
+        'descripcion_cardio_vasculares' => 'nullable|string|max:2000',
+        'respiratorios' => 'nullable|in:SI,NO',
+        'descripcion_respiratorios' => 'nullable|string|max:2000',
+        'urinarias' => 'nullable|in:SI,NO',
+        'descripcion_urinarias' => 'nullable|string|max:2000',
+        'osteoarticulares' => 'nullable|in:SI,NO',
+        'descripcion_osteoarticulares' => 'nullable|string|max:2000',
+        'infecciosos' => 'nullable|in:SI,NO',
+        'descripcion_infecciosos' => 'nullable|string|max:2000',
+        'cirugia_trauma' => 'nullable|in:SI,NO',
+        'descripcion_cirugias_traumas' => 'nullable|string|max:2000',
+        'tratamiento_medicacion' => 'nullable|in:SI,NO',
+        'descripcion_tratamiento_medicacion' => 'nullable|string|max:2000',
+        'antecedente_quirurgico' => 'nullable|in:SI,NO',
+        'descripcion_antecedentes_quirurgicos' => 'nullable|string|max:2000',
+        'antecedentes_familiares' => 'nullable|in:SI,NO',
+        'descripcion_antecedentes_familiares' => 'nullable|string|max:2000',
+        'consumo_tabaco' => 'nullable|in:SI,NO',
+        'descripcion_consumo_tabaco' => 'nullable|string|max:2000',
+        'antecedentes_alcohol' => 'nullable|in:SI,NO',
+        'descripcion_antecedentes_alcohol' => 'nullable|string|max:2000',
+        'sedentarismo' => 'nullable|in:SI,NO',
+        'descripcion_sedentarismo' => 'nullable|string|max:2000',
+        'ginecologico' => 'nullable|in:SI,NO',
+        'descripcion_ginecologicos' => 'nullable|string|max:2000',
+        'citologia_vaginal' => 'nullable|in:SI,NO',
+        'descripcion_citologia_vaginal' => 'nullable|string|max:2000',
+        'menarquia' => 'nullable|integer|min:0|max:20',
+        'gestaciones' => 'nullable|integer|min:0|max:30',
+        'parto' => 'nullable|integer|min:0|max:30',
+        'aborto' => 'nullable|integer|min:0|max:30',
+        'cesaria' => 'nullable|integer|min:0|max:30',
+        'antecedente_personal' => 'nullable|string|max:2000',
+        'neurologico_estado_mental' => 'nullable|in:SI,NO',
+        'obs_neurologico_estado_mental' => 'nullable|string|max:2000',
         // Plan de seguimiento
         'diagnostico_nutri' => 'nullable|string|max:2000',
 
@@ -1341,7 +1397,62 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'ad_observacion' => $validatedData['ad_observacion'] ?? null,
         // Plan de seguimiento
         'diagnostico_nutri' => $validatedData['diagnostico_nutri'] ?? null,
-        
+        'descripcion_sistema_nervioso' => $validatedData['descripcion_sistema_nervioso'] ?? null,
+        'sistema_hemolinfatico' => $validatedData['sistema_hemolinfatico'] ?? null,
+        'descripcion_sistema_hemolinfatico' => $validatedData['descripcion_sistema_hemolinfatico'] ?? null,
+        'aparato_digestivo' => $validatedData['aparato_digestivo'] ?? null,
+        'descripcion_aparato_digestivo' => $validatedData['descripcion_aparato_digestivo'] ?? null,
+        'organo_sentido' => $validatedData['organo_sentido'] ?? null,
+        'descripcion_organos_sentidos' => $validatedData['descripcion_organos_sentidos'] ?? null,
+        'endocrino_metabolico' => $validatedData['endocrino_metabolico'] ?? null,
+        'descripcion_endocrino_metabolico' => $validatedData['descripcion_endocrino_metabolico'] ?? null,
+        'inmunologico' => $validatedData['inmunologico'] ?? null,
+        'descripcion_inmunologico' => $validatedData['descripcion_inmunologico'] ?? null,
+        'cancer_tumores_radioterapia_quimio' => $validatedData['cancer_tumores_radioterapia_quimio'] ?? null,
+        'descripcion_cancer_tumores_radio_quimioterapia' => $validatedData['descripcion_cancer_tumores_radio_quimioterapia'] ?? null,
+        'glandula_mamaria' => $validatedData['glandula_mamaria'] ?? null,
+        'descripcion_glandulas_mamarias' => $validatedData['descripcion_glandulas_mamarias'] ?? null,
+        'hipertension_diabetes_erc' => $validatedData['hipertension_diabetes_erc'] ?? null,
+        'descripcion_hipertension_diabetes_erc' => $validatedData['descripcion_hipertension_diabetes_erc'] ?? null,
+        'reacciones_alergica' => $validatedData['reacciones_alergica'] ?? null,
+        'descripcion_reacion_alergica' => $validatedData['descripcion_reacion_alergica'] ?? null,
+        'cardio_vasculares' => $validatedData['cardio_vasculares'] ?? null,
+        'descripcion_cardio_vasculares' => $validatedData['descripcion_cardio_vasculares'] ?? null,
+        'respiratorios' => $validatedData['respiratorios'] ?? null,
+        'descripcion_respiratorios' => $validatedData['descripcion_respiratorios'] ?? null,
+        'urinarias' => $validatedData['urinarias'] ?? null,
+        'descripcion_urinarias' => $validatedData['descripcion_urinarias'] ?? null,
+        'osteoarticulares' => $validatedData['osteoarticulares'] ?? null,
+        'descripcion_osteoarticulares' => $validatedData['descripcion_osteoarticulares'] ?? null,
+        'infecciosos' => $validatedData['infecciosos'] ?? null,
+        'descripcion_infecciosos' => $validatedData['descripcion_infecciosos'] ?? null,
+        'cirugia_trauma' => $validatedData['cirugia_trauma'] ?? null,
+        'descripcion_cirugias_traumas' => $validatedData['descripcion_cirugias_traumas'] ?? null,
+        'tratamiento_medicacion' => $validatedData['tratamiento_medicacion'] ?? null,
+        'descripcion_tratamiento_medicacion' => $validatedData['descripcion_tratamiento_medicacion'] ?? null,
+        'antecedente_quirurgico' => $validatedData['antecedente_quirurgico'] ?? null,
+        'descripcion_antecedentes_quirurgicos' => $validatedData['descripcion_antecedentes_quirurgicos'] ?? null,
+        'antecedentes_familiares' => $validatedData['antecedentes_familiares'] ?? null,
+        'descripcion_antecedentes_familiares' => $validatedData['descripcion_antecedentes_familiares'] ?? null,
+        'consumo_tabaco' => $validatedData['consumo_tabaco'] ?? null,
+        'descripcion_consumo_tabaco' => $validatedData['descripcion_consumo_tabaco'] ?? null,
+        'antecedentes_alcohol' => $validatedData['antecedentes_alcohol'] ?? null,
+        'descripcion_antecedentes_alcohol' => $validatedData['descripcion_antecedentes_alcohol'] ?? null,
+        'sedentarismo' => $validatedData['sedentarismo'] ?? null,
+        'descripcion_sedentarismo' => $validatedData['descripcion_sedentarismo'] ?? null,
+        'ginecologico' => $validatedData['ginecologico'] ?? null,
+        'descripcion_ginecologicos' => $validatedData['descripcion_ginecologicos'] ?? null,
+        'citologia_vaginal' => $validatedData['citologia_vaginal'] ?? null,
+        'descripcion_citologia_vaginal' => $validatedData['descripcion_citologia_vaginal'] ?? null,
+        'menarquia' => $validatedData['menarquia'] ?? null,
+        'gestaciones' => $validatedData['gestaciones'] ?? null,
+        'parto' => $validatedData['parto'] ?? null,
+        'aborto' => $validatedData['aborto'] ?? null,
+        'cesaria' => $validatedData['cesaria'] ?? null, // ⚠️ Nota: tiene tilde en la lista original
+        'antecedente_personal' => $validatedData['antecedente_personal'] ?? null,
+        'neurologico_estado_mental' => $validatedData['neurologico_estado_mental'] ?? null,
+        'obs_neurologico_estado_mental' => $validatedData['obs_neurologico_estado_mental'] ?? null,
+                
 
         
         // ✅ ARRAYS RELACIONADOS (mantén los métodos que ya tienes)
@@ -2013,14 +2124,31 @@ public function determinarVista(Request $request, string $citaUuid)
             if ($response['success']) {
                 $data = $response['data'];
                 
+                // ✅ VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
+                $esSoloControl = in_array($data['especialidad'], ['NEFROLOGIA', 'INTERNISTA']);
+                
+                if ($esSoloControl) {
+                    Log::info('🔒 Especialidad solo-control detectada desde API', [
+                        'especialidad' => $data['especialidad'],
+                        'tipo_consulta_original' => $data['tipo_consulta'],
+                        'tipo_consulta_forzado' => 'CONTROL'
+                    ]);
+                    
+                    // ✅ FORZAR TIPO CONTROL
+                    $data['tipo_consulta'] = 'CONTROL';
+                    $data['vista_recomendada']['tipo_consulta'] = 'CONTROL';
+                    $data['vista_recomendada']['solo_control'] = true;
+                }
+                
                 Log::info('✅ Vista determinada por API', [
                     'especialidad' => $data['especialidad'],
                     'tipo_consulta' => $data['tipo_consulta'],
                     'vista_recomendada' => $data['vista_recomendada']['vista'],
-                    'tiene_historia_previa' => !empty($data['historia_previa'])
+                    'tiene_historia_previa' => !empty($data['historia_previa']),
+                    'es_solo_control' => $esSoloControl
                 ]);
 
-                // ✅ FORMATEAR HISTORIA PREVIA SI EXISTE - ESTO ES LO QUE FALTABA
+                // ✅ FORMATEAR HISTORIA PREVIA SI EXISTE
                 $historiaPrevia = null;
                 if (!empty($data['historia_previa'])) {
                     $historiaPrevia = $this->formatearHistoriaDesdeAPI($data['historia_previa']);
@@ -2036,14 +2164,14 @@ public function determinarVista(Request $request, string $citaUuid)
                 return $this->renderizarVistaEspecifica(
                     $data['vista_recomendada'],
                     $data['cita'],
-                    $historiaPrevia, // ✅ AHORA SÍ PASA LA HISTORIA FORMATEADA
+                    $historiaPrevia,
                     $usuario,
                     $isOffline
                 );
             }
         }
 
-        // ✅ RESTO DEL CÓDIGO IGUAL...
+        // ✅ FALLBACK OFFLINE
         Log::warning('⚠️ API offline, usando determinación local');
         
         $citaResult = $this->citaService->show($citaUuid);
@@ -2059,7 +2187,11 @@ public function determinarVista(Request $request, string $citaUuid)
             return back()->with('error', 'No se pudo obtener información del paciente');
         }
 
+        // ✅ DETERMINAR TIPO CONSULTA (YA MANEJA SOLO-CONTROL INTERNAMENTE)
         $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad ?? 'MEDICINA GENERAL');
+        
+        // ✅ VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
+        $esSoloControl = in_array($especialidad, ['NEFROLOGIA', 'INTERNISTA']);
         
         $vistaInfo = [
             'vista' => $this->determinarVistaOffline($especialidad, $tipoConsulta),
@@ -2068,15 +2200,34 @@ public function determinarVista(Request $request, string $citaUuid)
                 'INTERNISTA', 'FISIOTERAPIA', 'TRABAJO SOCIAL'
             ]),
             'especialidad' => $especialidad,
-            'tipo_consulta' => $tipoConsulta
+            'tipo_consulta' => $tipoConsulta,
+            'solo_control' => $esSoloControl // ✅ NUEVO FLAG
         ];
 
+        Log::info('✅ Vista determinada offline', [
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta,
+            'vista' => $vistaInfo['vista'],
+            'es_solo_control' => $esSoloControl
+        ]);
+
+        // ✅ OBTENER HISTORIA PREVIA SOLO PARA CONTROL
         $historiaPrevia = null;
-        if ($tipoConsulta === 'CONTROL' && $especialidad === 'MEDICINA GENERAL') {
-            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-            Log::info('🔄 Historia previa offline para Medicina General', [
-                'tiene_historia' => !empty($historiaPrevia)
-            ]);
+        if ($tipoConsulta === 'CONTROL') {
+            // ✅ PARA MEDICINA GENERAL, USAR EL MÉTODO ESPECÍFICO
+            if ($especialidad === 'MEDICINA GENERAL') {
+                $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+                Log::info('🔄 Historia previa offline para Medicina General', [
+                    'tiene_historia' => !empty($historiaPrevia)
+                ]);
+            } else {
+                // ✅ PARA OTRAS ESPECIALIDADES (NEFROLOGIA, INTERNISTA, ETC)
+                $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+                Log::info('🔄 Historia previa offline para especialidad', [
+                    'especialidad' => $especialidad,
+                    'tiene_historia' => !empty($historiaPrevia)
+                ]);
+            }
         }
 
         return $this->renderizarVistaEspecifica($vistaInfo, $cita, $historiaPrevia, $usuario, $isOffline);
@@ -2084,13 +2235,14 @@ public function determinarVista(Request $request, string $citaUuid)
     } catch (\Exception $e) {
         Log::error('❌ Error determinando vista de historia clínica', [
             'error' => $e->getMessage(),
-            'cita_uuid' => $citaUuid
+            'cita_uuid' => $citaUuid,
+            'line' => $e->getLine(),
+            'file' => basename($e->getFile())
         ]);
 
         return back()->with('error', 'Error determinando el tipo de historia clínica');
     }
 }
-
 private function formatearHistoriaDesdeAPI(array $historiaAPI): array
 {
     try {
@@ -2670,14 +2822,21 @@ private function obtenerEspecialidadDesdeCita(string $citaUuid): ?string
 }
 
 
-
-
-
-/**
- * ✅ DETERMINAR VISTA OFFLINE
- */
 private function determinarVistaOffline(string $especialidad, string $tipoConsulta): string
 {
+    // ✅ ESPECIALIDADES QUE SOLO TIENEN CONTROL
+    $especialidadesSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+    
+    // ✅ SI ES UNA ESPECIALIDAD SOLO-CONTROL, FORZAR TIPO CONTROL
+    if (in_array($especialidad, $especialidadesSoloControl)) {
+        $tipoConsulta = 'CONTROL';
+        
+        Log::info('🔒 OFFLINE: Especialidad solo-control detectada', [
+            'especialidad' => $especialidad,
+            'tipo_consulta_forzado' => 'CONTROL'
+        ]);
+    }
+    
     $vistas = [
         'MEDICINA GENERAL' => [
             'PRIMERA VEZ' => 'medicina-general.primera-vez',
@@ -2696,11 +2855,13 @@ private function determinarVistaOffline(string $especialidad, string $tipoConsul
             'CONTROL' => 'psicologia.control'
         ],
         'NEFROLOGIA' => [
-            'PRIMERA VEZ' => 'nefrologia.primera-vez',
+            // ✅ SOLO CONTROL - AMBOS APUNTAN A LA MISMA VISTA
+            'PRIMERA VEZ' => 'nefrologia.control',
             'CONTROL' => 'nefrologia.control'
         ],
         'INTERNISTA' => [
-            'PRIMERA VEZ' => 'internista.primera-vez',
+            // ✅ SOLO CONTROL - AMBOS APUNTAN A LA MISMA VISTA
+            'PRIMERA VEZ' => 'internista.control',
             'CONTROL' => 'internista.control'
         ],
         'FISIOTERAPIA' => [
@@ -2717,7 +2878,7 @@ private function determinarVistaOffline(string $especialidad, string $tipoConsul
 }
 
 /**
- * ✅ DETERMINAR TIPO CONSULTA OFFLINE
+ * ✅ DETERMINAR TIPO CONSULTA OFFLINE - VERSIÓN CORREGIDA
  */
 private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $especialidad = null): string
 {
@@ -2729,7 +2890,19 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $es
 
         $especialidadFinal = $especialidad ?? 'MEDICINA GENERAL';
         
-        // ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE
+        // ✅ ESPECIALIDADES QUE SOLO TIENEN CONTROL
+        $especialidadesSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+        
+        // ✅ SI ES UNA ESPECIALIDAD SOLO-CONTROL, RETORNAR CONTROL DIRECTAMENTE
+        if (in_array($especialidadFinal, $especialidadesSoloControl)) {
+            Log::info('🔒 OFFLINE: Especialidad solo-control - forzando CONTROL', [
+                'especialidad' => $especialidadFinal,
+                'tipo_consulta' => 'CONTROL'
+            ]);
+            return 'CONTROL';
+        }
+        
+        // ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE (SOLO PARA OTRAS ESPECIALIDADES)
         $tieneHistoriasAnteriores = $this->verificarHistoriasAnterioresOffline($pacienteUuid, $especialidadFinal);
         
         $tipoConsulta = $tieneHistoriasAnteriores ? 'CONTROL' : 'PRIMERA VEZ';
@@ -2737,7 +2910,8 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $es
         Log::info('✅ Tipo de consulta determinado offline', [
             'paciente_uuid' => $pacienteUuid,
             'especialidad_final' => $especialidadFinal,
-            'tipo_consulta' => $tipoConsulta
+            'tipo_consulta' => $tipoConsulta,
+            'tiene_historias_anteriores' => $tieneHistoriasAnteriores
         ]);
 
         return $tipoConsulta;
@@ -2749,9 +2923,15 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $es
             'especialidad' => $especialidad
         ]);
 
+        // ✅ FALLBACK: Si es solo-control, retornar CONTROL incluso en error
+        if (in_array($especialidad, ['NEFROLOGIA', 'INTERNISTA'])) {
+            return 'CONTROL';
+        }
+
         return 'PRIMERA VEZ';
     }
 }
+
 
 /**
  * ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE
