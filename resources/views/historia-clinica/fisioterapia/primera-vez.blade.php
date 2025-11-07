@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Nueva Historia Clínica Cardiovascular')
+@section('title', 'Primera vez Fisioterapia')
 
 @section('content')
 <div class="container-fluid">

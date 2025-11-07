@@ -1,7 +1,7 @@
 {{-- resources/views/historia-clinica/fisioterapia/control.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Control Gestión del Riesgo Cardio Renal')
+@section('title', 'Control Fisioterapia')
 
 @section('content')
 <div class="container-fluid">
