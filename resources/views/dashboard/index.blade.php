@@ -10,7 +10,7 @@
                 <div>
                     <h1 class="h3 mb-0">
                         <i class="fas fa-tachometer-alt text-primary me-2"></i>
-                        Dashboard
+                        HOME
                     </h1>
                     <p class="text-muted mb-0">
                         Bienvenido, <strong>{{ $usuario['nombre_completo'] ?? 'Usuario' }}</strong>
