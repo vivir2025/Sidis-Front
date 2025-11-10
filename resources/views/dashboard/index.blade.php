@@ -18,9 +18,9 @@
                 </div>
                 
                 <!-- Header Actions -->
-                <div class="d-flex align-items-center gap-2">
+                <!-- <div class="d-flex align-items-center gap-2"> -->
                     <!-- Estado de Conexión -->
-                    @if(($is_offline ?? false) || !($is_online ?? true))
+                    <!-- @if(($is_offline ?? false) || !($is_online ?? true))
                         <span class="badge bg-warning me-2">
                             <i class="fas fa-wifi-slash"></i> Modo Offline
                         </span>
@@ -30,13 +30,13 @@
                         </span>
                     @endif
                     
-                    <!-- Verificar Conexión -->
-                    <button type="button" class="btn btn-outline-secondary btn-sm me-2" onclick="checkConnection()">
+                    Verificar Conexión -->
+                    <!-- <button type="button" class="btn btn-outline-secondary btn-sm me-2" onclick="checkConnection()">
                         <i class="fas fa-sync-alt"></i> Verificar
-                    </button>
+                    </button> -->
 
                     <!-- Botón de Logout -->
-                    <div class="dropdown">
+                    <!-- <div class="dropdown">
                         <button class="btn btn-outline-danger btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
                             <i class="fas fa-user-circle"></i> {{ explode(' ', $usuario['nombre_completo'] ?? 'Usuario')[0] }}
                         </button>
@@ -68,7 +68,7 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </div> -->
     </div>
 
     <!-- Alerta de Modo Offline -->

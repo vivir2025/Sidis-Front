@@ -4,17 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'SIDIS - Sistema Médico')</title>
-    
-    <!-- Bootstrap 5 -->
+    <title>@yield('title', 'SIDIS - Sistema de Información')</title>
+
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- SweetAlert2 -->
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.27/dist/sweetalert2.min.css" rel="stylesheet">
     
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    
+    <!-- Select2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <!-- Estilos personalizados -->
     <style>
-        :root {
+                :root {
             --primary-color: #2c5aa0;
             --primary-dark: #1e3d6f;
             --secondary-color: #f8f9fa;
@@ -48,6 +55,227 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             padding: 0.75rem 0;
         }
+
+        
+        .sede-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            background: #003366;
+            color: #ffffff;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 51, 102, 0.3);
+            font-size: 11px;
+            max-width: 35px;
+            overflow: hidden;
+        }
+
+        .sede-badge:hover {
+            background: #004080;
+            box-shadow: 0 3px 6px rgba(0, 51, 102, 0.4);
+            max-width: 200px;
+            padding: 5px 12px;
+        }
+
+        .sede-badge i {
+            font-size: 12px;
+            min-width: 12px;
+        }
+
+        .sede-badge span {
+            white-space: nowrap;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .sede-badge:hover span {
+            opacity: 1;
+        }
+
+
+        /* ===== MODAL HEADER PROFESIONAL ===== */
+        .modal-header-professional {
+            background: linear-gradient(to right, #0d47a1, #1976d2);
+            border-bottom: none;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(13, 71, 161, 0.15);
+        }
+
+        .modal-header-professional .modal-icon-wrapper {
+            width: 42px;
+            height: 42px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-header-professional .modal-icon-wrapper i {
+            color: white;
+            font-size: 1.3rem;
+        }
+
+        .modal-header-professional .modal-title {
+            color: white;
+            font-weight: 600;
+            font-size: 1.25rem;
+            letter-spacing: 0.5px;
+        }
+
+        .modal-header-professional .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+            transition: all 0.3s ease;
+        }
+
+        .modal-header-professional .btn-close:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+
+        /* ===== USER AVATAR BUTTON ===== */
+        .user-avatar-small {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.25);
+            transition: all 0.3s ease;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .user-avatar-small img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .user-avatar-small i {
+            font-size: 1.6rem;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        /* Hover suave */
+        .user-avatar-small:hover {
+            box-shadow: 0 4px 12px rgba(44, 90, 160, 0.4);
+            border-color: var(--primary-color);
+        }
+
+        .user-avatar-small:hover i {
+            color: #ffffff;
+        }
+
+        /* ✅ EVITAR DISTORSIÓN AL HACER CLIC */
+        .btn-link:focus,
+        .btn-link:active,
+        .btn-link:focus-visible {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        #userDropdown {
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            background: transparent !important;
+        }
+
+        #userDropdown:focus,
+        #userDropdown:active,
+        #userDropdown:focus-visible {
+            box-shadow: none !important;
+            outline: none !important;
+            transform: none !important;
+        }
+
+        /* Evitar que el avatar cambie al hacer clic */
+        #userDropdown .user-avatar-small:active,
+        #userDropdown.show .user-avatar-small {
+            transform: none !important;
+        }
+
+        /* Badge de notificaciones (opcional) */
+        .user-avatar-small .notification-badge {
+            position: absolute;
+            top: -3px;
+            right: -3px;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #dc3545, #e74c3c);
+            border-radius: 50%;
+            border: 2px solid white;
+            font-size: 0.6rem;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse-notification 2s infinite;
+        }
+
+        @keyframes pulse-notification {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 4px rgba(220, 53, 69, 0);
+            }
+        }
+
+        /* ===== RESPONSIVE USER AVATAR ===== */
+        @media (max-width: 768px) {
+            .user-avatar-small {
+                width: 36px;
+                height: 36px;
+                border-width: 2px;
+            }
+            
+            .user-avatar-small i {
+                font-size: 1.5rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .user-avatar-small {
+                width: 34px;
+                height: 34px;
+            }
+            
+            .user-avatar-small i {
+                font-size: 1.4rem;
+            }
+        }
+
+        /* ===== DARK THEME USER AVATAR ===== */
+        .dark-theme .user-avatar-small {
+            border-color: var(--dark-card);
+            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.4);
+        }
+
+        .dark-theme .user-avatar-small:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 4px 12px rgba(44, 90, 160, 0.6);
+        }
+
 
         .navbar-brand {
             font-weight: 700;
@@ -219,6 +447,129 @@
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(44, 90, 160, 0.4);
         }
+
+        /* ===== BOTÓN VERIFICAR CONEXIÓN COMPACTO ===== */
+        .btn-check-connection {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2px solid #6c757d;
+            background: transparent;
+            color: #6c757d;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 0;
+            margin-right: 0.5rem;
+            position: relative;
+        }
+
+        .btn-check-connection i {
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        /* Hover */
+        .btn-check-connection:hover {
+            background: #6c757d;
+            color: white;
+            border-color: #5a6268;
+            box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-check-connection:hover i {
+            transform: rotate(180deg);
+        }
+
+        /* Focus (sin distorsión) */
+        .btn-check-connection:focus,
+        .btn-check-connection:active {
+            outline: none !important;
+            box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2) !important;
+            transform: none !important;
+        }
+
+        /* Estado activo (al hacer clic) */
+        .btn-check-connection:active {
+            background: #5a6268;
+            border-color: #545b62;
+        }
+
+        /* Animación de verificación */
+        .btn-check-connection.checking i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Estado de conexión exitosa */
+        .btn-check-connection.success {
+            border-color: #28a745;
+            color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        /* Estado de conexión fallida */
+        .btn-check-connection.error {
+            border-color: #dc3545;
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .btn-check-connection {
+                width: 36px;
+                height: 36px;
+            }
+            
+            .btn-check-connection i {
+                font-size: 0.95rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .btn-check-connection {
+                width: 34px;
+                height: 34px;
+            }
+            
+            .btn-check-connection i {
+                font-size: 0.9rem;
+            }
+        }
+
+        /* ===== DARK THEME ===== */
+        .dark-theme .btn-check-connection {
+            border-color: #adb5bd;
+            color: #adb5bd;
+        }
+
+        .dark-theme .btn-check-connection:hover {
+            background: #495057;
+            color: white;
+            border-color: #6c757d;
+        }
+
+        .dark-theme .btn-check-connection.success {
+            border-color: #28a745;
+            color: #28a745;
+        }
+
+        .dark-theme .btn-check-connection.error {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
 
         /* ===== SEDE SELECTOR ===== */
         .sede-selector-container {
@@ -576,207 +927,394 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
+
+                /* ===== SIDEBAR TRIGGER ZONE (Zona invisible para activar hover) ===== */
+        .sidebar-trigger-zone {
+            position: fixed;
+            left: 0;
+            top: 70px; /* Altura del navbar */
+            width: 20px;
+            height: calc(100vh - 70px);
+            z-index: 1040;
+            background: transparent;
+        }
+
+        /* Indicador visual opcional (línea de color en el borde) */
+        .sidebar-trigger-zone::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border-radius: 0 3px 3px 0;
+            opacity: 0.6;
+            transition: var(--transition);
+        }
+
+        .sidebar-trigger-zone:hover::after {
+            opacity: 1;
+            height: 100px;
+        }
+
+        /* ===== SIDEBAR CONTAINER ===== */
+        .sidebar-container {
+            position: fixed;
+            left: -280px;
+            top: 70px; /* Altura del navbar */
+            width: 280px;
+            height: calc(100vh - 70px);
+            background: linear-gradient(180deg, #ffffff, #f8f9fa);
+            box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+            border-right: 1px solid #e9ecef;
+            z-index: 1050;
+            overflow-y: auto;
+            overflow-x: hidden;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Mostrar sidebar al hacer hover en la zona trigger o en el sidebar mismo */
+        .sidebar-trigger-zone:hover ~ .sidebar-container,
+        .sidebar-container:hover {
+            left: 0;
+        }
+
+        /* ===== SIDEBAR NAVIGATION ===== */
+        .sidebar-container .nav {
+            padding: 1rem 0;
+        }
+
+        .sidebar-container .nav-link {
+            color: #495057;
+            padding: 14px 20px;
+            margin: 4px 8px;
+            border-radius: var(--border-radius);
+            transition: var(--transition);
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        .sidebar-container .nav-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .sidebar-container .nav-link:hover::before {
+            left: 100%;
+        }
+
+        .sidebar-container .nav-link:hover,
+        .sidebar-container .nav-link.active {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            color: white !important;
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(44, 90, 160, 0.3);
+        }
+
+        .sidebar-container .nav-link i {
+            width: 20px;
+            margin-right: 12px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        /* Overlay (solo móvil) */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1040;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* ===== SCROLLBAR SIDEBAR ===== */
+        .sidebar-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar-container::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+        }
+
+        .sidebar-container::-webkit-scrollbar-thumb {
+            background: rgba(44, 90, 160, 0.3);
+            border-radius: 3px;
+        }
+
+        .sidebar-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(44, 90, 160, 0.5);
+        }
+
+        /* ===== RESPONSIVE SIDEBAR ===== */
+        @media (max-width: 768px) {
+            /* En móvil, desactivar el hover automático */
+            .sidebar-trigger-zone {
+                display: none;
+            }
+            
+            .sidebar-container {
+                left: -100%;
+                width: 85%;
+                max-width: 320px;
+            }
+            
+            /* En móvil, solo se abre con clase active (click manual) */
+            .sidebar-container.active {
+                left: 0;
+            }
+            
+            /* Desactivar hover en móvil */
+            .sidebar-trigger-zone:hover ~ .sidebar-container,
+            .sidebar-container:hover {
+                left: -100%;
+            }
+            
+            .sidebar-container.active:hover {
+                left: 0;
+            }
+        }
+
+        /* ===== DARK THEME SIDEBAR ===== */
+        .dark-theme .sidebar-container {
+            background: linear-gradient(180deg, var(--dark-card), #374151);
+            border-right-color: var(--dark-border);
+        }
+
+        .dark-theme .sidebar-container .nav-link {
+            color: #e9ecef !important;
+        }
+
+        .dark-theme .sidebar-container .nav-link:hover,
+        .dark-theme .sidebar-container .nav-link.active {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark)) !important;
+            color: white !important;
+        }
+
     </style>
 
-    @push('styles')
-        <link href="{{ asset('css/cups-autocomplete.css') }}" rel="stylesheet">
-    @endpush
+    </style>
 
     @stack('styles')
 </head>
-<body class="fade-in">
-    <!-- Connection Status -->
-    <div id="connectionStatus" class="connection-status {{ session('is_online', true) ? 'connection-online' : 'connection-offline' }}">
-        <i class="fas fa-wifi"></i> 
-        <span id="statusText">{{ session('is_online', true) ? 'Conectado' : 'Sin conexión' }}</span>
-    </div>
- @unless(request()->routeIs('login'))
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg">
+<body class="{{ request()->routeIs('login') ? 'login-page' : '' }}">
+    @unless(request()->routeIs('login'))
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ route('dashboard') }}">
-                <i class="fas fa-heartbeat"></i> SIDS
+            <!-- Logo -->
+            <a class="navbar-brand d-flex align-items-center" href="{{ route('dashboard') }}">
+                <img src="{{ asset('images/listo.png') }}" alt="SIDIS Logo" style="height: 40px;" class="me-2">
+                <span class="fw-bold text-primary">SIDS</span>
             </a>
 
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
 
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    @auth
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                                <i class="fas fa-user-circle me-2"></i> 
-                                {{ session('usuario')['nombre_completo'] ?? 'Usuario' }}
+            <!-- Right Side -->
+            <div class="d-flex align-items-center gap-3">
+                <!-- Connection Status -->
+                <!-- <div id="connectionStatus" class="connection-status {{ ($is_online ?? true) ? 'connection-online' : 'connection-offline' }}">
+                    <i class="fas {{ ($is_online ?? true) ? 'fa-wifi' : 'fa-wifi-slash' }}"></i>
+                    <span id="statusText">{{ ($is_online ?? true) ? 'Conectado' : 'Sin conexión' }}</span>
+                </div> -->
+
+                <!-- Sede Actual -->
+                @if(isset($usuario['sede']))
+                    <div class="sede-badge" data-bs-toggle="modal" data-bs-target="#modalCambiarSede" title="Cambiar sede">
+                        <i class="fas fa-building"></i>
+                        <span id="sedeActualNombre">{{ $usuario['sede']['nombre'] }}</span>
+                    </div>
+                @endif
+
+                                    <!-- Estado de Conexión -->
+                    @if(($is_offline ?? false) || !($is_online ?? true))
+                        <span class="badge bg-warning me-2">
+                            <i class="fas fa-wifi-slash"></i> Modo Offline
+                        </span>
+                    @else
+                        <span class="badge bg-success me-2">
+                            <i class="fas fa-wifi"></i> Conectado
+                        </span>
+                    @endif
+                    
+                    <!-- Verificar Conexión -->
+                    <button type="button" class="btn-check-connection" onclick="checkConnection()" title="Verificar Conexión">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+
+
+                <!-- User Dropdown -->
+                <div class="dropdown">
+                    <button class="btn btn-link text-decoration-none p-0" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="user-avatar-small">
+                            @if(isset($usuario['avatar']) && $usuario['avatar'])
+                                <img src="{{ asset('storage/avatars/' . $usuario['avatar']) }}" alt="Avatar">
+                            @else
+                                <i class="fas fa-user-circle"></i>
+                            @endif
+                        </div>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showUserProfile()">
+                                <i class="fas fa-user me-2"></i>Mi Perfil
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end slide-in-right">
-                                <li><a class="dropdown-item" href="#"><i class="fas fa-user"></i> Mi Perfil</a></li>
-                                <li><a class="dropdown-item" href="#"><i class="fas fa-cog"></i> Configuración</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <form action="{{ route('logout') }}" method="POST" class="d-inline">
-                                        @csrf
-                                        <button type="submit" class="dropdown-item">
-                                            <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
-                                        </button>
-                                    </form>
-                                </li>
-                            </ul>
                         </li>
-                    @endauth
-                </ul>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showUserSettings()">
+                                <i class="fas fa-cog me-2"></i>Configuración
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="#" onclick="confirmLogout()">
+                                <i class="fas fa-sign-out-alt me-2"></i>Cerrar Sesión
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>
-@endunless
 
+    <!-- Sidebar Trigger Zone (Zona invisible para activar el hover) -->
+    <div class="sidebar-trigger-zone" id="sidebarTriggerZone"></div>
 
-    <div class="container-fluid">
-        <div class="row">
-            @auth
-                <!-- Sidebar -->
-                <div class="col-md-3 col-lg-2 px-0 sidebar">
-                    @include('layouts.partials.sidebar')
-                </div>
-
-                <!-- Main Content -->
-                <div class="col-md-9 col-lg-10 main-content">
-                    <!-- Selector de Sede -->
-                    <div class="sede-selector-container">
-                        <div class="sede-actual-info">
-                            <div class="d-flex align-items-center">
-                                <div class="me-3">
-                                    <i class="fas fa-building text-primary fs-4"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-1 fw-bold" id="sedeActualNombre">
-                                        {{ session('usuario')['sede']['nombre'] ?? 'Cargando...' }}
-                                    </h6>
-                                    <small class="text-muted">
-                                        <i class="fas fa-map-marker-alt me-1"></i>
-                                        Sede actual
-                                    </small>
-                                </div>
-                                <button class="btn btn-outline-primary btn-sm" 
-                                        id="btnCambiarSede"
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#modalCambiarSede">
-                                    <i class="fas fa-exchange-alt me-1"></i>
-                                    Cambiar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    @if(($is_offline ?? false) || !($is_online ?? true))
-                        <div class="offline-indicator">
-                            <div class="d-flex align-items-center">
-                                <i class="fas fa-exclamation-triangle me-3 fs-5"></i>
-                                <div>
-                                    <strong>Modo Offline:</strong> Trabajando sin conexión. Los cambios se sincronizarán automáticamente cuando se restablezca la conexión.
-                                </div>
-                            </div>
-                        </div>
-                    @endif
-
-                    @include('layouts.partials.alerts')
-                    @yield('content')
-                </div>
-            @else
-                <div class="col-12">
-                    @include('layouts.partials.alerts')
-                    @yield('content')
-                </div>
-            @endauth
-        </div>
+    <!-- Sidebar Container -->
+    <div class="sidebar-container" id="sidebarContainer">
+        @include('layouts.partials.sidebar')
     </div>
 
-    <!-- Modal para Cambiar Sede -->
-    @auth
-    <div class="modal fade" id="modalCambiarSede" tabindex="-1">
+    <!-- Overlay (solo para móvil cuando se abre manualmente) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    @endunless
+
+    <!-- Main Content -->
+    <main class="main-content">
+        @yield('content')
+    </main>
+
+    <!-- Modal Cambiar Sede -->
+    @unless(request()->routeIs('login'))
+    <div class="modal fade" id="modalCambiarSede" tabindex="-1" aria-labelledby="modalCambiarSedeLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="fas fa-building me-2"></i>
-                        Cambiar Sede
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <div class="modal-header modal-header-professional">
+                    <div class="d-flex align-items-center">
+                        <div class="modal-icon-wrapper">
+                            <i class="fas fa-building"></i>
+                        </div>
+                        <h5 class="modal-title mb-0" id="modalCambiarSedeLabel">Cambiar Sede</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-4">
-                        <label class="form-label">
-                            <i class="fas fa-list me-2"></i>
-                            Seleccionar nueva sede:
-                        </label>
+                    <div class="mb-3">
+                        <label for="nuevaSedeSelect" class="form-label">Selecciona una sede:</label>
                         <select class="form-select" id="nuevaSedeSelect">
                             <option value="">Cargando sedes...</option>
                         </select>
                     </div>
-                    
-                    <div class="alert alert-info">
-                        <div class="d-flex align-items-start">
-                            <i class="fas fa-info-circle me-3 mt-1"></i>
-                            <div>
-                                <strong>Información importante:</strong>
-                                <p class="mb-0 mt-1">Al cambiar de sede, tendrás acceso completo a todos los datos y funcionalidades de la sede seleccionada.</p>
-                            </div>
-                        </div>
+                    <div class="alert alert-info d-flex align-items-center" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <small>Al cambiar de sede, se actualizarán los datos disponibles según la ubicación seleccionada.</small>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i>
-                        Cancelar
+                        <i class="fas fa-times me-1"></i>Cancelar
                     </button>
                     <button type="button" class="btn btn-primary" id="btnConfirmarCambio">
-                        <i class="fas fa-check me-1"></i>
-                        Cambiar Sede
+                        <i class="fas fa-check me-1"></i>Confirmar Cambio
                     </button>
                 </div>
             </div>
         </div>
     </div>
-    @endauth
+    @endunless
 
-    <!-- Sync Button -->
-    @auth
-        @if(($is_offline ?? false) || !($is_online ?? true))
-            <button id="syncButton" class="btn sync-button" title="Sincronizar datos">
-                <i class="fas fa-sync-alt"></i>
-            </button>
-        @endif
-    @endauth
-
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.27/dist/sweetalert2.all.min.js"></script>
+    <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- Select2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
+    <!-- Scripts principales -->
     <script>
-        // Tu JavaScript existente aquí (mantener exactamente igual)
+        // ===== VARIABLES GLOBALES =====
         let isOnline = {{ ($is_online ?? true) ? 'true' : 'false' }};
         let checkInterval;
-        let wasOfflinePacientes = false;
         let syncInProgress = false;
 
-        // Todas tus funciones JavaScript existentes...
-        // (Copio todo tu JavaScript tal como está)
+        // ===== FUNCIONES DE SIDEBAR (Solo para móvil) =====
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebarContainer');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            if (sidebar && overlay) {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
 
+        // Para abrir manualmente en móvil (si lo necesitas desde algún botón)
+        function openSidebarMobile() {
+            if (window.innerWidth <= 768) {
+                const sidebar = document.getElementById('sidebarContainer');
+                const overlay = document.getElementById('sidebarOverlay');
+                
+                if (sidebar && overlay) {
+                    sidebar.classList.add('active');
+                    overlay.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                }
+            }
+        }
+
+        // ===== FUNCIONES DE CONEXIÓN =====
         function updateConnectionStatus(online) {
             const statusEl = document.getElementById('connectionStatus');
             const textEl = document.getElementById('statusText');
             
-            if (online) {
-                statusEl.className = 'connection-status connection-online';
-                textEl.innerHTML = 'Conectado';
-            } else {
-                statusEl.className = 'connection-status connection-offline';
-                textEl.innerHTML = 'Sin conexión';
+            if (statusEl && textEl) {
+                if (online) {
+                    statusEl.className = 'connection-status connection-online';
+                    statusEl.querySelector('i').className = 'fas fa-wifi';
+                    textEl.textContent = 'Conectado';
+                } else {
+                    statusEl.className = 'connection-status connection-offline';
+                    statusEl.querySelector('i').className = 'fas fa-wifi-slash';
+                    textEl.textContent = 'Sin conexión';
+                }
+                
+                isOnline = online;
             }
-            
-            isOnline = online;
         }
 
         function checkConnection() {
@@ -787,154 +1325,98 @@
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 }
             })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.online !== isOnline) {
-                        updateConnectionStatus(data.online);
-                        
-                        if (data.online && !isOnline) {
-                            Swal.fire({
-                                title: '¡Conexión restablecida!',
-                                text: '¿Desea sincronizar los datos pendientes?',
-                                icon: 'success',
-                                showCancelButton: true,
-                                confirmButtonText: 'Sincronizar',
-                                cancelButtonText: 'Más tarde'
-                            }).then((result) => {
-                                if (result.isConfirmed) {
-                                    syncData();
-                                }
-                            });
-                        }
+            .then(response => response.json())
+            .then(data => {
+                if (data.online !== isOnline) {
+                    updateConnectionStatus(data.online);
+                    
+                    if (data.online && !isOnline) {
+                        Swal.fire({
+                            title: '¡Conexión restablecida!',
+                            text: '¿Desea sincronizar los datos pendientes?',
+                            icon: 'success',
+                            showCancelButton: true,
+                            confirmButtonText: 'Sincronizar',
+                            cancelButtonText: 'Más tarde',
+                            confirmButtonColor: '#2c5aa0',
+                            cancelButtonColor: '#6c757d'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                syncAllPendingData();
+                            }
+                        });
                     }
-                })
-                .catch(() => {
-                    updateConnectionStatus(false);
-                });
+                }
+            })
+            .catch(() => {
+                updateConnectionStatus(false);
+            });
         }
 
-        function syncData() {
-            const syncBtn = document.getElementById('syncButton');
-            const statusEl = document.getElementById('connectionStatus');
-            
-            if (syncBtn) {
-                syncBtn.classList.add('spinning');
+        function syncAllPendingData() {
+            if (syncInProgress) {
+                mostrarAlerta('Sincronización en progreso', 'warning');
+                return;
             }
-            
-            statusEl.className = 'connection-status connection-syncing';
-            document.getElementById('statusText').innerHTML = 'Sincronizando...';
 
-            fetch('/sync', {
+            syncInProgress = true;
+            
+            Swal.fire({
+                title: 'Sincronizando...',
+                html: 'Sincronizando datos pendientes',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            fetch('/sync-pacientes', {
                 method: 'POST',
                 headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    Swal.fire('¡Sincronizado!', 'Los datos se han sincronizado correctamente', 'success');
-                    setTimeout(() => location.reload(), 1500);
+                    Swal.fire({
+                        title: 'Sincronización Completada',
+                        text: `${data.synced_count || 0} pacientes sincronizados`,
+                        icon: 'success',
+                        timer: 3000,
+                        showConfirmButton: false
+                    });
                 } else {
-                    Swal.fire('Error', 'No se pudo sincronizar: ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                Swal.fire('Error', 'Error de conexión durante la sincronización', 'error');
-            })
-            .finally(() => {
-                if (syncBtn) {
-                    syncBtn.classList.remove('spinning');
-                }
-                updateConnectionStatus(isOnline);
-            });
-        }
-
-        function autoSyncPacientes() {
-            if (syncInProgress) {
-                              console.log('🔄 Sincronización ya en progreso...');
-                return;
-            }
-
-            fetch('/check-connection', {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                const currentlyOnline = data.success && data.online;
-                
-                if (currentlyOnline && wasOfflinePacientes) {
-                    console.log('🔄 Conexión restaurada, sincronizando pacientes...');
-                    
-                    syncInProgress = true;
-                    
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            title: 'Sincronizando',
-                            text: 'Sincronizando pacientes pendientes...',
-                            icon: 'info',
-                            timer: 2000,
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false
-                        });
-                    }
-                    
-                    fetch('/sync-pacientes', {
-                        method: 'POST',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(syncData => {
-                        if (syncData.success && syncData.synced_count > 0) {
-                            console.log(`✅ ${syncData.synced_count} pacientes sincronizados`);
-                            
-                            Swal.fire({
-                                title: 'Sincronización Completada',
-                                text: `${syncData.synced_count} pacientes sincronizados automáticamente`,
-                                icon: 'success',
-                                timer: 3000,
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: false
-                            });
-                            
-                            if (window.location.pathname.includes('pacientes')) {
-                                setTimeout(() => window.location.reload(), 2000);
-                            }
-                        } else {
-                            console.log('ℹ️ No hay pacientes pendientes para sincronizar');
-                        }
-                    })
-                    .catch(error => {
-                        console.log('❌ Error sincronizando pacientes:', error);
-                    })
-                    .finally(() => {
-                        syncInProgress = false;
+                    Swal.fire({
+                        title: 'Error',
+                        text: data.error || 'Error en la sincronización',
+                        icon: 'error',
+                        confirmButtonColor: '#2c5aa0'
                     });
                 }
-                
-                wasOfflinePacientes = !currentlyOnline;
             })
             .catch(error => {
-                wasOfflinePacientes = true;
+                Swal.fire({
+                    title: 'Error de Conexión',
+                    text: 'No se pudo conectar con el servidor',
+                    icon: 'error',
+                    confirmButtonColor: '#2c5aa0'
+                });
+            })
+            .finally(() => {
+                syncInProgress = false;
             });
         }
 
+        // ===== FUNCIONES DE SEDE =====
         function cargarSedesDisponibles() {
             const nuevaSedeSelect = document.getElementById('nuevaSedeSelect');
+            if (!nuevaSedeSelect) return;
+            
             nuevaSedeSelect.innerHTML = '<option value="">Cargando...</option>';
-            nuevaSedeSelect.classList.add('loading');
             
             fetch('/sedes-disponibles', {
                 method: 'GET',
@@ -961,27 +1443,21 @@
                         
                         nuevaSedeSelect.appendChild(option);
                     });
-                } else {
-                    nuevaSedeSelect.innerHTML = '<option value="">Error cargando sedes</option>';
-                    mostrarAlerta('Error cargando sedes disponibles', 'error');
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
                 nuevaSedeSelect.innerHTML = '<option value="">Error de conexión</option>';
-                mostrarAlerta('Error de conexión', 'error');
-            })
-            .finally(() => {
-                nuevaSedeSelect.classList.remove('loading');
+                mostrarAlerta('Error cargando sedes', 'error');
             });
         }
 
         function cambiarSede(nuevaSedeId) {
             const btnConfirmarCambio = document.getElementById('btnConfirmarCambio');
+            if (!btnConfirmarCambio) return;
+            
             const originalText = btnConfirmarCambio.innerHTML;
             
             btnConfirmarCambio.disabled = true;
-            btnConfirmarCambio.classList.add('loading');
             btnConfirmarCambio.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Cambiando...';
 
             fetch('/cambiar-sede', {
@@ -998,10 +1474,18 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    document.getElementById('sedeActualNombre').textContent = data.usuario.sede.nombre;
+                    const sedeNombreEl = document.getElementById('sedeActualNombre');
+                    if (sedeNombreEl) {
+                        sedeNombreEl.textContent = data.usuario.sede.nombre;
+                    }
                     
-                    const modalCambiarSede = bootstrap.Modal.getInstance(document.getElementById('modalCambiarSede'));
-                    modalCambiarSede.hide();
+                    const modalElement = document.getElementById('modalCambiarSede');
+                    if (modalElement) {
+                        const modalCambiarSede = bootstrap.Modal.getInstance(modalElement);
+                        if (modalCambiarSede) {
+                            modalCambiarSede.hide();
+                        }
+                    }
                     
                     Swal.fire({
                         title: '¡Sede cambiada!',
@@ -1014,393 +1498,275 @@
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
-                    
                 } else {
                     mostrarAlerta(data.error || 'Error cambiando sede', 'error');
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
-                mostrarAlerta('Error de conexión al cambiar sede', 'error');
+                mostrarAlerta('Error de conexión', 'error');
             })
             .finally(() => {
                 btnConfirmarCambio.disabled = false;
-                btnConfirmarCambio.classList.remove('loading');
                 btnConfirmarCambio.innerHTML = originalText;
             });
         }
 
-        function mostrarAlerta(mensaje, tipo) {
-            const alertaDiv = document.createElement('div');
-            alertaDiv.className = `alert alert-${tipo === 'error' ? 'danger' : tipo} alert-dismissible fade show position-fixed`;
-            alertaDiv.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 350px; max-width: 400px;';
-            
-            const iconClass = tipo === 'success' ? 'check-circle' : 
-                             tipo === 'warning' ? 'exclamation-triangle' : 
-                             tipo === 'info' ? 'info-circle' : 'times-circle';
-            
-            alertaDiv.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-${iconClass} me-2 fs-5"></i>
-                    <div class="flex-grow-1">${mensaje}</div>
-                    <button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>
-                </div>
-            `;
-            
-            document.body.appendChild(alertaDiv);
-            
-            // Animación de entrada
-            setTimeout(() => alertaDiv.classList.add('slide-in-right'), 10);
-            
-            // Auto-remover después de 5 segundos
-            setTimeout(() => {
-                if (alertaDiv.parentNode) {
-                    alertaDiv.classList.add('fade');
-                    setTimeout(() => alertaDiv.remove(), 300);
-                }
-            }, 5000);
-        }
-
-        function testSyncNow() {
-            console.log('🧪 Iniciando test de sincronización manual...');
-            
-            Swal.fire({
-                title: 'Ejecutando Test',
-                text: 'Verificando sistema de sincronización...',
-                icon: 'info',
-                showConfirmButton: false,
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
-            
-            fetch('/test-sync-manual', {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('🧪 Resultado del test:', data);
-                
+        // ===== FUNCIONES DE USUARIO =====
+        function showUserProfile() {
                 Swal.fire({
-                    title: 'Resultado del Test',
-                    html: `
-                        <div class="text-start">
-                            <div class="mb-3">
-                                <strong>Estado:</strong> 
-                                <span class="badge bg-${data.success ? 'success' : 'danger'} ms-2">
-                                    ${data.success ? '✅ Exitoso' : '❌ Error'}
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <strong>Conexión:</strong> 
-                                <span class="badge bg-${data.connection ? 'success' : 'danger'} ms-2">
-                                    ${data.connection ? '🟢 Online' : '🔴 Offline'}
-                                </span>
-                            </div>
-                            <div class="mb-3">
-                                <strong>Pacientes pendientes:</strong> 
-                                <span class="badge bg-info ms-2">${data.pending_count || 0}</span>
-                            </div>
-                            <div class="mb-3">
-                                <strong>Mensaje:</strong> 
-                                <div class="mt-1 p-2 bg-light rounded">${data.message || 'Sin mensaje'}</div>
-                            </div>
-                            ${data.error ? `
-                                <div class="mb-3">
-                                    <strong>Error:</strong> 
-                                    <div class="mt-1 p-2 bg-danger bg-opacity-10 text-danger rounded">${data.error}</div>
+                title: '<i class="fas fa-user-edit text-primary"></i> Mi Perfil',
+                html: `
+                    <div class="text-start">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title"><i class="fas fa-user me-2"></i>Información Personal</h6>
+                                        <p><strong>Nombre:</strong> {{ $usuario['nombre_completo'] ?? 'No especificado' }}</p>
+                                        <p><strong>Documento:</strong> {{ $usuario['documento'] ?? 'No especificado' }}</p>
+                                        <p><strong>Correo:</strong> {{ $usuario['correo'] ?? 'No especificado' }}</p>
+                                        <p><strong>Teléfono:</strong> {{ $usuario['telefono'] ?? 'No especificado' }}</p>
+                                    </div>
                                 </div>
-                            ` : ''}
+                            </div>
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title"><i class="fas fa-briefcase me-2"></i>Información Laboral</h6>
+                                        <p><strong>Rol:</strong> {{ $usuario['rol']['nombre'] ?? 'No asignado' }}</p>
+                                        <p><strong>Sede:</strong> {{ $usuario['sede']['nombre'] ?? 'No asignada' }}</p>
+                                        <p><strong>Estado:</strong> 
+                                            <span class="badge bg-{{ (($usuario['estado']['id'] ?? 0) == 1) ? 'success' : 'danger' }}">
+                                                {{ $usuario['estado']['nombre'] ?? 'No definido' }}
+                                            </span>
+                                        </p>
+                                        @if(isset($usuario['especialidad']) && $usuario['especialidad'])
+                                        <p><strong>Especialidad:</strong> {{ $usuario['especialidad']['nombre'] }}</p>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    `,
-                    icon: data.success ? 'success' : 'error',
-                    width: '600px',
-                    confirmButtonText: 'Entendido'
-                });
-            })
-            .catch(error => {
-                console.error('❌ Error en test:', error);
-                Swal.fire({
-                    title: 'Error en Test',
-                    text: 'No se pudo ejecutar el test de sincronización',
-                    icon: 'error'
-                });
+                    </div>
+                `,
+                width: '600px',
+                showCloseButton: true,
+                showConfirmButton: false
             });
         }
 
-        function syncAllPendingData() {
-            if (syncInProgress) {
-                Swal.fire({
-                    title: 'Sincronización en Progreso',
-                    text: 'Ya hay una sincronización ejecutándose',
-                    icon: 'warning'
-                });
-                return;
-            }
-
-            console.log('🚀 Forzando sincronización manual de pacientes...');
-            
+        function showUserSettings() {
             Swal.fire({
-                title: 'Sincronizando',
-                text: 'Sincronizando todos los pacientes pendientes...',
-                icon: 'info',
-                showConfirmButton: false,
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
+            title: '<i class="fas fa-cog text-primary"></i> Configuración',
+            html: `
+                <div class="text-start">
+                    <div class="list-group">
+                        <a href="#" class="list-group-item list-group-item-action" onclick="changeTheme()">
+                            <i class="fas fa-palette me-2"></i>
+                            Cambiar tema
+                            <small class="text-muted d-block">Personalizar apariencia</small>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="changePassword()">
+                            <i class="fas fa-key me-2"></i>
+                            Cambiar contraseña
+                            <small class="text-muted d-block">Actualizar credenciales</small>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="syncSettings()">
+                            <i class="fas fa-sync-alt me-2"></i>
+                            Sincronización
+                            <small class="text-muted d-block">Configurar sincronización automática</small>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="clearCache()">
+                            <i class="fas fa-trash-alt me-2"></i>
+                            Limpiar caché
+                            <small class="text-muted d-block">Eliminar datos temporales</small>
+                        </a>
+                    </div>
+                </div>
+            `,
+            width: '500px',
+            showCloseButton: true,
+            showConfirmButton: false
+        });
+        }
 
-            syncInProgress = true;
-            
-            const statusEl = document.getElementById('connectionStatus');
-            if (statusEl) {
-                statusEl.className = 'connection-status connection-syncing';
-                document.getElementById('statusText').innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Sincronizando...';
-            }
-
-            fetch('/sync-pacientes', {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                }
-            })
-            .then(response => {
-                console.log('📥 Respuesta del servidor:', response.status, response.statusText);
-                return response.json();
-            })
-            .then(data => {
-                console.log('📊 Resultado de sincronización forzada:', data);
-                
-                if (data.success) {
-                    const syncedCount = data.synced_count || 0;
-                    const failedCount = data.failed_count || 0;
+        function changePassword() {
+            Swal.close();
+            Swal.fire({
+                title: 'Cambiar Contraseña',
+                html: `
+                    <form id="passwordForm">
+                        <div class="mb-3">
+                            <input type="password" class="form-control" id="currentPassword" placeholder="Contraseña actual" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="password" class="form-control" id="newPassword" placeholder="Nueva contraseña" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="password" class="form-control" id="confirmPassword" placeholder="Confirmar contraseña" required>
+                        </div>
+                    </form>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Cambiar',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const current = document.getElementById('currentPassword').value;
+                    const newPass = document.getElementById('newPassword').value;
+                    const confirm = document.getElementById('confirmPassword').value;
                     
-                    let message = '';
-                    let icon = 'success';
-                    
-                    if (syncedCount > 0) {
-                        message = `${syncedCount} pacientes sincronizados correctamente`;
-                        if (failedCount > 0) {
-                            message += `\n${failedCount} pacientes fallaron`;
-                            icon = 'warning';
-                        }
-                    } else if (failedCount > 0) {
-                        message = `${failedCount} pacientes fallaron al sincronizar`;
-                        icon = 'error';
-                    } else {
-                        message = 'No hay pacientes pendientes para sincronizar';
-                        icon = 'info';
+                    if (!current || !newPass || !confirm) {
+                        Swal.showValidationMessage('Todos los campos son obligatorios');
+                        return false;
                     }
                     
-                    Swal.fire({
-                        title: 'Sincronización Completada',
-                        text: message,
-                        icon: icon,
-                        confirmButtonText: 'Entendido'
-                    }).then(() => {
-                        if (syncedCount > 0 && window.location.pathname.includes('pacientes')) {
-                            window.location.reload();
-                        }
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Error de Sincronización',
-                        text: data.error || 'Error desconocido en la sincronización',
-                        icon: 'error'
-                    });
+                    if (newPass !== confirm) {
+                        Swal.showValidationMessage('Las contraseñas no coinciden');
+                        return false;
+                    }
+                    
+                    if (newPass.length < 6) {
+                                        Swal.showValidationMessage('La contraseña debe tener al menos 6 caracteres');
+                        return false;
+                    }
+                    
+                    return { current, newPass };
                 }
-            })
-            .catch(error => {
-                console.error('💥 Error de conexión en sincronización forzada:', error);
-                
-                Swal.fire({
-                    title: 'Error de Conexión',
-                    text: 'No se pudo conectar con el servidor para sincronizar',
-                    icon: 'error'
-                });
-            })
-            .finally(() => {
-                syncInProgress = false;
-                
-                setTimeout(() => {
-                    updateConnectionStatus(isOnline);
-                }, 2000);
-                
-                console.log('🏁 Sincronización forzada finalizada');
-            });
-        }
-
-        // Utility functions
-        function showAlert(type, message, title = '') {
-            Swal.fire({
-                icon: type,
-                title: title || (type === 'success' ? '¡Éxito!' : type === 'error' ? '¡Error!' : '¡Información!'),
-                text: message,
-                timer: type === 'success' ? 3000 : undefined,
-                showConfirmButton: type !== 'success',
-                toast: type === 'success',
-                position: type === 'success' ? 'top-end' : 'center'
-            });
-        }
-
-        function confirmAction(message, callback) {
-            Swal.fire({
-                title: '¿Está seguro?',
-                text: message,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: 'var(--danger-color)',
-                cancelButtonColor: 'var(--primary-color)',
-                confirmButtonText: 'Sí, continuar',
-                cancelButtonText: 'Cancelar',
-                reverseButtons: true
             }).then((result) => {
-                if (result.isConfirmed && callback) {
-                    callback();
+                if (result.isConfirmed) {
+                    showAlert('success', 'Contraseña actualizada correctamente');
                 }
             });
         }
 
-        // Event Listeners
+        function showNotificationSettings() {
+            mostrarAlerta('Configuración de notificaciones próximamente', 'info');
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-theme');
+            const isDark = document.body.classList.contains('dark-theme');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            mostrarAlerta(`Tema ${isDark ? 'oscuro' : 'claro'} activado`, 'success');
+        }
+
+        function confirmLogout() {
+            Swal.fire({
+                title: '¿Cerrar Sesión?',
+                text: '¿Estás seguro de que deseas salir?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, salir',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = '{{ route("logout") }}';
+                }
+            });
+        }
+
+        // ===== UTILIDADES =====
+        function mostrarAlerta(mensaje, tipo = 'info') {
+            if (typeof Swal !== 'undefined') {
+                const iconMap = {
+                    'success': 'success',
+                    'error': 'error',
+                    'warning': 'warning',
+                    'info': 'info'
+                };
+
+                Swal.fire({
+                    title: mensaje,
+                    icon: iconMap[tipo] || 'info',
+                    timer: 3000,
+                    showConfirmButton: false,
+                    toast: true,
+                    position: 'top-end',
+                    timerProgressBar: true
+                });
+            }
+        }
+
+        // ===== EVENT LISTENERS =====
         document.addEventListener('DOMContentLoaded', function() {
+            // Solo ejecutar si NO estamos en login
+            if (!document.body.classList.contains('login-page')) {
+                // Verificar conexión cada 30 segundos
+                checkInterval = setInterval(checkConnection, 30000);
+                
+                // Cerrar sidebar con ESC (solo móvil)
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && window.innerWidth <= 768) {
+                        closeSidebar();
+                    }
+                });
+                
+                // Event listener para modal de cambiar sede
+                const modalCambiarSede = document.getElementById('modalCambiarSede');
+                if (modalCambiarSede) {
+                    modalCambiarSede.addEventListener('show.bs.modal', function() {
+                        cargarSedesDisponibles();
+                    });
+                }
+
+                // Event listener para botón confirmar cambio de sede
+                const btnConfirmarCambio = document.getElementById('btnConfirmarCambio');
+                if (btnConfirmarCambio) {
+                    btnConfirmarCambio.addEventListener('click', function() {
+                        const nuevaSedeId = document.getElementById('nuevaSedeSelect').value;
+                        
+                        if (!nuevaSedeId) {
+                            mostrarAlerta('Por favor selecciona una sede', 'warning');
+                            return;
+                        }
+
+                        cambiarSede(nuevaSedeId);
+                    });
+                }
+                
+                // Handle online/offline events
+                window.addEventListener('online', () => {
+                    updateConnectionStatus(true);
+                    checkConnection();
+                    mostrarAlerta('Conexión restablecida', 'success');
+                });
+
+                window.addEventListener('offline', () => {
+                    updateConnectionStatus(false);
+                    mostrarAlerta('Conexión perdida - Trabajando offline', 'warning');
+                });
+            }
+
+            // Cargar tema guardado (funciona en todas las páginas)
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-theme');
+            }
+
             // Inicializar tooltips de Bootstrap
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             tooltipTriggerList.map(function (tooltipTriggerEl) {
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
 
-            // Check connection every 30 seconds
-            checkInterval = setInterval(checkConnection, 30000);
-            
-            // Verificar sincronización de pacientes cada 30 segundos
-            setInterval(autoSyncPacientes, 30000);
-            setTimeout(autoSyncPacientes, 3000);
-
-            // Sync button click
-            const syncBtn = document.getElementById('syncButton');
-            if (syncBtn) {
-                syncBtn.addEventListener('click', syncData);
-            }
-
-            // Event listeners para cambio de sede
-            const btnCambiarSede = document.getElementById('btnCambiarSede');
-            if (btnCambiarSede) {
-                btnCambiarSede.addEventListener('click', function() {
-                    cargarSedesDisponibles();
+            // Inicializar Select2 si existe
+            if (typeof $.fn.select2 !== 'undefined') {
+                $('.select2').select2({
+                    theme: 'bootstrap-5',
+                    width: '100%'
                 });
-            }
-
-            const btnConfirmarCambio = document.getElementById('btnConfirmarCambio');
-            if (btnConfirmarCambio) {
-                btnConfirmarCambio.addEventListener('click', function() {
-                    const nuevaSedeId = document.getElementById('nuevaSedeSelect').value;
-                    
-                    if (!nuevaSedeId) {
-                        mostrarAlerta('Por favor selecciona una sede', 'warning');
-                        return;
-                    }
-
-                    cambiarSede(nuevaSedeId);
-                });
-            }
-
-            // Handle online/offline events
-            window.addEventListener('online', () => {
-                updateConnectionStatus(true);
-                checkConnection();
-                setTimeout(autoSyncPacientes, 1000);
-                mostrarAlerta('Conexión restablecida', 'success');
-            });
-
-            window.addEventListener('offline', () => {
-                updateConnectionStatus(false);
-                wasOfflinePacientes = true;
-                mostrarAlerta('Conexión perdida - Trabajando offline', 'warning');
-            });
-
-            // Smooth scroll para enlaces internos
-            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-                anchor.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const target = document.querySelector(this.getAttribute('href'));
-                    if (target) {
-                        target.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start'
-                        });
-                    }
-                });
-            });
-
-            // Auto-hide alerts after 5 seconds
-            setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert:not(.alert-permanent)');
-                alerts.forEach(alert => {
-                    if (!alert.classList.contains('show')) return;
-                    
-                    setTimeout(() => {
-                        alert.classList.add('fade');
-                        setTimeout(() => {
-                            if (alert.parentNode) {
-                                alert.remove();
-                            }
-                        }, 300);
-                    }, 5000);
-                });
-            }, 100);
-        });
-
-        // Prevenir envío múltiple de formularios
-        document.addEventListener('submit', function(e) {
-            const form = e.target;
-            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
-            
-            if (submitBtn && !submitBtn.disabled) {
-                submitBtn.disabled = true;
-                submitBtn.classList.add('loading');
-                
-                const originalText = submitBtn.innerHTML || submitBtn.value;
-                
-                if (submitBtn.tagName === 'BUTTON') {
-                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Procesando...';
-                } else {
-                    submitBtn.value = 'Procesando...';
-                }
-                
-                // Re-habilitar después de 5 segundos como fallback
-                setTimeout(() => {
-                    submitBtn.disabled = false;
-                    submitBtn.classList.remove('loading');
-                    if (submitBtn.tagName === 'BUTTON') {
-                        submitBtn.innerHTML = originalText;
-                    } else {
-                        submitBtn.value = originalText;
-                    }
-                }, 5000);
             }
         });
 
-        // Manejo global de errores AJAX
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Error no manejado:', event.reason);
-            mostrarAlerta('Ha ocurrido un error inesperado', 'error');
+        // Limpiar interval al salir
+        window.addEventListener('beforeunload', function() {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
         });
     </script>
-
-    @push('scripts')
-        <script src="{{ asset('js/cups-autocomplete.js') }}"></script>
-    @endpush
 
     @stack('scripts')
 </body>
