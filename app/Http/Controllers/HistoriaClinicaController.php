@@ -2955,35 +2955,353 @@ private function verificarHistoriasAnterioresOffline(string $pacienteUuid, strin
     }
 }
 
-/**
- * ✅ OBTENER ÚLTIMA HISTORIA OFFLINE
- */
-private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
-{
-    try {
-        $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
-        
-        if (empty($historias)) {
+    /**
+     * ✅ OBTENER ÚLTIMA HISTORIA OFFLINE
+     */
+    private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
+    {
+        try {
+            $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
+            
+            if (empty($historias)) {
+                return null;
+            }
+
+            // Ordenar por fecha y devolver la más reciente
+            usort($historias, function($a, $b) {
+                return strtotime($b['created_at']) - strtotime($a['created_at']);
+            });
+
+            return $historias[0];
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo última historia offline', [
+                'error' => $e->getMessage(),
+                'paciente_uuid' => $pacienteUuid,
+                'especialidad' => $especialidad
+            ]);
+            
             return null;
         }
-
-        // Ordenar por fecha y devolver la más reciente
-        usort($historias, function($a, $b) {
-            return strtotime($b['created_at']) - strtotime($a['created_at']);
-        });
-
-        return $historias[0];
-
-    } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo última historia offline', [
-            'error' => $e->getMessage(),
-            'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
-        ]);
-        
-        return null;
     }
-}
+
+    /**
+     * ✅ ÍNDICE DE HISTORIAS CLÍNICAS - BÚSQUEDA POR PACIENTE
+     */
+    public function index(Request $request)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            $isOffline = $this->authService->isOffline();
+            
+            Log::info('📋 HistoriaClinicaController@index', [
+                'usuario' => $usuario['nombre_completo'],
+                'filters' => $request->all()
+            ]);
+
+            // ✅ SI ES AJAX, RETORNAR DATOS
+            if ($request->ajax()) {
+                $filters = $request->only([
+                    'documento', 'fecha_desde', 'fecha_hasta', 
+                    'especialidad', 'tipo_consulta', 'estado'
+                ]);
+                
+                $page = $request->get('page', 1);
+                $perPage = $request->get('per_page', 15);
+                
+                $result = $this->obtenerHistoriasClinicas($filters, $page, $perPage);
+                
+                return response()->json($result);
+            }
+
+            // ✅ VISTA PRINCIPAL
+            $masterData = $this->getMasterDataForForm();
+            
+            return view('historia-clinica.index', compact(
+                'usuario', 
+                'isOffline', 
+                'masterData'
+            ));
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error en HistoriaClinicaController@index', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Error interno del servidor',
+                    'data' => []
+                ], 500);
+            }
+
+            return back()->with('error', 'Error cargando historias clínicas');
+        }
+    }
+
+    /**
+     * ✅ OBTENER HISTORIAS CLÍNICAS CON FILTROS
+     */
+    private function obtenerHistoriasClinicas(array $filters, int $page = 1, int $perPage = 15): array
+    {
+        try {
+            Log::info('🔍 Obteniendo historias clínicas', [
+                'filters' => $filters,
+                'page' => $page,
+                'per_page' => $perPage
+            ]);
+
+            // ✅ INTENTAR ONLINE PRIMERO
+            if ($this->apiService->isOnline()) {
+                try {
+                    $response = $this->apiService->get('/historias-clinicas', array_merge($filters, [
+                        'page' => $page,
+                        'per_page' => $perPage
+                    ]));
+                    
+                    if ($response['success']) {
+                        Log::info('✅ Historias obtenidas desde API', [
+                            'count' => count($response['data'] ?? [])
+                        ]);
+                        
+                        return [
+                            'success' => true,
+                            'data' => $response['data'],
+                            'pagination' => $response['pagination'] ?? null,
+                            'offline' => false
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error API, usando offline', [
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // ✅ FALLBACK OFFLINE
+            return $this->obtenerHistoriasOffline($filters, $page, $perPage);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo historias clínicas', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Error obteniendo historias clínicas',
+                'data' => []
+            ];
+        }
+    }
+
+    /**
+     * ✅ OBTENER HISTORIAS OFFLINE
+     */
+    private function obtenerHistoriasOffline(array $filters, int $page = 1, int $perPage = 15): array
+    {
+        try {
+            $historias = [];
+            $historiasPath = $this->offlineService->getStoragePath() . '/historias-clinicas';
+            
+            if (!is_dir($historiasPath)) {
+                return [
+                    'success' => true,
+                    'data' => [],
+                    'pagination' => null,
+                    'offline' => true
+                ];
+            }
+
+            $files = glob($historiasPath . '/*.json');
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                
+                if (!$data) continue;
+                
+                // ✅ APLICAR FILTROS
+                if (!$this->aplicarFiltrosHistoria($data, $filters)) {
+                    continue;
+                }
+                
+                // ✅ ENRIQUECER DATOS
+                $historias[] = $this->enrichHistoriaForList($data);
+            }
+            
+            // ✅ ORDENAR POR FECHA (MÁS RECIENTE PRIMERO)
+            usort($historias, function($a, $b) {
+                return strtotime($b['created_at']) - strtotime($a['created_at']);
+            });
+            
+            // ✅ PAGINAR
+            $total = count($historias);
+            $offset = ($page - 1) * $perPage;
+            $paginatedData = array_slice($historias, $offset, $perPage);
+            
+            return [
+                'success' => true,
+                'data' => $paginatedData,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => ceil($total / $perPage),
+                    'from' => $offset + 1,
+                    'to' => min($offset + $perPage, $total)
+                ],
+                'offline' => true
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo historias offline', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Error obteniendo historias offline',
+                'data' => []
+            ];
+        }
+    }
+
+    /**
+     * ✅ APLICAR FILTROS A HISTORIA (CORREGIDO)
+     */
+    private function aplicarFiltrosHistoria(array $historia, array $filters): bool
+    {
+        // Filtro por documento
+        if (!empty($filters['documento'])) {
+            $documento = $historia['paciente']['documento'] ?? '';
+            if (strpos($documento, $filters['documento']) === false) {
+                return false;
+            }
+        }
+        
+        // ✅ FILTRO POR FECHA DESDE (USANDO created_at)
+        if (!empty($filters['fecha_desde'])) {
+            $fechaHistoria = $historia['created_at'] ?? '';
+            
+            // ✅ EXTRAER SOLO LA FECHA (sin hora) para comparación
+            $fechaHistoriaSolo = substr($fechaHistoria, 0, 10); // "2024-11-10"
+            
+            if ($fechaHistoriaSolo < $filters['fecha_desde']) {
+                return false;
+            }
+        }
+        
+        // ✅ FILTRO POR FECHA HASTA (USANDO created_at)
+        if (!empty($filters['fecha_hasta'])) {
+            $fechaHistoria = $historia['created_at'] ?? '';
+            
+            // ✅ EXTRAER SOLO LA FECHA (sin hora) para comparación
+            $fechaHistoriaSolo = substr($fechaHistoria, 0, 10); // "2024-11-10"
+            
+            if ($fechaHistoriaSolo > $filters['fecha_hasta']) {
+                return false;
+            }
+        }
+        
+        // Filtro por especialidad
+        if (!empty($filters['especialidad'])) {
+            $especialidad = $historia['especialidad'] ?? '';
+            if ($especialidad !== $filters['especialidad']) {
+                return false;
+            }
+        }
+        
+        // Filtro por tipo consulta
+        if (!empty($filters['tipo_consulta'])) {
+            $tipoConsulta = $historia['tipo_consulta'] ?? '';
+            if ($tipoConsulta !== $filters['tipo_consulta']) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+
+    /**
+     * ✅ ENRIQUECER DATOS DE HISTORIA PARA LISTA
+     */
+    private function enrichHistoriaForList(array $historia): array
+    {
+        return [
+            'uuid' => $historia['uuid'],
+            'paciente' => [
+                'nombre_completo' => $historia['paciente']['nombre_completo'] ?? 'N/A',
+                'documento' => $historia['paciente']['documento'] ?? 'N/A',
+                'tipo_documento' => $historia['paciente']['tipo_documento'] ?? 'CC'
+            ],
+            'especialidad' => $historia['especialidad'] ?? 'MEDICINA GENERAL',
+            'tipo_consulta' => $historia['tipo_consulta'] ?? 'PRIMERA VEZ',
+            'profesional' => [
+                'nombre_completo' => $historia['usuario']['nombre_completo'] ?? 'N/A'
+            ],
+            'fecha' => $historia['created_at'] ?? now()->toISOString(),
+            'estado' => $historia['estado'] ?? 'FINALIZADA',
+            'diagnostico_principal' => $this->obtenerDiagnosticoPrincipal($historia),
+            'created_at' => $historia['created_at'],
+            'updated_at' => $historia['updated_at'] ?? $historia['created_at']
+        ];
+    }
+
+    /**
+     * ✅ OBTENER DIAGNÓSTICO PRINCIPAL
+     */
+    private function obtenerDiagnosticoPrincipal(array $historia): ?string
+    {
+        $diagnosticos = $historia['diagnosticos'] ?? [];
+        
+        foreach ($diagnosticos as $diagnostico) {
+            if (($diagnostico['tipo'] ?? '') === 'PRINCIPAL') {
+                return $diagnostico['diagnostico']['nombre'] ?? 
+                    $diagnostico['diagnostico']['codigo'] ?? 
+                    'Diagnóstico principal';
+            }
+        }
+        
+        return !empty($diagnosticos) ? 
+            ($diagnosticos[0]['diagnostico']['nombre'] ?? 'Sin diagnóstico') : 
+            'Sin diagnóstico';
+    }
+
+    /**
+     * ✅ BUSCAR HISTORIAS POR DOCUMENTO DE PACIENTE
+     */
+    public function buscarPorDocumento(Request $request)
+    {
+        try {
+            $request->validate([
+                'documento' => 'required|string|min:3'
+            ]);
+
+            $documento = $request->documento;
+            
+            Log::info('🔍 Buscando historias por documento', [
+                'documento' => $documento
+            ]);
+
+            $filters = ['documento' => $documento];
+            $result = $this->obtenerHistoriasClinicas($filters, 1, 50);
+
+            return response()->json($result);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error buscando historias por documento', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error en búsqueda',
+                'data' => []
+            ], 500);
+        }
+    }
 
 }
 

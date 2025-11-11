@@ -50,18 +50,16 @@
             </a>
         @endif
 
-        <!-- Mi Agenda (Médicos/Enfermeros) -->
-        @if(isset($usuario['tipo_usuario']) && (($usuario['tipo_usuario']['es_medico'] ?? false) || ($usuario['tipo_usuario']['es_enfermero'] ?? false)))
-            <a class="nav-link {{ request()->routeIs('mi-agenda.*') ? 'active' : '' }}" href="#">
-                <i class="fas fa-calendar-check"></i>
-                <span>Mi Agenda</span>
-            </a>
-
-            <a class="nav-link {{ request()->routeIs('historias.*') ? 'active' : '' }}" href="#">
+        {{-- ✅ TEMPORAL: Mostrar siempre para testing --}}
+        @if(true)
+            <a class="nav-link {{ request()->routeIs('historia-clinica.*') ? 'active' : '' }}" 
+            href="{{ route('historia-clinica.index') }}">
                 <i class="fas fa-file-medical"></i>
                 <span>Historias Clínicas</span>
             </a>
-        @endif
+        @endif  
+
+
 
         <!-- Reportes -->
         <a class="nav-link {{ request()->routeIs('reportes.*') ? 'active' : '' }}" href="#">
@@ -113,10 +111,10 @@
     <!-- Bottom Section -->
     <div class="sidebar-bottom">
         <!-- Sync Status -->
-        <div class="sync-status {{ ($is_online ?? true) ? 'online' : 'offline' }}">
+        <!-- <div class="sync-status {{ ($is_online ?? true) ? 'online' : 'offline' }}">
             <i class="fas {{ ($is_online ?? true) ? 'fa-wifi' : 'fa-wifi-slash' }}"></i>
             <span>{{ ($is_online ?? true) ? 'Conectado' : 'Sin conexión' }}</span>
-        </div>
+        </div> -->
 
         @if(!($is_online ?? true) && ($pending_changes ?? 0) > 0)
             <div class="pending-changes">
@@ -417,6 +415,189 @@ function showUserProfile() {
         showConfirmButton: false
     });
 }
+
+/**
+ * 🔍 Buscar historia clínica por documento
+ */
+function buscarHistoriaPorDocumento() {
+    Swal.fire({
+        title: '<i class="fas fa-search text-primary"></i> Buscar Historia Clínica',
+        html: `
+            <div class="text-start">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-id-card me-2"></i>Número de Documento
+                    </label>
+                    <input type="text" 
+                           class="form-control form-control-lg" 
+                           id="documentoBusqueda" 
+                           placeholder="Ej: 1234567890"
+                           autocomplete="off"
+                           required>
+                    <small class="text-muted">Ingrese el documento del paciente sin puntos ni espacios</small>
+                </div>
+            </div>
+        `,
+        width: '500px',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-search me-2"></i>Buscar',
+        cancelButtonText: '<i class="fas fa-times me-2"></i>Cancelar',
+        confirmButtonColor: '#2c5aa0',
+        cancelButtonColor: '#6c757d',
+        focusConfirm: false,
+        didOpen: () => {
+            // Enfocar el input al abrir
+            document.getElementById('documentoBusqueda').focus();
+            
+            // Permitir buscar con Enter
+            document.getElementById('documentoBusqueda').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    Swal.clickConfirm();
+                }
+            });
+        },
+        preConfirm: () => {
+            const documento = document.getElementById('documentoBusqueda').value.trim();
+            
+            if (!documento) {
+                Swal.showValidationMessage('Por favor ingrese un número de documento');
+                return false;
+            }
+            
+            if (!/^\d+$/.test(documento)) {
+                Swal.showValidationMessage('El documento debe contener solo números');
+                return false;
+            }
+            
+            if (documento.length < 5 || documento.length > 15) {
+                Swal.showValidationMessage('El documento debe tener entre 5 y 15 dígitos');
+                return false;
+            }
+            
+            return documento;
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            buscarYMostrarHistoria(result.value);
+        }
+    });
+}
+
+/**
+ * 🔎 Realizar búsqueda y mostrar resultado
+ */
+function buscarYMostrarHistoria(documento) {
+    // Mostrar loader
+    Swal.fire({
+        title: 'Buscando...',
+        html: '<i class="fas fa-spinner fa-spin fa-3x text-primary"></i><br><br>Buscando historia clínica...',
+        showConfirmButton: false,
+        allowOutsideClick: false
+    });
+    
+    // Realizar petición AJAX
+    fetch(`{{ route('historia-clinica.buscar-documento') }}?documento=${documento}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.historias && data.historias.length > 0) {
+                mostrarResultadosHistorias(data.historias, documento);
+            } else {
+                // No se encontraron historias
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Sin Resultados',
+                    html: `
+                        <p>No se encontraron historias clínicas para el documento <strong>${documento}</strong></p>
+                        <p class="text-muted">¿Desea crear una nueva historia clínica?</p>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fas fa-plus me-2"></i>Crear Historia',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#28a745'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = `{{ route('historia-clinica.index') }}?crear=true&documento=${documento}`;
+                    }
+                });
+            }
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'Error al buscar la historia clínica'
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de Conexión',
+            text: 'No se pudo conectar con el servidor. Intente nuevamente.'
+        });
+    });
+}
+
+/**
+ * 📋 Mostrar resultados de búsqueda
+ */
+function mostrarResultadosHistorias(historias, documento) {
+    let html = `
+        <div class="text-start">
+            <p class="mb-3">Se encontraron <strong>${historias.length}</strong> historia(s) para el documento <strong>${documento}</strong></p>
+            <div class="list-group">
+    `;
+    
+    historias.forEach(historia => {
+        const fecha = new Date(historia.fecha_atencion).toLocaleDateString('es-CO');
+        const especialidad = historia.especialidad?.nombre || 'Sin especialidad';
+        const profesional = historia.profesional?.nombre_completo || 'Sin profesional';
+        
+        html += `
+            <a href="{{ url('historia-clinica') }}/${historia.uuid}" 
+               class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                        <i class="fas fa-file-medical text-primary me-2"></i>
+                        ${historia.paciente?.nombre_completo || 'Paciente'}
+                    </h6>
+                    <small class="text-muted">${fecha}</small>
+                </div>
+                <p class="mb-1">
+                    <i class="fas fa-stethoscope me-2"></i>${especialidad}
+                </p>
+                <small class="text-muted">
+                    <i class="fas fa-user-md me-2"></i>${profesional}
+                </small>
+            </a>
+        `;
+    });
+    
+    html += `
+            </div>
+        </div>
+    `;
+    
+    Swal.fire({
+        title: '<i class="fas fa-list-alt text-success"></i> Historias Encontradas',
+        html: html,
+        width: '700px',
+        showCloseButton: true,
+        showConfirmButton: false,
+        customClass: {
+            popup: 'swal-wide'
+        }
+    });
+}
+
 
 function changePassword() {
     Swal.fire({

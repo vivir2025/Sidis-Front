@@ -274,10 +274,10 @@ Route::middleware(['custom.auth', 'role:admin,administrador'])->prefix('usuarios
     Route::patch('/{uuid}/cambiar-estado', [UsuarioController::class, 'cambiarEstado'])->name('cambiar-estado');
     Route::post('/{uuid}/subir-firma', [UsuarioController::class, 'subirFirma'])->name('subir-firma');
     Route::delete('/{uuid}/eliminar-firma', [UsuarioController::class, 'eliminarFirma'])->name('eliminar-firma');
-});
+    });
 Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
     // ✅ CRONOGRAMA - RUTAS COMPLETAS PARA PROFESIONALES DE SALUD
-    Route::prefix('cronograma')->name('cronograma.')->group(function () {
+        Route::prefix('cronograma')->name('cronograma.')->group(function () {
         // Vista principal del cronograma
         Route::get('/', [CronogramaController::class, 'index'])->name('index');
         
@@ -322,6 +322,8 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         Route::post('/sincronizar', [CronogramaController::class, 'sincronizarCambios'])
               ->name('sincronizar');
     });
+
+
         // ✅ RUTAS AJAX PARA BÚSQUEDAS
     Route::get('/historia-clinica/buscar-medicamentos', [HistoriaClinicaController::class, 'buscarMedicamentos'])
         ->name('historia-clinica.buscar-medicamentos');
@@ -333,7 +335,7 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         ->name('historia-clinica.buscar-cups');
         // routes/web.php
 
-Route::get('/historia-clinica/determinar-vista/{citaUuid}', [HistoriaClinicaController::class, 'determinarVista'])
+        Route::get('/historia-clinica/determinar-vista/{citaUuid}', [HistoriaClinicaController::class, 'determinarVista'])
     ->name('historia-clinica.determinar-vista');
 
 
@@ -348,6 +350,15 @@ Route::get('/historia-clinica/determinar-vista/{citaUuid}', [HistoriaClinicaCont
         
         // Estadísticas personales
         Route::get('/estadisticas-personales', [CronogramaController::class, 'estadisticasPersonales'])->name('estadisticas-personales');
+    });
+
+    // ========================================
+    // ✅ HISTORIA CLÍNICA - RUTAS COMPLETAS
+    // ========================================
+    Route::prefix('historia-clinica')->name('historia-clinica.')->group(function () {
+        Route::get('/', [HistoriaClinicaController::class, 'index'])->name('index'); // ✅ ESTA ES LA PRINCIPAL
+        Route::get('/buscar-por-documento', [HistoriaClinicaController::class, 'buscarPorDocumento'])->name('buscar-documento');
+        // ... resto de rutas
     });
 
      // ✅ RUTAS DE HISTORIA CLÍNICA
