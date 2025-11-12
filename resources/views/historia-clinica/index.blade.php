@@ -66,9 +66,8 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>Paciente</th>
-                                        <th>Documento</th>
-                                        <th>Especialidad</th>
                                         <th>Tipo</th>
+                                        <th>Especialidad</th>
                                         <th>Profesional</th>
                                         <th>Fecha</th>
                                         <th class="text-center">Acciones</th>
@@ -206,16 +205,14 @@ $(document).ready(function() {
             tbody.append(`
                 <tr>
                     <td>
+                        <div><span class="badge bg-secondary">${paciente.tipo_documento || 'CC'}</span>
+                        ${paciente.documento || 'N/A'} </div>
                         <strong>${paciente.nombre_completo || 'N/A'}</strong>
                     </td>
                     <td>
-                        <span class="badge bg-secondary">${paciente.tipo_documento || 'CC'}</span>
-                        ${paciente.documento || 'N/A'}
-                    </td>
-                    <td>${historia.especialidad || 'N/A'}</td>
-                    <td>
                         <span class="badge bg-${tipoBadge}">${historia.tipo_consulta || 'N/A'}</span>
                     </td>
+                    <td>${historia.especialidad || 'N/A'}</td>
                     <td>${profesional.nombre_completo}</td>
                     <td>${fecha}</td>
                     <td class="text-center">
