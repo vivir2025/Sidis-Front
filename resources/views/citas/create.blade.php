@@ -542,6 +542,7 @@
 @endpush
 
 @push('scripts')
+<script src="{{ asset('js/cups-autocomplete.js') }}"></script>
 <script>
 let pasoActual = 1;
 let agendaSeleccionada = null;

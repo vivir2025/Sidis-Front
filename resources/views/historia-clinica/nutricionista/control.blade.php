@@ -1,7 +1,7 @@
 {{-- resources/views/historia-clinica/psicologia/control.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Control Psicología')
+@section('title', 'Control Nutricionista')
 
 @section('content')
 <div class="container-fluid">
