@@ -1,33 +1,512 @@
-{{-- ✅ SCRIPT COMPLETO PARA PSICOLOGÍA PRIMERA VEZ --}}
+@push('scripts')
 <script>
-$(document).ready(function() {
-    // ✅ VARIABLES GLOBALES
-    let diagnosticoSeleccionado = null;
-    let diagnosticoAdicionalCounter = 0;
-    let medicamentoCounter = 0;
-    let remisionCounter = 0;
+// ============================================
+// ✅ VARIABLES GLOBALES
+// ============================================
+let diagnosticoAdicionalCounter = 0;
+let medicamentoCounter = 0;
+let remisionCounter = 0;
+let diagnosticoSeleccionado = null;
+
+// ============================================
+// ✅ FUNCIONES PRINCIPALES (FUERA DE DOCUMENT.READY)
+// ============================================
+
+/**
+ * ✅ DISPARAR EVENTO DE HISTORIA GUARDADA
+ */
+function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
+    console.log('📋 Disparando evento historiaClinicaGuardada', {
+        citaUuid: citaUuid,
+        historiaUuid: historiaUuid,
+        offline: offline
+    });
     
-    // ============================================
-    // ✅ FUNCIÓN PARA DISPARAR EVENTO DE HISTORIA GUARDADA
-    // ============================================
-    function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
-        console.log('📋 Disparando evento historiaClinicaGuardada', {
-            citaUuid: citaUuid,
-            historiaUuid: historiaUuid,
-            offline: offline
-        });
+    window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
+        detail: {
+            cita_uuid: citaUuid,
+            historia_uuid: historiaUuid,
+            offline: offline || false
+        }
+    }));
+    
+    console.log('✅ Evento disparado exitosamente');
+}
+
+/**
+ * ✅ AGREGAR REMISIÓN
+ */
+function agregarRemision() {
+    const template = $('#remision_template').html();
+    const $remision = $(template);
+    
+    $remision.find('input[name*="remisiones"], textarea[name*="remisiones"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${remisionCounter}]`));
+    });
+    
+    $('#remisiones_container').append($remision);
+    remisionCounter++;
+    
+    configurarBusquedaRemision($remision);
+}
+
+/**
+ * ✅ AGREGAR REMISIÓN CON DATOS
+ */
+function agregarRemisionConDatos(remision) {
+    console.log('📋 Agregando remisión con datos:', remision);
+    
+    agregarRemision();
+    
+    setTimeout(function() {
+        const $ultimaRemision = $('#remisiones_container .remision-item:last');
         
-        window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
-            detail: {
-                cita_uuid: citaUuid,
-                historia_uuid: historiaUuid,
-                offline: offline || false
+        $ultimaRemision.find('.buscar-remision').val(remision.remision.nombre);
+        $ultimaRemision.find('.remision-id').val(remision.remision_id);
+        $ultimaRemision.find('.remision-info').html(`<strong>${remision.remision.nombre}</strong><br><small>${remision.remision.tipo || ''}</small>`);
+        $ultimaRemision.find('.remision-seleccionada').show();
+        $ultimaRemision.find('textarea[name*="remObservacion"]').val(remision.observacion || '');
+        
+        console.log('✅ Remisión agregada exitosamente');
+    }, 100);
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA REMISIÓN
+ */
+function configurarBusquedaRemision($container) {
+    const $input = $container.find('.buscar-remision');
+    const $resultados = $container.find('.remisiones-resultados');
+    const $hiddenId = $container.find('.remision-id');
+    const $info = $container.find('.remision-info');
+    const $alert = $container.find('.remision-seleccionada');
+    
+    let remisionTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(remisionTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        remisionTimeout = setTimeout(() => {
+            buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR REMISIONES
+ */
+function buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-remisiones") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosRemisiones(response.data, $resultados, $input, $hiddenId, $info, $alert);
             }
-        }));
-        
-        console.log('✅ Evento disparado exitosamente');
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando remisiones:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS REMISIONES
+ */
+function mostrarResultadosRemisiones(remisiones, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (remisiones.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron remisiones</div>');
+    } else {
+        remisiones.forEach(function(remision) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${remision.nombre}</strong><br><small class="text-muted">${remision.tipo || ''}</small>`)
+                .data('remision', remision);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
     }
     
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR REMISIÓN
+ */
+function seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(remision.nombre);
+    $hiddenId.val(remision.uuid || remision.id);
+    $info.html(`<strong>${remision.nombre}</strong><br><small>${remision.tipo || ''}</small>`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅ AGREGAR DIAGNÓSTICO ADICIONAL
+ */
+function agregarDiagnosticoAdicional() {
+    const template = $('#diagnostico_adicional_template').html();
+    const $diagnostico = $(template);
+    
+    $diagnostico.find('input[name*="diagnosticos"], select[name*="diagnosticos"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${diagnosticoAdicionalCounter}]`));
+    });
+    
+    $('#diagnosticos_adicionales_container').append($diagnostico);
+    diagnosticoAdicionalCounter++;
+    
+    configurarBusquedaDiagnosticoAdicional($diagnostico);
+}
+
+/**
+ * ✅ AGREGAR DIAGNÓSTICO ADICIONAL CON DATOS
+ */
+function agregarDiagnosticoAdicionalConDatos(diagnostico) {
+    console.log('🩺 Agregando diagnóstico adicional con datos:', diagnostico);
+    
+    agregarDiagnosticoAdicional();
+    
+    setTimeout(function() {
+        const $ultimoDiagnostico = $('#diagnosticos_adicionales_container .diagnostico-adicional-item:last');
+        
+        $ultimoDiagnostico.find('.buscar-diagnostico-adicional').val(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        $ultimoDiagnostico.find('.diagnostico-adicional-id').val(diagnostico.diagnostico_id);
+        $ultimoDiagnostico.find('.diagnostico-adicional-info').text(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        $ultimoDiagnostico.find('.diagnostico-adicional-seleccionado').show();
+        $ultimoDiagnostico.find('select[name*="tipo_diagnostico"]').val(diagnostico.tipo_diagnostico || 'IMPRESION_DIAGNOSTICA');
+        
+        console.log('✅ Diagnóstico adicional agregado exitosamente');
+    }, 100);
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA DIAGNÓSTICO ADICIONAL
+ */
+function configurarBusquedaDiagnosticoAdicional($container) {
+    const $input = $container.find('.buscar-diagnostico-adicional');
+    const $resultados = $container.find('.diagnosticos-adicionales-resultados');
+    const $hiddenId = $container.find('.diagnostico-adicional-id');
+    const $info = $container.find('.diagnostico-adicional-info');
+    const $alert = $container.find('.diagnostico-adicional-seleccionado');
+    
+    let diagnosticoTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(diagnosticoTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        diagnosticoTimeout = setTimeout(() => {
+            buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR DIAGNÓSTICOS ADICIONALES
+ */
+function buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-diagnosticos") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosDiagnosticosAdicionales(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando diagnósticos adicionales:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS DIAGNÓSTICOS ADICIONALES
+ */
+function mostrarResultadosDiagnosticosAdicionales(diagnosticos, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (diagnosticos.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron diagnósticos</div>');
+    } else {
+        diagnosticos.forEach(function(diagnostico) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${diagnostico.codigo}</strong> - ${diagnostico.nombre}`)
+                .data('diagnostico', diagnostico);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR DIAGNÓSTICO ADICIONAL
+ */
+function seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(`${diagnostico.codigo} - ${diagnostico.nombre}`);
+    $hiddenId.val(diagnostico.uuid || diagnostico.id);
+    $info.text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅ CARGAR DIAGNÓSTICO PRINCIPAL CON DATOS
+ */
+function cargarDiagnosticoPrincipalConDatos(diagnostico) {
+    console.log('🩺 Cargando diagnóstico principal con datos:', diagnostico);
+    
+    try {
+        $('#buscar_diagnostico').val(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        $('#idDiagnostico').val(diagnostico.diagnostico_id);
+        $('#diagnostico_info').text(`${diagnostico.diagnostico.codigo} - ${diagnostico.diagnostico.nombre}`);
+        $('#diagnostico_seleccionado').show();
+        
+        if (diagnostico.tipo_diagnostico) {
+            $('#tipo_diagnostico').val(diagnostico.tipo_diagnostico);
+        }
+        
+        console.log('✅ Diagnóstico principal cargado exitosamente');
+        
+    } catch (error) {
+        console.error('❌ Error cargando diagnóstico principal:', error);
+    }
+}
+
+/**
+ * ✅ AGREGAR MEDICAMENTO
+ */
+function agregarMedicamento() {
+    const template = $('#medicamento_template').html();
+    const $medicamento = $(template);
+    
+    $medicamento.find('input[name*="medicamentos"]').each(function() {
+        const name = $(this).attr('name');
+        $(this).attr('name', name.replace('[]', `[${medicamentoCounter}]`));
+    });
+    
+    $('#medicamentos_container').append($medicamento);
+    medicamentoCounter++;
+    
+    configurarBusquedaMedicamento($medicamento);
+}
+
+/**
+ * ✅ AGREGAR MEDICAMENTO CON DATOS
+ */
+function agregarMedicamentoConDatos(medicamento) {
+    console.log('💊 Agregando medicamento con datos:', medicamento);
+    
+    agregarMedicamento();
+    
+    setTimeout(function() {
+        const $ultimoMedicamento = $('#medicamentos_container .medicamento-item:last');
+        
+        $ultimoMedicamento.find('.buscar-medicamento').val(medicamento.medicamento.nombre);
+        $ultimoMedicamento.find('.medicamento-id').val(medicamento.medicamento_id);
+        $ultimoMedicamento.find('.medicamento-info').html(`<strong>${medicamento.medicamento.nombre}</strong><br><small>${medicamento.medicamento.descripcion || ''}</small>`);
+        $ultimoMedicamento.find('.medicamento-seleccionado').show();
+        $ultimoMedicamento.find('input[name*="cantidad"]').val(medicamento.cantidad || '');
+        $ultimoMedicamento.find('input[name*="dosis"]').val(medicamento.dosis || '');
+        
+        console.log('✅ Medicamento agregado exitosamente');
+    }, 100);
+}
+
+/**
+ * ✅ CONFIGURAR BÚSQUEDA MEDICAMENTO
+ */
+function configurarBusquedaMedicamento($container) {
+    const $input = $container.find('.buscar-medicamento');
+    const $resultados = $container.find('.medicamentos-resultados');
+    const $hiddenId = $container.find('.medicamento-id');
+    const $info = $container.find('.medicamento-info');
+    const $alert = $container.find('.medicamento-seleccionado');
+    
+    let medicamentoTimeout;
+    
+    $input.on('input', function() {
+        const termino = $(this).val().trim();
+        
+        clearTimeout(medicamentoTimeout);
+        
+        if (termino.length < 2) {
+            $resultados.removeClass('show').empty();
+            return;
+        }
+        
+        medicamentoTimeout = setTimeout(() => {
+            buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert);
+        }, 300);
+    });
+}
+
+/**
+ * ✅ BUSCAR MEDICAMENTOS
+ */
+function buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert) {
+    $.ajax({
+        url: '{{ route("historia-clinica.buscar-medicamentos") }}',
+        method: 'GET',
+        data: { q: termino },
+        success: function(response) {
+            if (response.success) {
+                mostrarResultadosMedicamentos(response.data, $resultados, $input, $hiddenId, $info, $alert);
+            }
+        },
+        error: function(xhr) {
+            console.error('Error AJAX buscando medicamentos:', xhr.responseText);
+        }
+    });
+}
+
+/**
+ * ✅ MOSTRAR RESULTADOS MEDICAMENTOS
+ */
+function mostrarResultadosMedicamentos(medicamentos, $resultados, $input, $hiddenId, $info, $alert) {
+    $resultados.empty();
+    
+    if (medicamentos.length === 0) {
+        $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron medicamentos</div>');
+    } else {
+        medicamentos.forEach(function(medicamento) {
+            const $item = $('<a href="#" class="dropdown-item"></a>')
+                .html(`<strong>${medicamento.nombre}</strong><br><small class="text-muted">${medicamento.descripcion || ''}</small>`)
+                .data('medicamento', medicamento);
+            
+            $item.on('click', function(e) {
+                e.preventDefault();
+                seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados);
+            });
+            
+            $resultados.append($item);
+        });
+    }
+    
+    $resultados.addClass('show');
+}
+
+/**
+ * ✅ SELECCIONAR MEDICAMENTO
+ */
+function seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados) {
+    $input.val(medicamento.nombre);
+    $hiddenId.val(medicamento.uuid || medicamento.id);
+    $info.html(`<strong>${medicamento.nombre}</strong><br><small>${medicamento.descripcion || ''}</small>`);
+    $alert.show();
+    $resultados.removeClass('show').empty();
+}
+
+/**
+ * ✅✅✅ CARGAR DATOS PREVIOS - SOLO DIAGNÓSTICOS, MEDICAMENTOS Y REMISIONES ✅✅✅
+ */
+function cargarDatosPrevios(historiaPrevia) {
+    try {
+        console.log('🔄 Iniciando carga de datos previos de PSICOLOGÍA PRIMERA VEZ');
+        console.log('📦 Historia previa recibida:', historiaPrevia);
+
+        // ✅ CARGAR DIAGNÓSTICOS (PRINCIPAL Y ADICIONALES)
+        if (historiaPrevia.diagnosticos && historiaPrevia.diagnosticos.length > 0) {
+            console.log('🩺 Cargando diagnósticos previos:', historiaPrevia.diagnosticos.length);
+            
+            // Cargar diagnóstico principal (primer elemento)
+            const diagnosticoPrincipal = historiaPrevia.diagnosticos[0];
+            if (diagnosticoPrincipal) {
+                setTimeout(function() {
+                    cargarDiagnosticoPrincipalConDatos(diagnosticoPrincipal);
+                }, 100);
+            }
+            
+            // Cargar diagnósticos adicionales (resto de elementos)
+            if (historiaPrevia.diagnosticos.length > 1) {
+                for (let i = 1; i < historiaPrevia.diagnosticos.length; i++) {
+                    setTimeout(function() {
+                        agregarDiagnosticoAdicionalConDatos(historiaPrevia.diagnosticos[i]);
+                    }, (i + 1) * 300);
+                }
+            }
+        }
+
+        // ✅ CARGAR MEDICAMENTOS
+        if (historiaPrevia.medicamentos && historiaPrevia.medicamentos.length > 0) {
+            console.log('💊 Cargando medicamentos previos:', historiaPrevia.medicamentos.length);
+            historiaPrevia.medicamentos.forEach(function(medicamento, index) {
+                setTimeout(function() {
+                    agregarMedicamentoConDatos(medicamento);
+                }, index * 300);
+            });
+        }
+
+        // ✅ CARGAR REMISIONES
+        if (historiaPrevia.remisiones && historiaPrevia.remisiones.length > 0) {
+            console.log('📋 Cargando remisiones previas:', historiaPrevia.remisiones.length);
+            historiaPrevia.remisiones.forEach(function(remision, index) {
+                setTimeout(function() {
+                    agregarRemisionConDatos(remision);
+                }, index * 300);
+            });
+        }
+
+        console.log('✅ Datos previos de PSICOLOGÍA cargados exitosamente');
+
+    } catch (error) {
+        console.error('❌ Error cargando datos previos:', error);
+    }
+}
+
+// ============================================
+// ✅ DOCUMENT.READY
+// ============================================
+$(document).ready(function() {
+    console.log('🔍 Iniciando script de PSICOLOGÍA PRIMERA VEZ');
+    console.log('🔍 Datos de la vista:', {
+        especialidad: '{{ $especialidad ?? "N/A" }}',
+        tipo_consulta: '{{ $tipo_consulta ?? "N/A" }}',
+        tiene_historia_previa: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }}
+    });
+
+    // ✅✅✅ CARGAR DATOS PREVIOS SI EXISTEN ✅✅✅
+    @if(isset($historiaPrevia) && !empty($historiaPrevia))
+        console.log('🔄 Detectada historia previa, iniciando carga...');
+        const historiaPrevia = @json($historiaPrevia);
+        console.log('📦 Historia previa:', historiaPrevia);
+        
+        setTimeout(function() {
+            cargarDatosPrevios(historiaPrevia);
+        }, 500);
+    @else
+        console.log('ℹ️ No hay historia previa para cargar');
+    @endif
+
     // ============================================
     // ✅ BÚSQUEDA DE DIAGNÓSTICO PRINCIPAL
     // ============================================
@@ -98,7 +577,7 @@ $(document).ready(function() {
         $('#diagnostico_seleccionado').show();
         $('#diagnosticos_resultados').removeClass('show').empty();
     }
-    
+
     // ============================================
     // ✅ CERRAR DROPDOWNS AL HACER CLICK FUERA
     // ============================================
@@ -107,323 +586,51 @@ $(document).ready(function() {
             $('.dropdown-menu').removeClass('show');
         }
     });
-    
+
     // ============================================
-    // ✅ DIAGNÓSTICOS ADICIONALES
+    // ✅ AGREGAR DIAGNÓSTICO ADICIONAL
     // ============================================
     $('#agregar_diagnostico_adicional').on('click', function() {
         agregarDiagnosticoAdicional();
     });
-    
-    function agregarDiagnosticoAdicional() {
-        const template = $('#diagnostico_adicional_template').html();
-        const $diagnostico = $(template);
-        
-        // Actualizar índices de los arrays
-        $diagnostico.find('input[name*="diagnosticos"], select[name*="diagnosticos"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${diagnosticoAdicionalCounter}]`));
-        });
-        
-        $('#diagnosticos_adicionales_container').append($diagnostico);
-        diagnosticoAdicionalCounter++;
-        
-        // Configurar búsqueda para este diagnóstico
-        configurarBusquedaDiagnosticoAdicional($diagnostico);
-    }
-    
-    function configurarBusquedaDiagnosticoAdicional($container) {
-        const $input = $container.find('.buscar-diagnostico-adicional');
-        const $resultados = $container.find('.diagnosticos-adicionales-resultados');
-        const $hiddenId = $container.find('.diagnostico-adicional-id');
-        const $info = $container.find('.diagnostico-adicional-info');
-        const $alert = $container.find('.diagnostico-adicional-seleccionado');
-        
-        let diagnosticoTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(diagnosticoTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            diagnosticoTimeout = setTimeout(() => {
-                buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarDiagnosticosAdicionales(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-diagnosticos") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosDiagnosticosAdicionales(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando diagnósticos adicionales:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosDiagnosticosAdicionales(diagnosticos, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (diagnosticos.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron diagnósticos</div>');
-        } else {
-            diagnosticos.forEach(function(diagnostico) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${diagnostico.codigo}</strong> - ${diagnostico.nombre}`)
-                    .data('diagnostico', diagnostico);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarDiagnosticoAdicional(diagnostico, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(`${diagnostico.codigo} - ${diagnostico.nombre}`);
-        $hiddenId.val(diagnostico.uuid || diagnostico.id);
-        $info.text(`${diagnostico.codigo} - ${diagnostico.nombre}`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
 
     // ✅ ELIMINAR DIAGNÓSTICO ADICIONAL
     $(document).on('click', '.eliminar-diagnostico-adicional', function() {
         $(this).closest('.diagnostico-adicional-item').remove();
     });
-    
+
     // ============================================
-    // ✅ MEDICAMENTOS
+    // ✅ AGREGAR MEDICAMENTO
     // ============================================
     $('#agregar_medicamento').on('click', function() {
         agregarMedicamento();
     });
-    
-    function agregarMedicamento() {
-        const template = $('#medicamento_template').html();
-        const $medicamento = $(template);
-        
-        // Actualizar índices de los arrays
-        $medicamento.find('input[name*="medicamentos"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${medicamentoCounter}]`));
-        });
-        
-        $('#medicamentos_container').append($medicamento);
-        medicamentoCounter++;
-        
-        // Configurar búsqueda para este medicamento
-        configurarBusquedaMedicamento($medicamento);
-    }
-    
-    function configurarBusquedaMedicamento($container) {
-        const $input = $container.find('.buscar-medicamento');
-        const $resultados = $container.find('.medicamentos-resultados');
-        const $hiddenId = $container.find('.medicamento-id');
-        const $info = $container.find('.medicamento-info');
-        const $alert = $container.find('.medicamento-seleccionado');
-        
-        let medicamentoTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(medicamentoTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            medicamentoTimeout = setTimeout(() => {
-                buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarMedicamentos(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-medicamentos") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosMedicamentos(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando medicamentos:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando medicamentos:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosMedicamentos(medicamentos, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (medicamentos.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron medicamentos</div>');
-        } else {
-            medicamentos.forEach(function(medicamento) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${medicamento.nombre}</strong><br><small class="text-muted">${medicamento.descripcion || ''}</small>`)
-                    .data('medicamento', medicamento);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarMedicamento(medicamento, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(medicamento.nombre);
-        $hiddenId.val(medicamento.uuid || medicamento.id);
-        $info.html(`<strong>${medicamento.nombre}</strong><br><small>${medicamento.descripcion || ''}</small>`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
-    
+
     // ✅ ELIMINAR MEDICAMENTO
     $(document).on('click', '.eliminar-medicamento', function() {
         $(this).closest('.medicamento-item').remove();
     });
-    
+
     // ============================================
-    // ✅ REMISIONES
+    // ✅ AGREGAR REMISIÓN
     // ============================================
     $('#agregar_remision').on('click', function() {
         agregarRemision();
     });
-    
-    function agregarRemision() {
-        const template = $('#remision_template').html();
-        const $remision = $(template);
-        
-        // Actualizar índices de los arrays
-        $remision.find('input[name*="remisiones"], textarea[name*="remisiones"]').each(function() {
-            const name = $(this).attr('name');
-            $(this).attr('name', name.replace('[]', `[${remisionCounter}]`));
-        });
-        
-        $('#remisiones_container').append($remision);
-        remisionCounter++;
-        
-        // Configurar búsqueda para esta remisión
-        configurarBusquedaRemision($remision);
-    }
-    
-    function configurarBusquedaRemision($container) {
-        const $input = $container.find('.buscar-remision');
-        const $resultados = $container.find('.remisiones-resultados');
-        const $hiddenId = $container.find('.remision-id');
-        const $info = $container.find('.remision-info');
-        const $alert = $container.find('.remision-seleccionada');
-        
-        let remisionTimeout;
-        
-        $input.on('input', function() {
-            const termino = $(this).val().trim();
-            
-            clearTimeout(remisionTimeout);
-            
-            if (termino.length < 2) {
-                $resultados.removeClass('show').empty();
-                return;
-            }
-            
-            remisionTimeout = setTimeout(() => {
-                buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert);
-            }, 300);
-        });
-    }
-    
-    function buscarRemisiones(termino, $resultados, $input, $hiddenId, $info, $alert) {
-        $.ajax({
-            url: '{{ route("historia-clinica.buscar-remisiones") }}',
-            method: 'GET',
-            data: { q: termino },
-            success: function(response) {
-                if (response.success) {
-                    mostrarResultadosRemisiones(response.data, $resultados, $input, $hiddenId, $info, $alert);
-                } else {
-                    console.error('Error buscando remisiones:', response.error);
-                }
-            },
-            error: function(xhr) {
-                console.error('Error AJAX buscando remisiones:', xhr.responseText);
-            }
-        });
-    }
-    
-    function mostrarResultadosRemisiones(remisiones, $resultados, $input, $hiddenId, $info, $alert) {
-        $resultados.empty();
-        
-        if (remisiones.length === 0) {
-            $resultados.append('<div class="dropdown-item-text text-muted">No se encontraron remisiones</div>');
-        } else {
-            remisiones.forEach(function(remision) {
-                const $item = $('<a href="#" class="dropdown-item"></a>')
-                    .html(`<strong>${remision.nombre}</strong><br><small class="text-muted">${remision.tipo || ''}</small>`)
-                    .data('remision', remision);
-                
-                $item.on('click', function(e) {
-                    e.preventDefault();
-                    seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados);
-                });
-                
-                $resultados.append($item);
-            });
-        }
-        
-        $resultados.addClass('show');
-    }
-    
-    function seleccionarRemision(remision, $input, $hiddenId, $info, $alert, $resultados) {
-        $input.val(remision.nombre);
-        $hiddenId.val(remision.uuid || remision.id);
-        $info.html(`<strong>${remision.nombre}</strong><br><small>${remision.tipo || ''}</small>`);
-        $alert.show();
-        $resultados.removeClass('show').empty();
-    }
-    
+
     // ✅ ELIMINAR REMISIÓN
     $(document).on('click', '.eliminar-remision', function() {
         $(this).closest('.remision-item').remove();
     });
-    
+
     // ============================================
-    // ✅ ENVÍO DEL FORMULARIO
+    // ✅✅✅ ENVÍO DEL FORMULARIO ✅✅✅
     // ============================================
     $('#historiaClinicaForm').on('submit', function(e) {
         e.preventDefault();
         
         console.log('📤 Iniciando envío del formulario de PSICOLOGÍA PRIMERA VEZ...');
         
-        // ✅ OBTENER CITA UUID
         const citaUuid = $('input[name="cita_uuid"]').val();
         console.log('🔍 Cita UUID detectado:', citaUuid);
         
@@ -468,16 +675,11 @@ $(document).ready(function() {
         
         console.log('✅ Validación exitosa, preparando envío...');
         
-        // Mostrar loading
         $('#loading_overlay').show();
         
-        // Preparar datos
         const formData = new FormData(this);
-        
-        // ✅ VARIABLE PARA CONTROLAR SI YA SE PROCESÓ LA RESPUESTA
         let respuestaProcesada = false;
         
-        // ✅ TIMEOUT DE 15 SEGUNDOS
         const timeoutId = setTimeout(function() {
             if (respuestaProcesada) {
                 console.log('⏰ Timeout ignorado - respuesta ya procesada');
@@ -489,7 +691,6 @@ $(document).ready(function() {
             
             $('#loading_overlay').hide();
             
-            // ✅ DISPARAR EVENTO INCLUSO EN TIMEOUT
             dispararEventoHistoriaGuardada(citaUuid, null, false);
             
             Swal.fire({
@@ -525,7 +726,6 @@ $(document).ready(function() {
                 $('#loading_overlay').hide();
                 
                 if (response.success) {
-                    // ✅ DISPARAR EVENTO DE HISTORIA GUARDADA
                     dispararEventoHistoriaGuardada(
                         citaUuid,
                         response.historia_uuid || null,
@@ -615,5 +815,6 @@ $(document).ready(function() {
         });
     });
 
-}); // ✅ CERRAR $(document).ready
+}); // ✅ FIN DOCUMENT.READY
 </script>
+@endpush

@@ -1590,35 +1590,7 @@ $(document).ready(function() {
         $('#obs_diabetes_mellitus_personal').prop('disabled', true);
     }
 
-    // ============================================
-    // ✅ FUNCIÓN PARA CALCULAR PRESIÓN ARTERIAL
-    // ============================================
-    $('#ef_pa_sistolica_sentado_pie, #ef_pa_distolica_sentado_pie').on('change', function() {
-        calcularPresionArterial();
-    });
-
-    function calcularPresionArterial() {
-        const sistolica = parseInt($('#ef_pa_sistolica_sentado_pie').val());
-        const diastolica = parseInt($('#ef_pa_distolica_sentado_pie').val());
-
-        if (sistolica && diastolica) {
-            let clasificacion = '';
-            
-            if (sistolica < 130 && diastolica < 85) {
-                clasificacion = 'PA Normal';
-            } else if (sistolica >= 130 && sistolica <= 139 && diastolica >= 85 && diastolica <= 89) {
-                clasificacion = 'PA Normal - Alta';
-            } else if (sistolica >= 140 && sistolica <= 159 && diastolica >= 90 && diastolica <= 99) {
-                clasificacion = 'HTA Grado 1';
-            } else if (sistolica >= 160 && diastolica >= 100) {
-                clasificacion = 'HTA Grado 2';
-            }
-            
-            if (clasificacion) {
-                $('#clasificacion_hta').val(clasificacion);
-            }
-        }
-    }
+    
 
    $('#historiaClinicaForm').on('submit', function(e) {
     e.preventDefault();
