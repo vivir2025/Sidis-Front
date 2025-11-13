@@ -1,305 +1,645 @@
 {{-- resources/views/historia-clinica/historial-historias/psicologia/primera-vez.blade.php --}}
-@extends('layouts.app')
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historia Clínica Psicología - Primera Vez</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-@section('title', 'Historia Clínica Psicología - Primera Vez')
+        body {
+            background-color: #f5f5f5;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            padding: 20px;
+            line-height: 1.5;
+            color: #000;
+        }
 
-@section('content')
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm">
-                {{-- HEADER --}}
-                <div class="card-header bg-primary text-white">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0">
-                            <i class="fas fa-brain"></i>
-                            Historia Clínica - Psicología (Primera Vez)
-                        </h4>
-                        <div>
-                            <button onclick="window.print()" class="btn btn-light btn-sm">
-                                <i class="fas fa-print"></i> Imprimir
-                            </button>
-                            <a href="{{ route('historia-clinica.index') }}" class="btn btn-secondary btn-sm">
-                                <i class="fas fa-arrow-left"></i> Volver
-                            </a>
-                        </div>
+        .container-historia {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+
+        /* BOTÓN REGRESAR */
+        .btn-regresar {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+            font-size: 14px;
+        }
+
+        .btn-regresar:hover {
+            background-color: #5a6268;
+        }
+
+        /* ENCABEZADO */
+        .header-box {
+            border: 2px solid #0f0fef;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header-logo {
+            width: 80px;
+            height: auto;
+        }
+
+        .header-text {
+            flex: 1;
+            text-align: center;
+        }
+
+        .header-text h3 {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #000;
+        }
+
+        .header-text p {
+            font-size: 10px;
+            margin: 2px 0;
+            color: #000;
+        }
+
+        /* FIELDSETS CON BORDES AZULES */
+        fieldset {
+            border: 1px solid #0f0fef;
+            margin-bottom: 15px;
+            padding: 15px;
+        }
+
+        legend {
+            padding: 0 10px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #0f0fef;
+        }
+
+        /* GRIDS DE DATOS */
+        .datos-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .datos-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .dato-item {
+            text-align: center;
+        }
+
+        .dato-label {
+            font-weight: bold;
+            font-size: 10px;
+            margin-bottom: 5px;
+            color: #000;
+        }
+
+        .dato-valor {
+            font-size: 10px;
+            color: #000;
+        }
+
+        /* CAMPOS DE HISTORIA */
+        .campo-historia {
+            margin-bottom: 15px;
+        }
+
+        .campo-titulo {
+            font-weight: bold;
+            font-size: 11px;
+            margin-bottom: 5px;
+            color: #000;
+        }
+
+        .campo-contenido {
+            font-size: 10px;
+            text-align: justify;
+            line-height: 1.6;
+            color: #000;
+        }
+
+        /* TABLAS - BORDES NEGROS, TEXTO NEGRO */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+
+        table, th, td {
+            border: 1px solid #000;
+        }
+
+        th {
+            background-color: #fff;
+            color: #000;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 10px;
+        }
+
+        td {
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 10px;
+            color: #000;
+        }
+
+        /* CAJAS DE INFORMACIÓN CON BORDES AZULES */
+        .info-box {
+            border: 1px solid #0f0fef;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .info-item {
+            flex: 1;
+        }
+
+        .info-item strong {
+            font-weight: bold;
+            color: #000;
+        }
+
+        /* FIRMAS CON BORDES AZULES */
+        .firmas-box {
+            border: 1px solid #0f0fef;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .firmas-content {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            gap: 30px;
+        }
+
+        .firma-item {
+            flex: 1;
+            text-align: center;
+        }
+
+        .firma-imagen {
+            width: 250px;
+            height: 60px;
+            margin-bottom: 10px;
+        }
+
+        .firma-titulo {
+            font-weight: bold;
+            font-size: 11px;
+            margin-bottom: 5px;
+            color: #000;
+        }
+
+        .firma-info {
+            font-size: 10px;
+            font-style: italic;
+            color: #000;
+        }
+
+        /* OCULTAR EN IMPRESIÓN */
+        .no-print {
+            display: block;
+        }
+
+        @media print {
+            body {
+                padding: 0;
+                background-color: white;
+            }
+
+            .container-historia {
+                box-shadow: none;
+                padding: 15px;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-historia">
+        {{-- ✅ BOTÓN REGRESAR (NO SE IMPRIME) --}}
+        <div class="no-print">
+            <a href="{{ route('historia-clinica.index') }}" class="btn-regresar">
+                <i class="fas fa-arrow-left"></i>
+                <span>Regresar a Historias Clínicas</span>
+            </a>
+        </div>
+
+        {{-- ✅ ENCABEZADO CON BORDE AZUL --}}
+        <div class="header-box">
+            <div class="header-content">
+                <div>
+                    <img class="header-logo" src="{{ asset('images/logo-fundacion.png') }}" alt="Logo">
+                </div>
+                <div class="header-text">
+                    <h3>FUNDACIÓN NACER PARA VIVIR IPS</h3>
+                    <p>NIT: 900817959-1</p>
+                    <p>PSICOLOGÍA PRIMERA VEZ - PROGRAMA DE GESTIÓN DEL RIESGO</p>
+                    <p>{{ $historia['cita']['fecha'] ?? date('Y-m-d') }}</p>
+                </div>
+                <div>
+                    <img class="header-logo" src="{{ asset('images/logo-fundacion.png') }}" alt="Logo">
+                </div>
+            </div>
+        </div>
+
+        {{-- ✅ DATOS DEL PACIENTE --}}
+        @php
+            $paciente = $historia['cita']['paciente'] ?? null;
+            $edad = 'N/A';
+            $sexo = 'N/A';
+            $estadoCivil = 'N/A';
+            $telefono = 'N/A';
+            $direccion = 'N/A';
+            $departamento = 'N/A';
+            $municipio = 'N/A';
+            $aseguradora = 'N/A';
+            $regimen = 'N/A';
+            $ocupacion = 'N/A';
+            $nombreCompleto = 'N/A';
+            $documento = 'N/A';
+            $tipoDocumento = 'CC';
+            $fechaNacimiento = 'N/A';
+            
+            if ($paciente) {
+                if (isset($paciente['fecha_nacimiento']) && $paciente['fecha_nacimiento']) {
+                    $fechaNac = \Carbon\Carbon::parse($paciente['fecha_nacimiento']);
+                    $edad = $fechaNac->age . ' Años';
+                    $fechaNacimiento = $paciente['fecha_nacimiento'];
+                }
+                
+                $sexo = ($paciente['sexo'] ?? '') == 'M' ? 'MASCULINO' : (($paciente['sexo'] ?? '') == 'F' ? 'FEMENINO' : 'N/A');
+                $estadoCivil = $paciente['estado_civil'] ?? 'N/A';
+                $telefono = $paciente['telefono'] ?? 'N/A';
+                $ocupacion = $paciente['ocupacion'] ?? 'N/A';
+                $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
+                $documento = $paciente['documento'] ?? 'N/A';
+                
+                $nombreCompleto = trim(
+                    ($paciente['primer_nombre'] ?? '') . ' ' . 
+                    ($paciente['segundo_nombre'] ?? '') . ' ' . 
+                    ($paciente['primer_apellido'] ?? '') . ' ' . 
+                    ($paciente['segundo_apellido'] ?? '')
+                );
+                
+                $departamento = $paciente['departamento']['nombre'] ?? 'N/A';
+                $municipio = $paciente['municipio']['nombre'] ?? 'N/A';
+                $direccion = $paciente['direccion'] ?? 'N/A';
+                $aseguradora = $paciente['aseguradora']['nombre'] ?? 'N/A';
+                $regimen = $paciente['regimen']['nombre'] ?? 'N/A';
+            }
+            
+            $brigada = $historia['sede']['nombre'] ?? 'N/A';
+        @endphp
+
+        <fieldset>
+            <legend>DATOS PACIENTE</legend>
+            
+            <div class="datos-grid">
+                <div class="dato-item">
+                    <div class="dato-label">NOMBRE</div>
+                    <div class="dato-valor">{{ $tipoDocumento }} {{ $documento }}</div>
+                    <div class="dato-valor">{{ $nombreCompleto }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">FECHA NACIMIENTO Y EDAD</div>
+                    <div class="dato-valor">{{ $fechaNacimiento }}</div>
+                    <div class="dato-valor">{{ $edad }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">SEXO</div>
+                    <div class="dato-valor">{{ $sexo }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">ESTADO CIVIL</div>
+                    <div class="dato-valor">{{ $estadoCivil }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">TELÉFONO</div>
+                    <div class="dato-valor">{{ $telefono }}</div>
+                </div>
+            </div>
+
+            <div class="datos-grid">
+                <div class="dato-item">
+                    <div class="dato-label">DIRECCIÓN</div>
+                    <div class="dato-valor">{{ $departamento }} - {{ $municipio }}</div>
+                    <div class="dato-valor">{{ $direccion }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">ASEGURADORA</div>
+                    <div class="dato-valor">{{ $aseguradora }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">RÉGIMEN</div>
+                    <div class="dato-valor">{{ $regimen }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">OCUPACIÓN</div>
+                    <div class="dato-valor">{{ $ocupacion }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">BRIGADA</div>
+                    <div class="dato-valor">{{ $brigada }}</div>
+                </div>
+            </div>
+        </fieldset>
+
+        {{-- ✅ ACUDIENTE (SI EXISTE) --}}
+        @if(!empty($historia['acompanante']))
+        <fieldset>
+            <legend>ACUDIENTE</legend>
+            <div class="datos-grid-3">
+                <div class="dato-item">
+                    <div class="dato-label">NOMBRE ACOMPAÑANTE</div>
+                    <div class="dato-valor">{{ $historia['acompanante'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">PARENTESCO</div>
+                    <div class="dato-valor">{{ $historia['acu_parentesco'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">TELÉFONO</div>
+                    <div class="dato-valor">{{ $historia['acu_telefono'] ?? 'N/A' }}</div>
+                </div>
+            </div>
+        </fieldset>
+        @endif
+
+        {{-- ✅ HISTORIA CLÍNICA - PRIMERA VEZ --}}
+        @php
+            $complementaria = $historia['complementaria'] ?? null;
+        @endphp
+
+        <fieldset>
+            <legend>HISTORIA CLÍNICA - PRIMERA VEZ PSICOLOGÍA</legend>
+
+            {{-- 1. MOTIVO DE CONSULTA --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">1. MOTIVO DE CONSULTA</div>
+                <div class="campo-contenido">
+                    {{ $historia['motivo_consulta'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 2. ESTRUCTURA FAMILIAR --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">2. ESTRUCTURA FAMILIAR (FAMILIARES O PERSONAS CON LAS QUE CONVIVE EL PACIENTE)</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['estructura_familiar'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 3. RED DE APOYO --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">3. RED DE APOYO FAMILIAR QUE CONSIDERA EL PACIENTE (FAMILIAR O FAMILIARES A LOS QUE EL PACIENTE CONSIDERE COMO SU RED DE APOYO)</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['psicologia_red_apoyo'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 4. COMPORTAMIENTO EN CONSULTA --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">4. COMPORTAMIENTO EN CONSULTA</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['psicologia_comportamiento_consulta'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 5. TRATAMIENTO ACTUAL Y ADHERENCIA --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">5. TRATAMIENTO ACTUAL Y ADHERENCIA (DESCRIPCIÓN DEL PACIENTE SOBRE EL TRATAMIENTO Y LA ADHERENCIA AL MISMO)</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['psicologia_tratamiento_actual_adherencia'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 6. DESCRIPCIÓN DEL PROBLEMA --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">6. DESCRIPCIÓN DEL PROBLEMA (DESCRIPCIÓN DEL PACIENTE DE LA SITUACIÓN QUE LO AFECTA)</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['psicologia_descripcion_problema'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 7. ANÁLISIS Y CONCLUSIONES --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">7. ANÁLISIS Y CONCLUSIONES</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['analisis_conclusiones'] ?? 'N/A' }}
+                </div>
+            </div>
+
+            {{-- 8. PLAN DE INTERVENCIÓN --}}
+            <div class="campo-historia">
+                <div class="campo-titulo">8. PLAN DE INTERVENCIÓN Y RECOMENDACIONES</div>
+                <div class="campo-contenido">
+                    {{ $complementaria['psicologia_plan_intervencion_recomendacion'] ?? 'N/A' }}
+                </div>
+            </div>
+        </fieldset>
+
+        {{-- ✅ FINALIDAD CON BORDE AZUL --}}
+        <div class="info-box">
+            <strong>FINALIDAD:</strong> {{ $historia['finalidad'] ?? 'NO APLICA' }}
+        </div>
+
+        {{-- ✅ TABLA DE DIAGNÓSTICOS --}}
+    <fieldset>
+        <legend>DIAGNÓSTICOS</legend>
+        <table>
+            <thead>
+                <tr>
+                    <th colspan="4">FORMATO DIAGNÓSTICO {{ date('Y-m-d') }}</th>
+                </tr>
+                <tr>
+                    <th>CÓDIGO</th>
+                    <th>DIAGNÓSTICO</th>
+                    <th>CLASIFICACIÓN</th>
+                    <th>TIPO</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if(!empty($historia['diagnosticos']) && is_array($historia['diagnosticos']))
+                    @foreach($historia['diagnosticos'] as $diag)
+                    <tr>
+                        <td>{{ $diag['diagnostico']['codigo'] ?? 'N/A' }}</td>
+                        <td>{{ $diag['diagnostico']['nombre'] ?? 'N/A' }}</td>
+                        <td>{{ $diag['tipo'] == 'PRINCIPAL' ? 'PRINCIPAL' : 'TIPO' }}</td>
+                        <td>
+                            @if($diag['tipo_diagnostico'] == 'IMPRESION_DIAGNOSTICA')
+                                IMPRESIÓN DIAGNÓSTICA
+                            @elseif($diag['tipo_diagnostico'] == 'CONFIRMADO_NUEVO')
+                                CONFIRMADO NUEVO
+                            @elseif($diag['tipo_diagnostico'] == 'CONFIRMADO_REPETIDO')
+                                REPETIDO
+                            @else
+                                {{ $diag['tipo_diagnostico'] }}
+                            @endif
+                        </td>
+                    </tr>
+                    @endforeach
+                @else
+                <tr>
+                    <td colspan="4" style="text-align: center;">No hay diagnósticos registrados</td>
+                </tr>
+                @endif
+            </tbody>
+        </table>
+    </fieldset>
+
+        {{-- ✅ CAUSA EXTERNA CON BORDE AZUL --}}
+        <div class="info-box">
+            <strong>CAUSA EXTERNA:</strong> {{ $historia['causa_externa'] ?? 'OTRA' }}
+        </div>
+
+        {{-- ✅ MEDICAMENTOS (SI EXISTEN) --}}
+        @if(!empty($historia['medicamentos']) && is_array($historia['medicamentos']) && count($historia['medicamentos']) > 0)
+        <fieldset>
+            <legend>MEDICAMENTOS FORMULADOS</legend>
+            <table>
+                <thead>
+                    <tr>
+                        <th>MEDICAMENTO</th>
+                        <th>CANTIDAD</th>
+                        <th>DOSIS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($historia['medicamentos'] as $med)
+                    <tr>
+                        <td>{{ $med['medicamento']['nombre'] ?? 'N/A' }}</td>
+                        <td>{{ $med['cantidad'] ?? 'N/A' }}</td>
+                        <td>{{ $med['dosis'] ?? 'N/A' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </fieldset>
+        @endif
+
+        {{-- ✅ REMISIONES (SI EXISTEN) --}}
+       @if(!empty($historia['remisiones']) && count($historia['remisiones']) > 0)
+        <fieldset>
+            <legend>REMISIONES</legend>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Remisión</th>
+                        <th>Tipo</th>
+                        <th>Observación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($historia['remisiones'] as $remision)
+                    <tr>
+                        <td>{{ $remision['remision']['nombre'] ?? 'N/A' }}</td>
+                        <td>{{ $remision['remision']['tipo'] ?? 'N/A' }}</td>
+                        <td>{{ $remision['observacion'] ?? 'Sin observaciones' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </fieldset>
+        @endif
+
+        {{-- ✅ NOTA ADICIONAL (SI EXISTE) --}}
+        @if(!empty($historia['adicional']))
+        <div class="info-box">
+            <strong>NOTA ADICIONAL:</strong> {{ $historia['adicional'] }}
+        </div>
+        @endif
+
+        {{-- ✅ FIRMAS CON BORDE AZUL --}}
+        @php
+            $profesionalNombre = 'N/A';
+            $profesionalProfesion = 'PSICOLOGÍA';
+            $profesionalRegistro = 'N/A';
+            $profesionalFirma = null;
+            
+            if (isset($historia['cita']['agenda']['usuario_medico'])) {
+                $medico = $historia['cita']['agenda']['usuario_medico'];
+                $profesionalNombre = trim(($medico['nombre'] ?? '') . ' ' . ($medico['apellido'] ?? ''));
+                $profesionalProfesion = strtoupper($medico['profesion']['nombre'] ?? 'PSICOLOGÍA');
+                $profesionalRegistro = $medico['registro_profesional'] ?? 'N/A';
+                $profesionalFirma = $medico['firma'] ?? null;
+            }
+        @endphp
+
+        <div class="firmas-box">
+            <div class="firmas-content">
+                <div class="firma-item">
+                    @if($profesionalFirma)
+                        <img class="firma-imagen" src="data:image/jpeg;base64,{{ $profesionalFirma }}" alt="Firma Digital">
+                    @endif
+                    <div class="firma-titulo">FIRMA DIGITAL</div>
+                    <div class="firma-info">
+                        PROFESIONAL: {{ $profesionalNombre }}<br>
+                        {{ $profesionalProfesion }}<br>
+                        RM: {{ $profesionalRegistro }}
                     </div>
                 </div>
-
-                <div class="card-body">
-                    {{-- ✅ INFORMACIÓN DEL PACIENTE --}}
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-user"></i> Información del Paciente
-                            </h5>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Nombre Completo:</strong> {{ $historia['cita']['paciente']['nombre_completo'] ?? 'N/A' }}</p>
-                            <p><strong>Documento:</strong> {{ $historia['cita']['paciente']['tipo_documento'] ?? 'CC' }} {{ $historia['cita']['paciente']['documento'] ?? 'N/A' }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Fecha de Nacimiento:</strong> {{ $historia['cita']['paciente']['fecha_nacimiento'] ?? 'N/A' }}</p>
-                            <p><strong>Sexo:</strong> {{ $historia['cita']['paciente']['sexo'] ?? 'N/A' }}</p>
-                        </div>
-                    </div>
-
-                    {{-- ✅ INFORMACIÓN DE LA CITA --}}
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-calendar-check"></i> Información de la Cita
-                            </h5>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Fecha:</strong> {{ $historia['cita']['fecha'] ?? 'N/A' }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Hora:</strong> {{ $historia['cita']['hora'] ?? 'N/A' }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Tipo de Consulta:</strong> 
-                                <span class="badge bg-info">{{ $historia['tipo_consulta'] ?? 'PRIMERA VEZ' }}</span>
-                            </p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Profesional:</strong> {{ $historia['cita']['agenda']['usuario_medico']['nombre_completo'] ?? 'N/A' }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Especialidad:</strong> {{ $historia['especialidad'] ?? 'PSICOLOGÍA' }}</p>
-                        </div>
-                    </div>
-
-                    {{-- ✅ MOTIVO DE CONSULTA --}}
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-comment-medical"></i> Motivo de Consulta
-                            </h5>
-                        </div>
-                        <div class="col-12">
-                            <p>{{ $historia['motivo_consulta'] ?? 'No registrado' }}</p>
-                        </div>
-                    </div>
-
-                    {{-- ✅ ACUDIENTE (SI EXISTE) --}}
-                    @if(!empty($historia['acompanante']))
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-user-friends"></i> Información del Acudiente
-                            </h5>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Nombre:</strong> {{ $historia['acompanante'] }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Parentesco:</strong> {{ $historia['acu_parentesco'] ?? 'N/A' }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <p><strong>Teléfono:</strong> {{ $historia['acu_telefono'] ?? 'N/A' }}</p>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ CAMPOS ESPECÍFICOS DE PSICOLOGÍA - PRIMERA VEZ --}}
-                    @if(!empty($historia['complementaria']))
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-brain"></i> Evaluación Psicológica (Primera Vez)
-                            </h5>
-                        </div>
-
-                        {{-- ESTRUCTURA FAMILIAR --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-users"></i> Estructura Familiar</h6>
-                            <p>{{ $historia['complementaria']['estructura_familiar'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- RED DE APOYO --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-hands-helping"></i> Red de Apoyo</h6>
-                            <p>{{ $historia['complementaria']['psicologia_red_apoyo'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- COMPORTAMIENTO EN CONSULTA --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-user-check"></i> Comportamiento en Consulta</h6>
-                            <p>{{ $historia['complementaria']['psicologia_comportamiento_consulta'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- TRATAMIENTO ACTUAL Y ADHERENCIA --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-pills"></i> Tratamiento Actual y Adherencia</h6>
-                            <p>{{ $historia['complementaria']['psicologia_tratamiento_actual_adherencia'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- DESCRIPCIÓN DEL PROBLEMA --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-exclamation-circle"></i> Descripción del Problema</h6>
-                            <p>{{ $historia['complementaria']['psicologia_descripcion_problema'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- ANÁLISIS Y CONCLUSIONES --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-clipboard-check"></i> Análisis y Conclusiones</h6>
-                            <p>{{ $historia['complementaria']['analisis_conclusiones'] ?? 'No registrado' }}</p>
-                        </div>
-
-                        {{-- PLAN DE INTERVENCIÓN --}}
-                        <div class="col-12 mb-3">
-                            <h6 class="text-secondary"><i class="fas fa-tasks"></i> Plan de Intervención y Recomendaciones</h6>
-                            <p>{{ $historia['complementaria']['psicologia_plan_intervencion_recomendacion'] ?? 'No registrado' }}</p>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ DIAGNÓSTICOS --}}
-                    @if(!empty($historia['diagnosticos']) && count($historia['diagnosticos']) > 0)
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-stethoscope"></i> Diagnósticos
-                            </h5>
-                        </div>
-                        <div class="col-12">
-                            <table class="table table-bordered table-sm">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Tipo</th>
-                                        <th>Código</th>
-                                        <th>Diagnóstico</th>
-                                        <th>Tipo Diagnóstico</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($historia['diagnosticos'] as $diagnostico)
-                                    <tr>
-                                        <td>
-                                            <span class="badge {{ $diagnostico['tipo'] === 'PRINCIPAL' ? 'bg-danger' : 'bg-secondary' }}">
-                                                {{ $diagnostico['tipo'] }}
-                                            </span>
-                                        </td>
-                                        <td>{{ $diagnostico['diagnostico']['codigo'] ?? 'N/A' }}</td>
-                                        <td>{{ $diagnostico['diagnostico']['nombre'] ?? 'N/A' }}</td>
-                                        <td>{{ $diagnostico['tipo_diagnostico'] ?? 'N/A' }}</td>
-                                    </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ MEDICAMENTOS (SOLO PRIMERA VEZ) --}}
-                    @if(!empty($historia['medicamentos']) && count($historia['medicamentos']) > 0)
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-pills"></i> Medicamentos Formulados
-                            </h5>
-                        </div>
-                        <div class="col-12">
-                            <table class="table table-bordered table-sm">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Medicamento</th>
-                                        <th>Principio Activo</th>
-                                        <th>Cantidad</th>
-                                        <th>Dosis</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($historia['medicamentos'] as $medicamento)
-                                    <tr>
-                                        <td>{{ $medicamento['medicamento']['nombre'] ?? 'N/A' }}</td>
-                                        <td>{{ $medicamento['medicamento']['principio_activo'] ?? 'N/A' }}</td>
-                                        <td>{{ $medicamento['cantidad'] ?? 'N/A' }}</td>
-                                        <td>{{ $medicamento['dosis'] ?? 'N/A' }}</td>
-                                    </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ REMISIONES (SOLO PRIMERA VEZ) --}}
-                    @if(!empty($historia['remisiones']) && count($historia['remisiones']) > 0)
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-share-square"></i> Remisiones
-                            </h5>
-                        </div>
-                        <div class="col-12">
-                            <table class="table table-bordered table-sm">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Remisión</th>
-                                        <th>Tipo</th>
-                                        <th>Observación</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($historia['remisiones'] as $remision)
-                                    <tr>
-                                        <td>{{ $remision['remision']['nombre'] ?? 'N/A' }}</td>
-                                        <td>{{ $remision['remision']['tipo'] ?? 'N/A' }}</td>
-                                        <td>{{ $remision['observacion'] ?? 'Sin observaciones' }}</td>
-                                    </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ OBSERVACIONES GENERALES --}}
-                    @if(!empty($historia['observaciones_generales']))
-                    <div class="row mb-4">
-                        <div class="col-12">
-                            <h5 class="text-primary border-bottom pb-2">
-                                <i class="fas fa-clipboard"></i> Observaciones Generales
-                            </h5>
-                        </div>
-                        <div class="col-12">
-                            <p>{{ $historia['observaciones_generales'] }}</p>
-                        </div>
-                    </div>
-                    @endif
-
-                    {{-- ✅ METADATOS --}}
-                    <div class="row mt-4">
-                        <div class="col-12">
-                            <div class="alert alert-light">
-                                <small>
-                                    <strong>Fecha de Creación:</strong> {{ $historia['created_at'] ?? 'N/A' }} | 
-                                    <strong>Última Actualización:</strong> {{ $historia['updated_at'] ?? 'N/A' }}
-                                </small>
-                            </div>
-                        </div>
+                <div class="firma-item">
+                    <div class="firma-titulo">FIRMA PACIENTE</div>
+                    <div class="firma-info">
+                        {{ $tipoDocumento }}-{{ $documento }}<br>
+                        {{ $nombreCompleto }}
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-{{-- ✅ ESTILOS PARA IMPRESIÓN --}}
-<style>
-    @media print {
-        .btn, .card-header .d-flex > div {
-            display: none !important;
+    </div>
+
+    <script>
+        window.onafterprint = function() {
+            // Opcional: cerrar ventana después de imprimir
+            // window.close();
         }
-        .card {
-            border: none !important;
-            box-shadow: none !important;
-        }
-        body {
-            font-size: 12px;
-        }
-    }
-</style>
-@endsection
+    </script>
+</body>
+</html>
