@@ -340,6 +340,7 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
 
 
 
+
     // ✅ OTRAS RUTAS ESPECÍFICAS PARA PROFESIONALES DE SALUD
     Route::prefix('profesional')->name('profesional.')->group(function () {
         // Mis citas del día
@@ -360,6 +361,11 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         Route::get('/buscar-por-documento', [HistoriaClinicaController::class, 'buscarPorDocumento'])->name('buscar-documento');
         // ... resto de rutas
     });
+    // ✅ RUTA PARA VER HISTORIA CLÍNICA GUARDADA (SHOW)
+    Route::get('/historia-clinica/{uuid}', [HistoriaClinicaController::class, 'show'])
+        ->name('historia-clinica.show')
+        ->middleware('custom.auth');
+
 
      // ✅ RUTAS DE HISTORIA CLÍNICA
     Route::prefix('historia-clinica')->name('historia-clinica.')->group(function () {

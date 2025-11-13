@@ -101,6 +101,251 @@ class HistoriaClinicaController extends Controller
 }
 
 /**
+ * ✅ MOSTRAR UNA HISTORIA CLÍNICA ESPECÍFICA (VER HISTORIA YA GUARDADA)
+ */
+public function show(string $uuid)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
+
+        Log::info('👁️ Mostrando historia clínica guardada', [
+            'historia_uuid' => $uuid,
+            'usuario' => $usuario['nombre_completo']
+        ]);
+
+        // ✅ 1. OBTENER DATOS DE LA HISTORIA DESDE EL BACKEND (API)
+        $historia = null;
+        
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/historias-clinicas/{$uuid}");
+                
+                if ($response['success']) {
+                    $historia = $response['data'];
+                    
+                    Log::info('✅ Historia obtenida desde API', [
+                        'historia_uuid' => $uuid,
+                        'especialidad' => $historia['especialidad'] ?? 'N/A',
+                        'tipo_consulta' => $historia['tipo_consulta'] ?? 'N/A'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo historia desde API, intentando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ 2. FALLBACK OFFLINE SI NO SE OBTUVO ONLINE
+        if (!$historia) {
+            $historia = $this->obtenerHistoriaOffline($uuid);
+            
+            if (!$historia) {
+                Log::error('❌ Historia no encontrada ni online ni offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                
+                return back()->with('error', 'Historia clínica no encontrada');
+            }
+            
+            Log::info('✅ Historia obtenida desde offline', [
+                'historia_uuid' => $uuid
+            ]);
+        }
+
+        // ✅ 3. EXTRAER ESPECIALIDAD Y TIPO DE CONSULTA
+        $especialidad = $historia['especialidad'] ?? 
+                       $historia['cita']['agenda']['proceso']['nombre'] ?? 
+                       $historia['cita']['proceso']['nombre'] ?? 
+                       'MEDICINA GENERAL';
+        
+        $tipoConsulta = $historia['tipo_consulta'] ?? 'PRIMERA VEZ';
+        
+        Log::info('✅ Datos de historia extraídos', [
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta,
+            'paciente' => $historia['paciente']['nombre_completo'] ?? 'N/A'
+        ]);
+
+        // ✅ 4. DETERMINAR VISTA SEGÚN ESPECIALIDAD Y TIPO DE CONSULTA
+        return $this->renderizarVistaShow($especialidad, $tipoConsulta, $historia, $usuario, $isOffline);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error mostrando historia clínica', [
+            'error' => $e->getMessage(),
+            'historia_uuid' => $uuid,
+            'line' => $e->getLine(),
+            'file' => basename($e->getFile()),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return back()->with('error', 'Error al cargar la historia clínica: ' . $e->getMessage());
+    }
+}
+
+/**
+ * ✅ RENDERIZAR VISTA DE SHOW SEGÚN ESPECIALIDAD Y TIPO
+ */
+/**
+ * ✅ RENDERIZAR VISTA SEGÚN ESPECIALIDAD Y TIPO DE CONSULTA
+ */
+private function renderizarVistaShow(string $especialidad, string $tipoConsulta, array $historia, array $usuario, bool $isOffline): \Illuminate\View\View
+{
+    // ✅ NORMALIZAR ESPECIALIDAD Y TIPO DE CONSULTA
+    $especialidadNormalizada = $this->normalizarEspecialidad($especialidad);
+    $tipoConsultaNormalizado = strtolower(str_replace(' ', '-', $tipoConsulta));
+    
+    Log::info('🎨 Renderizando vista show', [
+        'especialidad_original' => $especialidad,
+        'especialidad_normalizada' => $especialidadNormalizada,
+        'tipo_consulta_original' => $tipoConsulta,
+        'tipo_consulta_normalizado' => $tipoConsultaNormalizado
+    ]);
+
+    // ✅ CONSTRUIR RUTA DE LA VISTA
+    // Ruta: resources/views/historia-clinica/historial-historias/{especialidad}/{tipo-consulta}.blade.php
+    $vistaEspecifica = "historia-clinica.historial-historias.{$especialidadNormalizada}.{$tipoConsultaNormalizado}";
+    $vistaGenerica = "historia-clinica.historial-historias.generica";
+    
+    // ✅ VERIFICAR SI EXISTE LA VISTA ESPECÍFICA
+    if (view()->exists($vistaEspecifica)) {
+        Log::info("✅ Vista específica encontrada: {$vistaEspecifica}");
+        
+        return view($vistaEspecifica, [
+            'historia' => $historia,
+            'usuario' => $usuario,
+            'isOffline' => $isOffline,
+            'especialidad' => $especialidad,
+            'tipoConsulta' => $tipoConsulta
+        ]);
+    }
+    
+    // ✅ FALLBACK A VISTA GENÉRICA
+    Log::warning("⚠️ Vista específica no encontrada: {$vistaEspecifica}, usando vista genérica");
+    
+    if (view()->exists($vistaGenerica)) {
+        return view($vistaGenerica, [
+            'historia' => $historia,
+            'usuario' => $usuario,
+            'isOffline' => $isOffline,
+            'especialidad' => $especialidad,
+            'tipoConsulta' => $tipoConsulta
+        ]);
+    }
+    
+    // ✅ ERROR SI NO EXISTE NINGUNA VISTA
+    Log::error("❌ No se encontró ninguna vista para mostrar la historia", [
+        'vista_especifica' => $vistaEspecifica,
+        'vista_generica' => $vistaGenerica
+    ]);
+    
+    abort(500, "No se encontró una vista para mostrar esta historia clínica");
+}
+
+/**
+ * ✅ NORMALIZAR NOMBRE DE ESPECIALIDAD PARA RUTAS DE VISTAS
+ */
+private function normalizarEspecialidad(string $especialidad): string
+{
+    // Mapeo de especialidades a nombres de carpetas
+    $mapeo = [
+        'PSICOLOGIA' => 'psicologia',
+        'PSICOLOGÍA' => 'psicologia',
+        'MEDICINA GENERAL' => 'medicina-general',
+        'NUTRICIONISTA' => 'nutricionista',
+        'NUTRICIÓN' => 'nutricionista',
+        'ENFERMERIA' => 'enfermeria',
+        'ENFERMERÍA' => 'enfermeria',
+        'ODONTOLOGIA' => 'odontologia',
+        'ODONTOLOGÍA' => 'odontologia',
+    ];
+    
+    $especialidadUpper = strtoupper(trim($especialidad));
+    
+    if (isset($mapeo[$especialidadUpper])) {
+        return $mapeo[$especialidadUpper];
+    }
+    
+    // Si no está en el mapeo, normalizar manualmente
+    return strtolower(str_replace([' ', 'Í', 'Ó', 'Á', 'É', 'Ú'], ['-', 'i', 'o', 'a', 'e', 'u'], $especialidad));
+}
+
+
+/**
+ * ✅ NORMALIZAR TEXTO (QUITAR TILDES)
+ */
+private function normalizarTexto(string $texto): string
+{
+    $texto = strtoupper($texto);
+    
+    $tildes = [
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u'
+    ];
+    
+    return strtr($texto, $tildes);
+}
+
+/**
+ * ✅ OBTENER HISTORIA OFFLINE (FALLBACK)
+ */
+private function obtenerHistoriaOffline(string $uuid): ?array
+{
+    try {
+        Log::info('🔍 Buscando historia offline', [
+            'historia_uuid' => $uuid
+        ]);
+
+        // ✅ 1. BUSCAR EN JSON
+        $historiasPath = storage_path('app/offline/historias-clinicas');
+        $filePath = "{$historiasPath}/{$uuid}.json";
+        
+        if (file_exists($filePath)) {
+            $data = json_decode(file_get_contents($filePath), true);
+            
+            if ($data && json_last_error() === JSON_ERROR_NONE) {
+                Log::info('✅ Historia encontrada en JSON offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                return $data;
+            }
+        }
+
+        // ✅ 2. BUSCAR EN SQLITE (SI EXISTE EL MÉTODO)
+        try {
+            $historiaOffline = $this->offlineService->getHistoriaClinicaOffline($uuid);
+            
+            if ($historiaOffline) {
+                Log::info('✅ Historia encontrada en SQLite offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                return $historiaOffline;
+            }
+        } catch (\Exception $sqliteError) {
+            Log::debug('ℹ️ No se pudo buscar en SQLite (normal si no existe)', [
+                'error' => $sqliteError->getMessage()
+            ]);
+        }
+
+        Log::warning('⚠️ Historia no encontrada offline', [
+            'historia_uuid' => $uuid
+        ]);
+
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historia offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid
+        ]);
+        
+        return null;
+    }
+}
+
+
+/**
  * ✅ OBTENER ÚLTIMA HISTORIA FORMATEADA PARA EL FORMULARIO
  */
 private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, string $especialidad): ?array
