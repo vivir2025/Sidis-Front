@@ -297,10 +297,11 @@
             $direccion = 'N/A';
             $departamento = 'N/A';
             $municipio = 'N/A';
-            $aseguradora = 'N/A';
+            $empresa = 'N/A';
             $regimen = 'N/A';
             $ocupacion = 'N/A';
             $nombreCompleto = 'N/A';
+            $brigada = 'N/A';
             $documento = 'N/A';
             $tipoDocumento = 'CC';
             $fechaNacimiento = 'N/A';
@@ -318,22 +319,18 @@
                 $ocupacion = $paciente['ocupacion'] ?? 'N/A';
                 $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
                 $documento = $paciente['documento'] ?? 'N/A';
-                
-                $nombreCompleto = trim(
-                    ($paciente['primer_nombre'] ?? '') . ' ' . 
-                    ($paciente['segundo_nombre'] ?? '') . ' ' . 
-                    ($paciente['primer_apellido'] ?? '') . ' ' . 
-                    ($paciente['segundo_apellido'] ?? '')
-                );
+                $nombreCompleto = $paciente['nombre_completo'] ?? 'N/A';
                 
                 $departamento = $paciente['departamento']['nombre'] ?? 'N/A';
                 $municipio = $paciente['municipio']['nombre'] ?? 'N/A';
                 $direccion = $paciente['direccion'] ?? 'N/A';
-                $aseguradora = $paciente['aseguradora']['nombre'] ?? 'N/A';
+                $empresa = $paciente['empresa']['nombre'] ?? 'N/A';
                 $regimen = $paciente['regimen']['nombre'] ?? 'N/A';
+                $ocupacion = $paciente['ocupacion']['nombre'] ?? 'N/A';
+                $brigada = $paciente['brigada']['nombre'] ?? 'N/A';
             }
             
-            $brigada = $historia['sede']['nombre'] ?? 'N/A';
+            
         @endphp
 
         <fieldset>
@@ -367,12 +364,11 @@
             <div class="datos-grid">
                 <div class="dato-item">
                     <div class="dato-label">DIRECCIÓN</div>
-                    <div class="dato-valor">{{ $departamento }} - {{ $municipio }}</div>
                     <div class="dato-valor">{{ $direccion }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">ASEGURADORA</div>
-                    <div class="dato-valor">{{ $aseguradora }}</div>
+                    <div class="dato-valor">{{ $empresa }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">RÉGIMEN</div>
@@ -380,7 +376,7 @@
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">OCUPACIÓN</div>
-                    <div class="dato-valor">{{ $ocupacion }}</div>
+                   <div class="dato-valor">{{ $ocupacion }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">BRIGADA</div>
@@ -418,69 +414,76 @@
         <fieldset>
             <legend>HISTORIA CLÍNICA - PRIMERA VEZ PSICOLOGÍA</legend>
 
-            {{-- 1. MOTIVO DE CONSULTA --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">1. MOTIVO DE CONSULTA</div>
-                <div class="campo-contenido">
-                    {{ $historia['motivo_consulta'] ?? 'N/A' }}
+            <div style="display: flex; gap: 20px;">
+                {{-- 1. MOTIVO DE CONSULTA --}}
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">1. MOTIVO DE CONSULTA</div>
+                    <div class="campo-contenido">
+                        {{ $historia['motivo_consulta'] ?? 'N/A' }}
+                    </div>
+                </div>
+
+                {{-- 2. ESTRUCTURA FAMILIAR --}}
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">2. ESTRUCTURA FAMILIAR (FAMILIARES O PERSONAS CON LAS QUE CONVIVE EL PACIENTE)</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['estructura_familiar'] ?? 'N/A' }}
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 20px;">
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">3. RED DE APOYO FAMILIAR QUE CONSIDERA EL PACIENTE (FAMILIAR O FAMILIARES A LOS QUE EL PACIENTE CONSIDERE COMO SU RED DE APOYO)</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['psicologia_red_apoyo'] ?? 'N/A' }}
+                    </div>
+
+                </div>
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">4. COMPORTAMIENTO EN CONSULTA</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['psicologia_comportamiento_consulta'] ?? 'N/A' }}
+                    </div>
                 </div>
             </div>
 
-            {{-- 2. ESTRUCTURA FAMILIAR --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">2. ESTRUCTURA FAMILIAR (FAMILIARES O PERSONAS CON LAS QUE CONVIVE EL PACIENTE)</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['estructura_familiar'] ?? 'N/A' }}
+            <div style="display: flex; gap: 20px;">
+                
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">5. TRATAMIENTO ACTUAL Y ADHERENCIA (DESCRIPCIÓN DEL PACIENTE SOBRE EL TRATAMIENTO Y LA ADHERENCIA AL MISMO)</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['psicologia_tratamiento_actual_adherencia'] ?? 'N/A' }}
+                    </div>
+
+                </div>
+               
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">6. DESCRIPCIÓN DEL PROBLEMA (DESCRIPCIÓN DEL PACIENTE DE LA SITUACIÓN QUE LO AFECTA)</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['psicologia_descripcion_problema'] ?? 'N/A' }}
+                    </div>
+  
                 </div>
             </div>
 
-            {{-- 3. RED DE APOYO --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">3. RED DE APOYO FAMILIAR QUE CONSIDERA EL PACIENTE (FAMILIAR O FAMILIARES A LOS QUE EL PACIENTE CONSIDERE COMO SU RED DE APOYO)</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['psicologia_red_apoyo'] ?? 'N/A' }}
+            <div style="display: flex; gap: 20px;">
+                
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">7. ANÁLISIS Y CONCLUSIONES</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['analisis_conclusiones'] ?? 'N/A' }}
+                    </div>
+                </div>
+
+               
+                <div class="campo-historia" style="flex: 1;">
+                    <div class="campo-titulo">8. PLAN DE INTERVENCIÓN Y RECOMENDACIONES</div>
+                    <div class="campo-contenido">
+                        {{ $complementaria['psicologia_plan_intervencion_recomendacion'] ?? 'N/A' }}
+                    </div>
                 </div>
             </div>
 
-            {{-- 4. COMPORTAMIENTO EN CONSULTA --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">4. COMPORTAMIENTO EN CONSULTA</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['psicologia_comportamiento_consulta'] ?? 'N/A' }}
-                </div>
-            </div>
-
-            {{-- 5. TRATAMIENTO ACTUAL Y ADHERENCIA --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">5. TRATAMIENTO ACTUAL Y ADHERENCIA (DESCRIPCIÓN DEL PACIENTE SOBRE EL TRATAMIENTO Y LA ADHERENCIA AL MISMO)</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['psicologia_tratamiento_actual_adherencia'] ?? 'N/A' }}
-                </div>
-            </div>
-
-            {{-- 6. DESCRIPCIÓN DEL PROBLEMA --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">6. DESCRIPCIÓN DEL PROBLEMA (DESCRIPCIÓN DEL PACIENTE DE LA SITUACIÓN QUE LO AFECTA)</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['psicologia_descripcion_problema'] ?? 'N/A' }}
-                </div>
-            </div>
-
-            {{-- 7. ANÁLISIS Y CONCLUSIONES --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">7. ANÁLISIS Y CONCLUSIONES</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['analisis_conclusiones'] ?? 'N/A' }}
-                </div>
-            </div>
-
-            {{-- 8. PLAN DE INTERVENCIÓN --}}
-            <div class="campo-historia">
-                <div class="campo-titulo">8. PLAN DE INTERVENCIÓN Y RECOMENDACIONES</div>
-                <div class="campo-contenido">
-                    {{ $complementaria['psicologia_plan_intervencion_recomendacion'] ?? 'N/A' }}
-                </div>
-            </div>
         </fieldset>
 
         {{-- ✅ FINALIDAD CON BORDE AZUL --}}
@@ -603,9 +606,19 @@
             
             if (isset($historia['cita']['agenda']['usuario_medico'])) {
                 $medico = $historia['cita']['agenda']['usuario_medico'];
-                $profesionalNombre = trim(($medico['nombre'] ?? '') . ' ' . ($medico['apellido'] ?? ''));
-                $profesionalProfesion = strtoupper($medico['profesion']['nombre'] ?? 'PSICOLOGÍA');
+                
+                // ✅ NOMBRE COMPLETO (viene directo del backend)
+                $profesionalNombre = $medico['nombre_completo'] ?? 'N/A';
+                
+                // ✅ ESPECIALIDAD (acceder al array anidado)
+                $profesionalProfesion = isset($medico['especialidad']['nombre']) 
+                    ? strtoupper($medico['especialidad']['nombre']) 
+                    : 'PSICOLOGÍA';
+                
+                // ✅ REGISTRO PROFESIONAL
                 $profesionalRegistro = $medico['registro_profesional'] ?? 'N/A';
+                
+                // ✅ FIRMA
                 $profesionalFirma = $medico['firma'] ?? null;
             }
         @endphp
