@@ -124,10 +124,14 @@ public function show(string $uuid)
                 if ($response['success']) {
                     $historia = $response['data'];
                     
-                    Log::info('✅ Historia obtenida desde API', [
+                    // ✅✅✅ FORMATEAR ARRAYS ANTES DE USAR ✅✅✅
+                    $historia = $this->formatearHistoriaParaVista($historia);
+                    
+                    Log::info('✅ Historia obtenida y formateada desde API', [
                         'historia_uuid' => $uuid,
-                        'especialidad' => $historia['especialidad'] ?? 'N/A',
-                        'tipo_consulta' => $historia['tipo_consulta'] ?? 'N/A'
+                        'medicamentos_count' => count($historia['medicamentos'] ?? []),
+                        'remisiones_count' => count($historia['remisiones'] ?? []),
+                        'diagnosticos_count' => count($historia['diagnosticos'] ?? [])
                     ]);
                 }
             } catch (\Exception $e) {
@@ -149,7 +153,10 @@ public function show(string $uuid)
                 return back()->with('error', 'Historia clínica no encontrada');
             }
             
-            Log::info('✅ Historia obtenida desde offline', [
+            // ✅ FORMATEAR TAMBIÉN OFFLINE
+            $historia = $this->formatearHistoriaParaVista($historia);
+            
+            Log::info('✅ Historia obtenida y formateada desde offline', [
                 'historia_uuid' => $uuid
             ]);
         }
@@ -183,10 +190,190 @@ public function show(string $uuid)
         return back()->with('error', 'Error al cargar la historia clínica: ' . $e->getMessage());
     }
 }
-
 /**
- * ✅ RENDERIZAR VISTA DE SHOW SEGÚN ESPECIALIDAD Y TIPO
+ * ✅ FORMATEAR HISTORIA PARA VISTA (CORRIGE ARRAYS VACÍOS) - VERSIÓN CORREGIDA
  */
+private function formatearHistoriaParaVista(array $historia): array
+{
+    try {
+        Log::info('🔧 Formateando historia para vista', [
+            'historia_uuid' => $historia['uuid'] ?? 'N/A',
+            'tiene_medicamentos_raw' => isset($historia['medicamentos']),
+            'medicamentos_raw_count' => isset($historia['medicamentos']) ? count($historia['medicamentos']) : 0,
+            'tiene_remisiones_raw' => isset($historia['remisiones']),
+            'remisiones_raw_count' => isset($historia['remisiones']) ? count($historia['remisiones']) : 0,
+            'tiene_diagnosticos_raw' => isset($historia['diagnosticos']),
+            'diagnosticos_raw_count' => isset($historia['diagnosticos']) ? count($historia['diagnosticos']) : 0,
+            'tiene_cups_raw' => isset($historia['cups']),
+            'cups_raw_count' => isset($historia['cups']) ? count($historia['cups']) : 0
+        ]);
+
+        // ✅ FORMATEAR MEDICAMENTOS
+        if (isset($historia['medicamentos']) && is_array($historia['medicamentos']) && !empty($historia['medicamentos'])) {
+            Log::info('🔧 Formateando medicamentos', [
+                'count_antes' => count($historia['medicamentos']),
+                'primer_medicamento' => $historia['medicamentos'][0] ?? 'N/A'
+            ]);
+
+            $historia['medicamentos'] = array_map(function($item) {
+                // ✅ VERIFICAR SI YA ESTÁ FORMATEADO
+                if (isset($item['medicamento']) && is_array($item['medicamento']) && isset($item['medicamento']['nombre'])) {
+                    return $item;
+                }
+                
+                // ✅ FORMATEAR SI VIENE SIN ESTRUCTURA
+                return [
+                    'medicamento' => [
+                        'nombre' => $item['medicamento']['nombre'] ?? $item['nombre'] ?? 'Medicamento sin nombre',
+                        'codigo' => $item['medicamento']['codigo'] ?? $item['codigo'] ?? 'N/A',
+                        'principio_activo' => $item['medicamento']['principio_activo'] ?? $item['principio_activo'] ?? 'N/A'
+                    ],
+                    'cantidad' => $item['cantidad'] ?? 'N/A',
+                    'dosis' => $item['dosis'] ?? 'N/A',
+                    'via_administracion' => $item['via_administracion'] ?? 'N/A',
+                    'frecuencia' => $item['frecuencia'] ?? 'N/A'
+                ];
+            }, $historia['medicamentos']);
+
+            Log::info('✅ Medicamentos formateados', [
+                'count_despues' => count($historia['medicamentos'])
+            ]);
+        } else {
+            Log::warning('⚠️ No hay medicamentos para formatear', [
+                'isset' => isset($historia['medicamentos']),
+                'is_array' => isset($historia['medicamentos']) ? is_array($historia['medicamentos']) : false,
+                'empty' => isset($historia['medicamentos']) ? empty($historia['medicamentos']) : true
+            ]);
+            $historia['medicamentos'] = [];
+        }
+
+        // ✅ FORMATEAR REMISIONES
+        if (isset($historia['remisiones']) && is_array($historia['remisiones']) && !empty($historia['remisiones'])) {
+            Log::info('🔧 Formateando remisiones', [
+                'count_antes' => count($historia['remisiones']),
+                'primera_remision' => $historia['remisiones'][0] ?? 'N/A'
+            ]);
+
+            $historia['remisiones'] = array_map(function($item) {
+                // ✅ VERIFICAR SI YA ESTÁ FORMATEADO
+                if (isset($item['remision']) && is_array($item['remision']) && isset($item['remision']['nombre'])) {
+                    return $item;
+                }
+                
+                // ✅ FORMATEAR SI VIENE SIN ESTRUCTURA
+                return [
+                    'remision' => [
+                        'nombre' => $item['remision']['nombre'] ?? $item['nombre'] ?? 'Remisión sin nombre',
+                        'tipo' => $item['remision']['tipo'] ?? $item['tipo'] ?? 'N/A'
+                    ],
+                    'observacion' => $item['observacion'] ?? 'Sin observaciones'
+                ];
+            }, $historia['remisiones']);
+
+            Log::info('✅ Remisiones formateadas', [
+                'count_despues' => count($historia['remisiones'])
+            ]);
+        } else {
+            Log::warning('⚠️ No hay remisiones para formatear', [
+                'isset' => isset($historia['remisiones']),
+                'is_array' => isset($historia['remisiones']) ? is_array($historia['remisiones']) : false,
+                'empty' => isset($historia['remisiones']) ? empty($historia['remisiones']) : true
+            ]);
+            $historia['remisiones'] = [];
+        }
+
+        // ✅ FORMATEAR DIAGNÓSTICOS
+        if (isset($historia['diagnosticos']) && is_array($historia['diagnosticos']) && !empty($historia['diagnosticos'])) {
+            Log::info('🔧 Formateando diagnósticos', [
+                'count_antes' => count($historia['diagnosticos']),
+                'primer_diagnostico' => $historia['diagnosticos'][0] ?? 'N/A'
+            ]);
+
+            $historia['diagnosticos'] = array_map(function($item) {
+                // ✅ VERIFICAR SI YA ESTÁ FORMATEADO
+                if (isset($item['diagnostico']) && is_array($item['diagnostico']) && isset($item['diagnostico']['nombre'])) {
+                    return $item;
+                }
+                
+                // ✅ FORMATEAR SI VIENE SIN ESTRUCTURA
+                return [
+                    'diagnostico' => [
+                        'codigo' => $item['diagnostico']['codigo'] ?? $item['codigo'] ?? 'N/A',
+                        'nombre' => $item['diagnostico']['nombre'] ?? $item['nombre'] ?? 'Diagnóstico sin nombre'
+                    ],
+                    'tipo' => $item['tipo'] ?? 'SECUNDARIO',
+                    'tipo_diagnostico' => $item['tipo_diagnostico'] ?? 'N/A'
+                ];
+            }, $historia['diagnosticos']);
+
+            Log::info('✅ Diagnósticos formateados', [
+                'count_despues' => count($historia['diagnosticos'])
+            ]);
+        } else {
+            Log::warning('⚠️ No hay diagnósticos para formatear', [
+                'isset' => isset($historia['diagnosticos']),
+                'is_array' => isset($historia['diagnosticos']) ? is_array($historia['diagnosticos']) : false,
+                'empty' => isset($historia['diagnosticos']) ? empty($historia['diagnosticos']) : true
+            ]);
+            $historia['diagnosticos'] = [];
+        }
+
+        // ✅ FORMATEAR CUPS
+        if (isset($historia['cups']) && is_array($historia['cups']) && !empty($historia['cups'])) {
+            Log::info('🔧 Formateando CUPS', [
+                'count_antes' => count($historia['cups']),
+                'primer_cups' => $historia['cups'][0] ?? 'N/A'
+            ]);
+
+            $historia['cups'] = array_map(function($item) {
+                // ✅ VERIFICAR SI YA ESTÁ FORMATEADO
+                if (isset($item['cups']) && is_array($item['cups']) && isset($item['cups']['nombre'])) {
+                    return $item;
+                }
+                
+                // ✅ FORMATEAR SI VIENE SIN ESTRUCTURA
+                return [
+                    'cups' => [
+                        'codigo' => $item['cups']['codigo'] ?? $item['codigo'] ?? 'N/A',
+                        'nombre' => $item['cups']['nombre'] ?? $item['nombre'] ?? 'CUPS sin nombre'
+                    ],
+                    'cantidad' => $item['cantidad'] ?? 1,
+                    'observacion' => $item['observacion'] ?? ''
+                ];
+            }, $historia['cups']);
+
+            Log::info('✅ CUPS formateados', [
+                'count_despues' => count($historia['cups'])
+            ]);
+        } else {
+            Log::warning('⚠️ No hay CUPS para formatear', [
+                'isset' => isset($historia['cups']),
+                'is_array' => isset($historia['cups']) ? is_array($historia['cups']) : false,
+                'empty' => isset($historia['cups']) ? empty($historia['cups']) : true
+            ]);
+            $historia['cups'] = [];
+        }
+
+        Log::info('✅ Historia formateada correctamente', [
+            'medicamentos_count' => count($historia['medicamentos']),
+            'remisiones_count' => count($historia['remisiones']),
+            'diagnosticos_count' => count($historia['diagnosticos']),
+            'cups_count' => count($historia['cups'])
+        ]);
+
+        return $historia;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error formateando historia para vista', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        // Retornar historia sin cambios en caso de error
+        return $historia;
+    }
+}
+
 /**
  * ✅ RENDERIZAR VISTA SEGÚN ESPECIALIDAD Y TIPO DE CONSULTA
  */

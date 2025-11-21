@@ -427,10 +427,12 @@
                 <div class="campo-historia" style="flex: 1;">
                     <div class="campo-titulo">2. ESTRUCTURA FAMILIAR (FAMILIARES O PERSONAS CON LAS QUE CONVIVE EL PACIENTE)</div>
                     <div class="campo-contenido">
-                        {{ $complementaria['estructura_familiar'] ?? 'N/A' }}
+                   
+                        {{ $complementaria['estructura_familiar'] ?? 'No registrado' }}
                     </div>
                 </div>
             </div>
+            
             <div style="display: flex; gap: 20px;">
                 <div class="campo-historia" style="flex: 1;">
                     <div class="campo-titulo">3. RED DE APOYO FAMILIAR QUE CONSIDERA EL PACIENTE (FAMILIAR O FAMILIARES A LOS QUE EL PACIENTE CONSIDERE COMO SU RED DE APOYO)</div>
@@ -539,6 +541,7 @@
         <div class="info-box">
             <strong>CAUSA EXTERNA:</strong> {{ $historia['causa_externa'] ?? 'OTRA' }}
         </div>
+        
 
         {{-- ✅ MEDICAMENTOS (SI EXISTEN) --}}
         @if(!empty($historia['medicamentos']) && is_array($historia['medicamentos']) && count($historia['medicamentos']) > 0)
