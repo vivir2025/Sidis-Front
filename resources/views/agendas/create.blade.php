@@ -316,28 +316,163 @@
 
 @push('scripts')
 <script>
+// ✅ FUNCIÓN GLOBAL PARA ALERTAS
+function showAlert(type, message) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            icon: type,
+            title: type === 'warning' ? 'Advertencia' : type === 'error' ? 'Error' : 'Información',
+            text: message,
+            timer: 3000,
+            showConfirmButton: false
+        });
+    } else {
+        alert(message);
+    }
+}
+
+// ✅ FUNCIÓN GLOBAL PARA VALIDAR SELECCIONES
+function isValidSelection(value) {
+    if (!value || value.trim() === '') return true;
+    return /^\d+$/.test(value) || 
+           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+           /^[a-zA-Z0-9_-]{1,50}$/.test(value);
+}
+
+// ✅ MAPEO ESPECIALIDAD → PROCESO (CORREGIDO)
+const MAPEO_ESPECIALIDAD_PROCESO = {
+    'NUTRICIONISTA': 'NUTRICIONISTA',        // Coinciden
+    'PSICOLOGIA': 'PSICOLOGIA',              // Coinciden
+    'NEFROLOGIA': 'NEFROLOGIA',              // Coinciden
+    'INTERNISTA': 'INTERNISTA',              // Coinciden
+    'FISIOTERAPIA': 'FISIOTERAPIA',          // Coinciden
+    'TRABAJO SOCIAL': 'TRABAJO SOCIAL',      // Coinciden
+    'REFORMULACION': 'REFORMULACION',        // Coinciden
+    'MEDICINA GENERAL': 'ESPECIAL CONTROL',  // ← MAPEO ESPECIAL
+    'ESPECIAL CONTROL': 'ESPECIAL CONTROL'   // Por si acaso
+};
+
+
+// ✅ AUTO-SELECCIONAR PROCESO POR NOMBRE DE ESPECIALIDAD
+function autoSeleccionarProcesoPorNombre(especialidadNombre) {
+    const procesoSelect = document.getElementById('proceso_id');
+    
+    if (!procesoSelect || !especialidadNombre) {
+        console.warn('⚠️ No se puede auto-seleccionar proceso');
+        return;
+    }
+    
+    console.log('🔍 Buscando proceso para especialidad:', especialidadNombre);
+    
+    // Normalizar nombre de especialidad
+    const especialidadNormalizada = especialidadNombre.trim().toUpperCase();
+    
+    // Buscar nombre del proceso en el mapeo
+    const procesoNombre = MAPEO_ESPECIALIDAD_PROCESO[especialidadNormalizada];
+    
+    if (!procesoNombre) {
+        console.warn('⚠️ No hay mapeo para especialidad:', especialidadNombre);
+        procesoSelect.value = '';
+        showAlert('info', `No hay proceso automático para "${especialidadNombre}". Seleccione manualmente.`);
+        return;
+    }
+    
+    console.log('✅ Proceso mapeado encontrado:', procesoNombre);
+    
+    // Buscar la opción por nombre en el select
+    let procesoEncontrado = false;
+    
+    for (let i = 0; i < procesoSelect.options.length; i++) {
+        const option = procesoSelect.options[i];
+        
+        // Saltar opción vacía
+        if (!option.value) continue;
+        
+        // Obtener solo el nombre del proceso (sin CUPS)
+        const optionText = option.text.trim().toUpperCase();
+        const nombreProceso = optionText.split('(')[0].trim(); // Eliminar CUPS entre paréntesis
+        
+        console.log(`🔎 Comparando: "${nombreProceso}" === "${procesoNombre}"`);
+        
+        if (nombreProceso === procesoNombre) {
+            procesoSelect.value = option.value;
+            procesoEncontrado = true;
+            
+            console.log('✅ Proceso seleccionado automáticamente:', {
+                proceso_id: option.value,
+                proceso_nombre: option.text,
+                especialidad_nombre: especialidadNombre
+            });
+            
+            showAlert('success', `Proceso "${option.text}" seleccionado automáticamente`);
+            
+            // Efecto visual
+            procesoSelect.classList.add('border-success');
+            setTimeout(() => {
+                procesoSelect.classList.remove('border-success');
+            }, 2000);
+            
+            break;
+        }
+    }
+    
+    if (!procesoEncontrado) {
+        console.error('❌ Proceso no encontrado en el select:', procesoNombre);
+        console.log('📋 Opciones disponibles en el select:');
+        for (let i = 0; i < procesoSelect.options.length; i++) {
+            const opt = procesoSelect.options[i];
+            if (opt.value) {
+                console.log(`  - [${opt.value}] ${opt.text}`);
+            }
+        }
+        procesoSelect.value = '';
+        showAlert('warning', `Proceso "${procesoNombre}" no encontrado para "${especialidadNombre}"`);
+    }
+}
+
+// ✅ LIMPIAR SELECCIÓN DE USUARIO MÉDICO
+function limpiarUsuarioMedico() {
+    const usuarioMedicoSelect = document.getElementById('usuario_medico_id');
+    const especialidadDisplay = document.getElementById('especialidad_display');
+    const procesoSelect = document.getElementById('proceso_id');
+    
+    if (usuarioMedicoSelect) usuarioMedicoSelect.value = '';
+    if (especialidadDisplay) especialidadDisplay.value = '';
+    if (procesoSelect) procesoSelect.value = '';
+}
+
+// ✅ ÚNICO EVENTO DOMContentLoaded
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Inicializando formulario de agenda...');
+    
+    // ========== ELEMENTOS DEL FORMULARIO ==========
     const form = document.getElementById('agendaForm');
     const horaInicio = document.getElementById('hora_inicio');
     const horaFin = document.getElementById('hora_fin');
     const intervalo = document.getElementById('intervalo');
+    const usuarioMedicoSelect = document.getElementById('usuario_medico_id');
+    const especialidadDisplay = document.getElementById('especialidad_display');
+    const procesoSelect = document.getElementById('proceso_id');
+    const brigadaSelect = document.getElementById('brigada_id');
     
-    // ✅ FUNCIÓN PARA MOSTRAR ALERTAS
-    function showAlert(type, message) {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: type,
-                title: type === 'warning' ? 'Advertencia' : 'Información',
-                text: message,
-                timer: 3000,
-                showConfirmButton: false
-            });
-        } else {
-            alert(message);
-        }
+    // ========== FUNCIONES DE CÁLCULO ==========
+    function timeToMinutes(time) {
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
     }
     
-    // Calcular información automáticamente
+    function minutesToTime(minutes) {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+    
+    function resetCalculos() {
+        document.getElementById('duracionTotal').textContent = '-- horas';
+        document.getElementById('cuposEstimados').textContent = '-- cupos';
+        document.getElementById('ultimoCupo').textContent = '--:--';
+    }
+    
     function calcularInformacion() {
         const inicio = horaInicio.value;
         const fin = horaFin.value;
@@ -369,29 +504,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function timeToMinutes(time) {
-        const [hours, minutes] = time.split(':').map(Number);
-        return hours * 60 + minutes;
-    }
-    
-    function minutesToTime(minutes) {
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-    }
-    
-    function resetCalculos() {
-        document.getElementById('duracionTotal').textContent = '-- horas';
-        document.getElementById('cuposEstimados').textContent = '-- cupos';
-        document.getElementById('ultimoCupo').textContent = '--:--';
-    }
-    
-    // Event listeners para cálculos
+    // ========== EVENT LISTENERS DE CÁLCULO ==========
     horaInicio.addEventListener('change', calcularInformacion);
     horaFin.addEventListener('change', calcularInformacion);
     intervalo.addEventListener('change', calcularInformacion);
     
-    // Validación de horarios
     horaFin.addEventListener('change', function() {
         if (horaInicio.value && horaFin.value) {
             if (timeToMinutes(horaFin.value) <= timeToMinutes(horaInicio.value)) {
@@ -402,20 +519,72 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // ✅ VALIDACIÓN MEJORADA DE SELECCIONES (OPCIONAL Y MENOS RESTRICTIVA)
-    const procesoSelect = document.getElementById('proceso_id');
-    const brigadaSelect = document.getElementById('brigada_id');
-    
-    function isValidSelection(value) {
-        // Permitir valores vacíos (campos opcionales)
-        if (!value || value.trim() === '') return true;
+    // ========== USUARIO MÉDICO Y ESPECIALIDAD ==========
+    if (usuarioMedicoSelect && especialidadDisplay) {
+        usuarioMedicoSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const value = this.value;
+            
+            console.log('🔄 Usuario médico cambiado:', {
+                value: value,
+                option_text: selectedOption.text
+            });
+            
+            // Validar selección
+            if (value && !isValidSelection(value)) {
+                console.warn('❌ Usuario médico inválido:', value);
+                limpiarUsuarioMedico();
+                showAlert('warning', 'Selección de usuario médico inválida');
+                return;
+            }
+            
+            // Si no hay selección, limpiar todo
+            if (!value) {
+                especialidadDisplay.value = '';
+                if (procesoSelect) procesoSelect.value = '';
+                return;
+            }
+            
+            // Obtener datos de la opción seleccionada
+            const especialidadNombre = selectedOption.dataset.especialidadNombre;
+            
+            console.log('👨‍⚕️ Datos del usuario médico:', {
+                usuario_nombre: selectedOption.text,
+                especialidad_nombre: especialidadNombre,
+                todos_datasets: selectedOption.dataset
+            });
+            
+            // Actualizar campo de especialidad
+            if (especialidadNombre) {
+                especialidadDisplay.value = especialidadNombre;
+                console.log('✅ Especialidad actualizada:', especialidadNombre);
+                
+                // ✅ AUTO-SELECCIONAR PROCESO POR NOMBRE
+                autoSeleccionarProcesoPorNombre(especialidadNombre);
+            } else {
+                console.warn('⚠️ Usuario médico sin nombre de especialidad');
+                especialidadDisplay.value = '';
+                if (procesoSelect) procesoSelect.value = '';
+            }
+        });
         
-        // Debe ser numérico o UUID válido o texto alfanumérico razonable
-        return /^\d+$/.test(value) || 
-               /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
-               /^[a-zA-Z0-9_-]{1,50}$/.test(value);
+        // ✅ INICIALIZAR SI HAY VALOR PREVIO
+        if (usuarioMedicoSelect.value) {
+            const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
+            const especialidadNombre = selectedOption.dataset.especialidadNombre;
+            
+            console.log('🔄 Inicializando con usuario médico preseleccionado:', {
+                especialidad_nombre: especialidadNombre
+            });
+            
+            if (especialidadNombre) {
+                especialidadDisplay.value = especialidadNombre;
+                autoSeleccionarProcesoPorNombre(especialidadNombre);
+            }
+        }
     }
     
+    // ========== VALIDACIÓN DE PROCESO Y BRIGADA ==========
     if (procesoSelect) {
         procesoSelect.addEventListener('change', function() {
             const value = this.value;
@@ -438,7 +607,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Submit del formulario
+    // ========== SUBMIT DEL FORMULARIO ==========
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
         
@@ -451,7 +620,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData(form);
             
-            // ✅ LOG PARA DEBUG
             console.log('📤 Enviando datos del formulario:');
             for (let [key, value] of formData.entries()) {
                 console.log(`${key}: ${value}`);
@@ -477,19 +645,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         timer: 2000,
                         showConfirmButton: false
                     }).then(() => {
-                        if (data.redirect_url) {
-                            window.location.href = data.redirect_url;
-                        } else {
-                            window.location.href = '{{ route("agendas.index") }}';
-                        }
+                        window.location.href = data.redirect_url || '{{ route("agendas.index") }}';
                     });
                 } else {
                     alert(data.message || 'Agenda creada exitosamente');
-                    if (data.redirect_url) {
-                        window.location.href = data.redirect_url;
-                    } else {
-                        window.location.href = '{{ route("agendas.index") }}';
-                    }
+                    window.location.href = data.redirect_url || '{{ route("agendas.index") }}';
                 }
             } else {
                 if (data.errors) {
@@ -517,15 +677,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function showValidationErrors(errors) {
-        // Limpiar errores previos
-        document.querySelectorAll('.is-invalid').forEach(el => {
-            el.classList.remove('is-invalid');
-        });
-        document.querySelectorAll('.invalid-feedback').forEach(el => {
-            el.remove();
-        });
+        document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+        document.querySelectorAll('.invalid-feedback').forEach(el => el.remove());
         
-        // Mostrar nuevos errores
         for (const [field, messages] of Object.entries(errors)) {
             const input = document.getElementById(field);
             if (input) {
@@ -537,13 +691,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Scroll al primer error
         const firstError = document.querySelector('.is-invalid');
         if (firstError) {
             firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         
-        // Mostrar alerta general
         if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title: 'Errores de Validación',
@@ -553,117 +705,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Calcular información inicial si hay valores
+    // ========== CALCULAR INFORMACIÓN INICIAL ==========
     calcularInformacion();
-});
-
-const usuarioMedicoSelect = document.getElementById('usuario_medico_id');
-const especialidadDisplay = document.getElementById('especialidad_display');
-
-if (usuarioMedicoSelect && especialidadDisplay) {
-    usuarioMedicoSelect.addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        
-        if (selectedOption.value && selectedOption.dataset.especialidadNombre) {
-            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
-            
-            // Mostrar información adicional
-            showAlert('info', `Especialidad seleccionada: ${selectedOption.dataset.especialidadNombre}`);
-        } else {
-            especialidadDisplay.value = '';
-        }
-    });
     
-    // Validación del usuario médico
-    usuarioMedicoSelect.addEventListener('change', function() {
-        const value = this.value;
-        if (!isValidSelection(value)) {
-            console.warn('Usuario médico inválido seleccionado:', value);
-            this.value = '';
-            especialidadDisplay.value = '';
-            showAlert('warning', 'Selección de usuario médico inválida');
-        }
-    });
-}
-
-// ✅ INICIALIZAR ESPECIALIDAD SI HAY VALOR PREVIO
-document.addEventListener('DOMContentLoaded', function() {
-    if (usuarioMedicoSelect && usuarioMedicoSelect.value) {
-        const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
-        if (selectedOption.dataset.especialidadNombre) {
-            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
-        }
-    }
-});
-function filterUsuariosBySede() {
-    const currentUser = @json($usuario ?? []);
-    const currentSedeId = currentUser.sede_id;
-    
-    if (usuarioMedicoSelect && currentSedeId) {
-        const options = usuarioMedicoSelect.querySelectorAll('option[data-sede-id]');
-        options.forEach(option => {
-            const optionSedeId = option.dataset.sedeId;
-            if (optionSedeId && optionSedeId != currentSedeId) {
-                option.style.display = 'none';
+    // ========== DEBUG: LISTAR PROCESOS DISPONIBLES ==========
+    if (procesoSelect) {
+        console.log('📋 Procesos disponibles en el select:');
+        for (let i = 0; i < procesoSelect.options.length; i++) {
+            const opt = procesoSelect.options[i];
+            if (opt.value) {
+                console.log(`  - [${opt.value}] ${opt.text}`);
             }
-        });
-    }
-}
-
-// ✅ VALIDACIÓN MEJORADA PARA USUARIO MÉDICO
-if (usuarioMedicoSelect) {
-    usuarioMedicoSelect.addEventListener('change', function() {
-        const value = this.value;
-        const selectedOption = this.options[this.selectedIndex];
-        
-        if (value && !isValidSelection(value)) {
-            console.warn('Usuario médico inválido seleccionado:', value);
-            this.value = '';
-            especialidadDisplay.value = '';
-            showAlert('warning', 'Selección de usuario médico inválida');
-            return;
-        }
-        
-        // Actualizar especialidad
-        if (selectedOption.dataset.especialidadNombre) {
-            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
-            
-            // Log para debug
-            console.log('Usuario médico seleccionado:', {
-                id: selectedOption.dataset.id,
-                uuid: selectedOption.dataset.uuid,
-                nombre: selectedOption.text,
-                especialidad: selectedOption.dataset.especialidadNombre
-            });
-        } else {
-            especialidadDisplay.value = '';
-        }
-    });
-}
-
-// ✅ INICIALIZAR AL CARGAR LA PÁGINA
-document.addEventListener('DOMContentLoaded', function() {
-    // Filtrar usuarios por sede si es necesario
-    // filterUsuariosBySede(); // Descomenta si quieres filtrar por sede
-    
-    // Inicializar especialidad si hay valor previo
-    if (usuarioMedicoSelect && usuarioMedicoSelect.value) {
-        const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
-        if (selectedOption.dataset.especialidadNombre) {
-            especialidadDisplay.value = selectedOption.dataset.especialidadNombre;
         }
     }
 });
-
-// ✅ FUNCIÓN PARA LIMPIAR SELECCIÓN
-function limpiarUsuarioMedico() {
-    if (usuarioMedicoSelect) {
-        usuarioMedicoSelect.value = '';
-    }
-    if (especialidadDisplay) {
-        especialidadDisplay.value = '';
-    }
-}
 </script>
 @endpush
+
+
 @endsection

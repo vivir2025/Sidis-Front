@@ -695,6 +695,114 @@ function validarPaso(paso) {
     return true;
 }
 
+// ✅ FUNCIÓN SIMPLIFICADA: Determinar tipo de consulta automático
+// ✅ FUNCIÓN CORREGIDA
+async function determinarTipoConsultaAutomatico() {
+    if (!pacienteSeleccionado || !agendaSeleccionada) {
+        console.log('⚠️ Faltan datos para determinar tipo de consulta');
+        return;
+    }
+
+    try {
+        console.log('🔍 Determinando tipo de consulta automático', {
+            paciente_uuid: pacienteSeleccionado.uuid,
+            agenda_uuid: agendaSeleccionada.uuid
+        });
+
+        // ✅ CAMBIAR LA URL AQUÍ
+        const response = await fetch(`/citas/determinar-tipo-consulta-previo?paciente_uuid=${pacienteSeleccionado.uuid}&agenda_uuid=${agendaSeleccionada.uuid}`, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        });
+
+        const data = await response.json();
+
+        console.log('📥 Respuesta de tipo de consulta', data);
+
+        if (data.success && data.data) {
+            const { tipo_consulta, cups_recomendado, mensaje, proceso_nombre } = data.data;
+
+            // ✅ MOSTRAR MENSAJE INFORMATIVO
+            Swal.fire({
+                title: `Tipo de Consulta: ${tipo_consulta}`,
+                html: `
+                    <div class="text-start">
+                        <p><strong>Especialidad:</strong> ${proceso_nombre}</p>
+                        <p>${mensaje}</p>
+                        ${cups_recomendado ? `
+                            <hr>
+                            <p><strong>CUPS Recomendado:</strong></p>
+                            <div class="alert alert-info mb-0">
+                                <code>${cups_recomendado.codigo}</code><br>
+                                <small>${cups_recomendado.nombre}</small>
+                            </div>
+                        ` : ''}
+                    </div>
+                `,
+                icon: 'info',
+                confirmButtonText: 'Entendido',
+                timer: 6000
+            });
+
+            // ✅ AUTO-LLENAR CUPS SI ESTÁ DISPONIBLE
+            if (cups_recomendado && cups_recomendado.uuid) {
+                document.getElementById('cups_codigo').value = cups_recomendado.codigo;
+                document.getElementById('cups_nombre').value = cups_recomendado.nombre;
+                document.getElementById('cups_contratado_uuid').value = cups_recomendado.uuid;
+
+                // Mostrar info del CUPS
+                mostrarInfoCups({
+                    codigo: cups_recomendado.codigo,
+                    nombre: cups_recomendado.nombre,
+                    categoria: cups_recomendado.categoria,
+                    cups_contratado_uuid: cups_recomendado.uuid
+                });
+
+                console.log('✅ CUPS auto-asignado', cups_recomendado);
+            }
+        } else {
+            console.warn('⚠️ No se pudo determinar tipo de consulta', data);
+            
+            if (data.requiere_medicina_general) {
+                Swal.fire({
+                    title: 'Atención',
+                    text: data.error || 'El paciente requiere primero una consulta de MEDICINA GENERAL',
+                    icon: 'warning'
+                });
+            }
+        }
+
+    } catch (error) {
+        console.error('❌ Error determinando tipo de consulta', error);
+    }
+}
+
+
+// ✅ LLAMAR AL LLEGAR AL PASO 4
+function siguientePaso() {
+    if (pasoActual < 4) {
+        if (validarPaso(pasoActual)) {
+            const siguientePaso = pasoActual + 1;
+            mostrarPaso(siguientePaso);
+            
+            if (siguientePaso === 2) {
+                cargarHorariosDisponibles();
+            } else if (siguientePaso === 3) {
+                mostrarInfoHorarioSeleccionado();
+            } else if (siguientePaso === 4) {
+                actualizarResumenFinal();
+                // ✅ DETERMINAR TIPO DE CONSULTA AUTOMÁTICAMENTE
+                determinarTipoConsultaAutomatico();
+            }
+        }
+    }
+}
+
+
 // ✅ INICIALIZAR CUPS AUTOCOMPLETE - CORREGIDO
 function initCupsAutocomplete() {
     try {
@@ -1119,6 +1227,14 @@ async function mostrarAgendasConDatosReales(agendas) {
                             <h6 class="card-title mb-0">${agenda.consultorio}</h6>
                             <span class="badge ${agenda.modalidad === 'Telemedicina' ? 'bg-info' : 'bg-secondary'}">
                                 ${agenda.modalidad}
+                            </span>
+                        </div>
+
+                        
+                        <div class="mb-2">
+                            <span class="badge bg-primary">
+                                <i class="fas fa-stethoscope me-1"></i>
+                                ${agenda.proceso?.nombre || 'Sin proceso'}
                             </span>
                         </div>
                         

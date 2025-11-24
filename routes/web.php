@@ -153,6 +153,9 @@ Route::get('/agendas/diagnostic', function() {
     return response()->json($result);
 })->middleware('custom.auth');
 
+
+    Route::get('/citas/determinar-tipo-consulta-previo', [CitaController::class, 'determinarTipoConsultaPrevio'])
+        ->name('citas.determinar-tipo-consulta');
 Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAgenda'])
     ->name('agendas.diagnostic');
     // Citas
@@ -166,15 +169,17 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::get('/agenda/{agenda}/horarios', [CitaController::class, 'getHorariosDisponibles'])->name('citas.horarios-disponibles');
         Route::get('/agenda/{agenda}/details', [CitaController::class, 'getAgendaDetails'])->name('citas.agenda-details');
          // ✅ NUEVAS RUTAS PARA SINCRONIZACIÓN DE CITAS
-    Route::get('/pendientes-sync', [CitaController::class, 'getPendientesSync'])->name('citas.pendientes-sync');
-    Route::post('/sincronizar', [CitaController::class, 'sincronizarPendientes'])->name('citas.sincronizar');
-    Route::get('/sync-status', [CitaController::class, 'getSyncStatus'])->name('citas.sync-status');
+        Route::get('/pendientes-sync', [CitaController::class, 'getPendientesSync'])->name('citas.pendientes-sync');
+        Route::post('/sincronizar', [CitaController::class, 'sincronizarPendientes'])->name('citas.sincronizar');
+        Route::get('/sync-status', [CitaController::class, 'getSyncStatus'])->name('citas.sync-status');
         Route::get('/{uuid}', [CitaController::class, 'show'])->name('show');
         Route::get('/{uuid}/edit', [CitaController::class, 'edit'])->name('edit');
         Route::put('/{uuid}', [CitaController::class, 'update'])->name('update');
         Route::delete('/{uuid}', [CitaController::class, 'destroy'])->name('destroy');
         Route::patch('/{uuid}/estado', [CitaController::class, 'cambiarEstado'])->name('cambiar-estado');
+
     });
+
 
     //CUPS
       Route::prefix('cups')->name('cups.')->group(function () {
