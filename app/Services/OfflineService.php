@@ -2330,6 +2330,26 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             $agendaData['sede_id'] = $user['sede_id'] ?? 1;
         }
 
+        // ✅ NORMALIZAR USUARIO MÉDICO - BUSCAR EN MÚLTIPLES CAMPOS
+        $usuarioMedicoValue = null;
+        
+        if (!empty($agendaData['usuario_medico_uuid'])) {
+            $usuarioMedicoValue = $agendaData['usuario_medico_uuid'];
+            Log::info('🔍 Usuario médico encontrado en usuario_medico_uuid', [
+                'value' => $usuarioMedicoValue
+            ]);
+        } elseif (!empty($agendaData['usuario_medico_id'])) {
+            $usuarioMedicoValue = $agendaData['usuario_medico_id'];
+            Log::info('🔍 Usuario médico encontrado en usuario_medico_id', [
+                'value' => $usuarioMedicoValue
+            ]);
+        } elseif (!empty($agendaData['medico_uuid'])) {
+            $usuarioMedicoValue = $agendaData['medico_uuid'];
+            Log::info('🔍 Usuario médico encontrado en medico_uuid', [
+                'value' => $usuarioMedicoValue
+            ]);
+        }
+
         // ✅ PREPARAR DATOS PARA SQLITE
         $sqliteData = [
             'uuid' => $agendaData['uuid'],
@@ -2344,7 +2364,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'estado' => $agendaData['estado'] ?? 'ACTIVO',
             'proceso_id' => $agendaData['proceso_id'] ?? null,
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
-            'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? null,
+            'usuario_medico_id' => $usuarioMedicoValue, // ✅ USAR VALOR NORMALIZADO
             'brigada_id' => $agendaData['brigada_id'] ?? null,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
@@ -2363,24 +2383,37 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             );
         }
 
-        // ✅ CORREGIR: Usar $agendaData en lugar de $offlineData
-        $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $agendaData);
+        // ✅ ENRIQUECER JSON CON AMBOS CAMPOS PARA COMPATIBILIDAD
+        $jsonData = array_merge($agendaData, [
+            'usuario_medico_uuid' => $usuarioMedicoValue, // ✅ CAMPO PARA API
+            'usuario_medico_id' => $usuarioMedicoValue,   // ✅ COMPATIBILIDAD
+            'sync_status' => $sqliteData['sync_status']
+        ]);
+        
+        $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $jsonData);
 
-        Log::debug('✅ Agenda almacenada offline', [
+        Log::debug('✅ Agenda almacenada offline con usuario médico normalizado', [
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'],
-            'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? null,
+            'usuario_medico_value' => $usuarioMedicoValue,
+            'campos_originales' => [
+                'usuario_medico_uuid' => $agendaData['usuario_medico_uuid'] ?? 'no-set',
+                'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? 'no-set',
+                'medico_uuid' => $agendaData['medico_uuid'] ?? 'no-set'
+            ],
             'sync_status' => $sqliteData['sync_status']
         ]);
 
     } catch (\Exception $e) {
         Log::error('❌ Error almacenando agenda offline', [
             'error' => $e->getMessage(),
-            'uuid' => $agendaData['uuid'] ?? 'sin-uuid'
+            'uuid' => $agendaData['uuid'] ?? 'sin-uuid',
+            'trace' => $e->getTraceAsString()
         ]);
     }
 }
+
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
     try {
@@ -4003,10 +4036,11 @@ private function prepareAgendaDataForSync(array $agenda): array
 private function cleanDataForApi(array $data): array
 {
     Log::info('🧹 Limpiando datos para API', [
-        'original_data' => $data,
+        'original_data_keys' => array_keys($data),
         'proceso_id_original' => $data['proceso_id'] ?? 'no-set',
         'brigada_id_original' => $data['brigada_id'] ?? 'no-set',
         'usuario_medico_id_original' => $data['usuario_medico_id'] ?? 'no-set',
+        'usuario_medico_uuid_original' => $data['usuario_medico_uuid'] ?? 'no-set',
         'intervalo_original' => $data['intervalo'] ?? 'no-set'
     ]);
 
@@ -4016,80 +4050,99 @@ private function cleanDataForApi(array $data): array
         'consultorio' => (string) ($data['consultorio'] ?? ''),
         'hora_inicio' => $data['hora_inicio'],
         'hora_fin' => $data['hora_fin'],
-        'intervalo' => (string) ($data['intervalo'] ?? '15'), // ✅ CAMBIAR A STRING
+        'intervalo' => (string) ($data['intervalo'] ?? '15'),
         'etiqueta' => $data['etiqueta'] ?? '',
         'estado' => $data['estado'] ?? 'ACTIVO',
         'sede_id' => (int) ($data['sede_id'] ?? 1),
         'usuario_id' => (int) ($data['usuario_id'] ?? 1)
     ];
 
-    // ✅ MANEJAR proceso_id CORRECTAMENTE
-   if (isset($data['proceso_id']) && !empty($data['proceso_id']) && $data['proceso_id'] !== 'null') {
-    if (is_numeric($data['proceso_id'])) {
-        // Es un ID numérico
-        $cleanData['proceso_id'] = (int) $data['proceso_id'];
-        Log::info('✅ proceso_id incluido como entero', [
-            'original' => $data['proceso_id'],
-            'clean' => $cleanData['proceso_id']
-        ]);
-    } elseif (is_string($data['proceso_id']) && $this->isValidUuid($data['proceso_id'])) {
-        // Es un UUID válido - ENVIAR COMO STRING
-        $cleanData['proceso_id'] = $data['proceso_id'];
-        Log::info('✅ proceso_id incluido como UUID', [
-            'original' => $data['proceso_id'],
-            'clean' => $cleanData['proceso_id']
-        ]);
-    } else {
-        Log::warning('⚠️ proceso_id inválido, omitiendo', [
-            'proceso_id' => $data['proceso_id']
-        ]);
+    // ✅ MANEJAR proceso_id
+    if (isset($data['proceso_id']) && !empty($data['proceso_id']) && $data['proceso_id'] !== 'null') {
+        if (is_numeric($data['proceso_id'])) {
+            $cleanData['proceso_id'] = (int) $data['proceso_id'];
+            Log::info('✅ proceso_id incluido como entero', [
+                'original' => $data['proceso_id'],
+                'clean' => $cleanData['proceso_id']
+            ]);
+        } elseif (is_string($data['proceso_id']) && $this->isValidUuid($data['proceso_id'])) {
+            $cleanData['proceso_id'] = $data['proceso_id'];
+            Log::info('✅ proceso_id incluido como UUID', [
+                'original' => $data['proceso_id'],
+                'clean' => $cleanData['proceso_id']
+            ]);
+        }
     }
-}
 
-// ✅ MANEJAR brigada_id CORRECTAMENTE (ACEPTA UUIDs Y ENTEROS)
-if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null') {
-    if (is_numeric($data['brigada_id'])) {
-        // Es un ID numérico
-        $cleanData['brigada_id'] = (int) $data['brigada_id'];
-        Log::info('✅ brigada_id incluido como entero', [
-            'original' => $data['brigada_id'],
-            'clean' => $cleanData['brigada_id']
-        ]);
-    } elseif (is_string($data['brigada_id']) && $this->isValidUuid($data['brigada_id'])) {
-        // Es un UUID válido - ENVIAR COMO STRING
-        $cleanData['brigada_id'] = $data['brigada_id'];
-        Log::info('✅ brigada_id incluido como UUID', [
-            'original' => $data['brigada_id'],
-            'clean' => $cleanData['brigada_id']
-        ]);
-    } else {
-        Log::warning('⚠️ brigada_id inválido, omitiendo', [
-            'brigada_id' => $data['brigada_id']
-        ]);
+    // ✅ MANEJAR brigada_id
+    if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null') {
+        if (is_numeric($data['brigada_id'])) {
+            $cleanData['brigada_id'] = (int) $data['brigada_id'];
+            Log::info('✅ brigada_id incluido como entero', [
+                'original' => $data['brigada_id'],
+                'clean' => $cleanData['brigada_id']
+            ]);
+        } elseif (is_string($data['brigada_id']) && $this->isValidUuid($data['brigada_id'])) {
+            $cleanData['brigada_id'] = $data['brigada_id'];
+            Log::info('✅ brigada_id incluido como UUID', [
+                'original' => $data['brigada_id'],
+                'clean' => $cleanData['brigada_id']
+            ]);
+        }
     }
-}
- // ✅ CORREGIDO: MANEJAR usuario_medico COMO UUID
-    if (isset($data['usuario_medico_id']) && !empty($data['usuario_medico_id']) && $data['usuario_medico_id'] !== 'null') {
-        // ✅ ENVIAR SIEMPRE COMO usuario_medico_uuid (EL BACKEND LO CONVIERTE)
-        $cleanData['usuario_medico_uuid'] = $data['usuario_medico_id'];
+
+    // ✅ MANEJAR usuario_medico - BUSCAR EN MÚLTIPLES CAMPOS
+    $usuarioMedicoValue = null;
+    $foundInField = 'ninguno';
+    
+    // Prioridad: usuario_medico_uuid > usuario_medico_id > medico_uuid
+    if (!empty($data['usuario_medico_uuid']) && $data['usuario_medico_uuid'] !== 'null') {
+        $usuarioMedicoValue = $data['usuario_medico_uuid'];
+        $foundInField = 'usuario_medico_uuid';
+    } elseif (!empty($data['usuario_medico_id']) && $data['usuario_medico_id'] !== 'null') {
+        $usuarioMedicoValue = $data['usuario_medico_id'];
+        $foundInField = 'usuario_medico_id';
+    } elseif (!empty($data['medico_uuid']) && $data['medico_uuid'] !== 'null') {
+        $usuarioMedicoValue = $data['medico_uuid'];
+        $foundInField = 'medico_uuid';
+    }
+    
+    if ($usuarioMedicoValue) {
+        // ✅ SIEMPRE ENVIAR COMO usuario_medico_uuid (EL BACKEND LO ESPERA ASÍ)
+        $cleanData['usuario_medico_uuid'] = $usuarioMedicoValue;
         
         Log::info('✅ usuario_medico_uuid agregado a datos de API', [
-            'original_field' => 'usuario_medico_id',
-            'api_field' => 'usuario_medico_uuid',
-            'value' => $data['usuario_medico_id']
+            'value' => $usuarioMedicoValue,
+            'found_in_field' => $foundInField,
+            'is_uuid' => $this->isValidUuid($usuarioMedicoValue),
+            'campos_disponibles' => [
+                'usuario_medico_uuid' => $data['usuario_medico_uuid'] ?? 'no-set',
+                'usuario_medico_id' => $data['usuario_medico_id'] ?? 'no-set',
+                'medico_uuid' => $data['medico_uuid'] ?? 'no-set'
+            ]
+        ]);
+    } else {
+        Log::warning('⚠️ No se encontró usuario médico en ningún campo', [
+            'campos_revisados' => [
+                'usuario_medico_uuid' => $data['usuario_medico_uuid'] ?? 'no-existe',
+                'usuario_medico_id' => $data['usuario_medico_id'] ?? 'no-existe',
+                'medico_uuid' => $data['medico_uuid'] ?? 'no-existe'
+            ]
         ]);
     }
 
     Log::info('🧹 Datos finales limpiados para API', [
-    'clean_data' => $cleanData,
-    'has_proceso_id' => isset($cleanData['proceso_id']),
-    'has_brigada_id' => isset($cleanData['brigada_id']),
-    'has_usuario_medico_uuid' => isset($cleanData['usuario_medico_uuid']), 
-    'usuario_medico_uuid_value' => $cleanData['usuario_medico_uuid'] ?? 'no-enviado', 
-    'intervalo_type' => gettype($cleanData['intervalo'])
-]);
+        'clean_data_keys' => array_keys($cleanData),
+        'has_proceso_id' => isset($cleanData['proceso_id']),
+        'has_brigada_id' => isset($cleanData['brigada_id']),
+        'has_usuario_medico_uuid' => isset($cleanData['usuario_medico_uuid']),
+        'usuario_medico_uuid_value' => $cleanData['usuario_medico_uuid'] ?? 'no-enviado',
+        'intervalo_type' => gettype($cleanData['intervalo'])
+    ]);
+
     return $cleanData;
 }
+
 
 private function getProcesoIdFromUuid(string $uuid): ?int
 {

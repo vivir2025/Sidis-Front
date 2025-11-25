@@ -314,6 +314,7 @@
     </div>
 </div>
 
+
 @push('scripts')
 <script>
 // ✅ FUNCIÓN GLOBAL PARA ALERTAS
@@ -335,23 +336,22 @@ function showAlert(type, message) {
 function isValidSelection(value) {
     if (!value || value.trim() === '') return true;
     return /^\d+$/.test(value) || 
-           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
            /^[a-zA-Z0-9_-]{1,50}$/.test(value);
 }
 
 // ✅ MAPEO ESPECIALIDAD → PROCESO (CORREGIDO)
 const MAPEO_ESPECIALIDAD_PROCESO = {
-    'NUTRICIONISTA': 'NUTRICIONISTA',        // Coinciden
-    'PSICOLOGIA': 'PSICOLOGIA',              // Coinciden
-    'NEFROLOGIA': 'NEFROLOGIA',              // Coinciden
-    'INTERNISTA': 'INTERNISTA',              // Coinciden
-    'FISIOTERAPIA': 'FISIOTERAPIA',          // Coinciden
-    'TRABAJO SOCIAL': 'TRABAJO SOCIAL',      // Coinciden
-    'REFORMULACION': 'REFORMULACION',        // Coinciden
-    'MEDICINA GENERAL': 'ESPECIAL CONTROL',  // ← MAPEO ESPECIAL
-    'ESPECIAL CONTROL': 'ESPECIAL CONTROL'   // Por si acaso
+    'NUTRICIONISTA': 'NUTRICIONISTA',
+    'PSICOLOGIA': 'PSICOLOGIA',
+    'NEFROLOGIA': 'NEFROLOGIA',
+    'INTERNISTA': 'INTERNISTA',
+    'FISIOTERAPIA': 'FISIOTERAPIA',
+    'TRABAJO SOCIAL': 'TRABAJO SOCIAL',
+    'REFORMULACION': 'REFORMULACION',
+    'MEDICINA GENERAL': 'ESPECIAL CONTROL',
+    'ESPECIAL CONTROL': 'ESPECIAL CONTROL'
 };
-
 
 // ✅ AUTO-SELECCIONAR PROCESO POR NOMBRE DE ESPECIALIDAD
 function autoSeleccionarProcesoPorNombre(especialidadNombre) {
@@ -390,7 +390,7 @@ function autoSeleccionarProcesoPorNombre(especialidadNombre) {
         
         // Obtener solo el nombre del proceso (sin CUPS)
         const optionText = option.text.trim().toUpperCase();
-        const nombreProceso = optionText.split('(')[0].trim(); // Eliminar CUPS entre paréntesis
+        const nombreProceso = optionText.split('(')[0].trim();
         
         console.log(`🔎 Comparando: "${nombreProceso}" === "${procesoNombre}"`);
         
@@ -527,7 +527,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('🔄 Usuario médico cambiado:', {
                 value: value,
-                option_text: selectedOption.text
+                option_text: selectedOption.text,
+                all_datasets: selectedOption.dataset // ← VER TODOS LOS DATASETS
             });
             
             // Validar selección
@@ -545,13 +546,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Obtener datos de la opción seleccionada
-            const especialidadNombre = selectedOption.dataset.especialidadNombre;
+            // ✅ CORRECCIÓN CRÍTICA: Usar getAttribute en lugar de dataset
+            // porque data-especialidad-nombre se convierte en dataset.especialidadNombre
+            const especialidadNombre = selectedOption.getAttribute('data-especialidad-nombre');
             
             console.log('👨‍⚕️ Datos del usuario médico:', {
                 usuario_nombre: selectedOption.text,
                 especialidad_nombre: especialidadNombre,
-                todos_datasets: selectedOption.dataset
+                especialidad_id: selectedOption.getAttribute('data-especialidad-id'),
+                usuario_uuid: selectedOption.getAttribute('data-uuid')
             });
             
             // Actualizar campo de especialidad
@@ -571,7 +574,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // ✅ INICIALIZAR SI HAY VALOR PREVIO
         if (usuarioMedicoSelect.value) {
             const selectedOption = usuarioMedicoSelect.options[usuarioMedicoSelect.selectedIndex];
-            const especialidadNombre = selectedOption.dataset.especialidadNombre;
+            const especialidadNombre = selectedOption.getAttribute('data-especialidad-nombre');
             
             console.log('🔄 Inicializando con usuario médico preseleccionado:', {
                 especialidad_nombre: especialidadNombre
@@ -588,8 +591,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (procesoSelect) {
         procesoSelect.addEventListener('change', function() {
             const value = this.value;
+            console.log('🔄 Proceso cambiado manualmente:', value);
+            
             if (!isValidSelection(value)) {
-                console.warn('Proceso inválido seleccionado:', value);
+                console.warn('❌ Proceso inválido seleccionado:', value);
                 this.value = '';
                 showAlert('warning', 'Selección de proceso inválida');
             }
@@ -600,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
         brigadaSelect.addEventListener('change', function() {
             const value = this.value;
             if (!isValidSelection(value)) {
-                console.warn('Brigada inválida seleccionada:', value);
+                console.warn('❌ Brigada inválida seleccionada:', value);
                 this.value = '';
                 showAlert('warning', 'Selección de brigada inválida');
             }
@@ -620,10 +625,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData(form);
             
+            // ✅ LOG DETALLADO DE LOS DATOS QUE SE ENVÍAN
             console.log('📤 Enviando datos del formulario:');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             for (let [key, value] of formData.entries()) {
-                console.log(`${key}: ${value}`);
+                console.log(`  ${key}: ${value} (${typeof value})`);
             }
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             
             const response = await fetch(form.action, {
                 method: 'POST',
@@ -635,6 +643,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             const data = await response.json();
+            
+            console.log('📥 Respuesta del servidor:', data);
             
             if (data.success) {
                 if (typeof Swal !== 'undefined') {
@@ -660,7 +670,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
         } catch (error) {
-            console.error('Error guardando agenda:', error);
+            console.error('❌ Error guardando agenda:', error);
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
                     title: 'Error',
@@ -708,7 +718,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ========== CALCULAR INFORMACIÓN INICIAL ==========
     calcularInformacion();
     
-    // ========== DEBUG: LISTAR PROCESOS DISPONIBLES ==========
+    // ========== DEBUG: LISTAR PROCESOS Y USUARIOS DISPONIBLES ==========
     if (procesoSelect) {
         console.log('📋 Procesos disponibles en el select:');
         for (let i = 0; i < procesoSelect.options.length; i++) {
@@ -718,9 +728,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+    
+    if (usuarioMedicoSelect) {
+        console.log('👨‍⚕️ Usuarios médicos disponibles:');
+        for (let i = 0; i < usuarioMedicoSelect.options.length; i++) {
+            const opt = usuarioMedicoSelect.options[i];
+            if (opt.value) {
+                console.log(`  - [${opt.value}] ${opt.text}`, {
+                    especialidad: opt.getAttribute('data-especialidad-nombre'),
+                    uuid: opt.getAttribute('data-uuid')
+                });
+            }
+        }
+    }
 });
 </script>
 @endpush
-
-
 @endsection
