@@ -314,7 +314,6 @@
     </div>
 </div>
 
-
 @push('scripts')
 <script>
 // ✅ FUNCIÓN GLOBAL PARA ALERTAS
