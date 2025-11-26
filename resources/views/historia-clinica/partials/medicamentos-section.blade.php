@@ -360,22 +360,7 @@ $(document).ready(function() {
         }
     });
     
-    // ✅ Cargar medicamentos existentes desde la base de datos
-    const medicamentosExistentes = @json($historia->medicamentos ?? []);
-    
-    // ✅ IMPORTANTE: Cargar en orden NORMAL con append() para mantener orden de BD
-    medicamentosExistentes.forEach(function(med) {
-        const template = $('#medicamento_template').html();
-        $('#medicamentos_container').append(template); // ✅ append para medicamentos existentes
-        
-        const ultimaFila = $('#medicamentos_container tr:last');
-        ultimaFila.find('.medicamento-id').val(med.id);
-        ultimaFila.find('.buscar-medicamento').val(med.nombre);
-        ultimaFila.find('input[name*="cantidad"]').val(med.cantidad);
-        ultimaFila.find('input[name*="dosis"]').val(med.dosis);
-        ultimaFila.find('.medicamento-info').text(med.nombre);
-        ultimaFila.find('.medicamento-seleccionado').show();
-    });
+   console.log('ℹ️ Medicamentos se cargan desde historiaPrevia en la función cargarDatosPreviosMedicinaGeneral()');
 
 });
 </script>
