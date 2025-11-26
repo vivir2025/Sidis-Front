@@ -623,198 +623,217 @@ $(document).ready(function() {
         $(this).closest('.remision-item').remove();
     });
 
-    // ============================================
-    // ✅✅✅ ENVÍO DEL FORMULARIO ✅✅✅
-    // ============================================
-    $('#historiaClinicaForm').on('submit', function(e) {
-        e.preventDefault();
-        
-        console.log('📤 Iniciando envío del formulario de PSICOLOGÍA PRIMERA VEZ...');
-        
-        const citaUuid = $('input[name="cita_uuid"]').val();
-        console.log('🔍 Cita UUID detectado:', citaUuid);
-        
-        // Validar diagnóstico principal
-        if (!$('#idDiagnostico').val()) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'Debe seleccionar un diagnóstico principal'
-            });
-            console.log('❌ Validación fallida - falta diagnóstico principal');
+ 
+
+$('#historiaClinicaForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    console.log('📤 Iniciando envío del formulario de PSICOLOGÍA PRIMERA VEZ...');
+    
+    // ✅✅✅ PASO 1: FORZAR TIPO_CONSULTA A PRIMERA VEZ ✅✅✅
+    const tipoConsultaInput = $('input[name="tipo_consulta"]');
+    console.log('🔍 Campo tipo_consulta encontrado:', tipoConsultaInput.length);
+    console.log('🔍 Valor ANTES de forzar:', tipoConsultaInput.val());
+    
+    // ✅ FORZAR A PRIMERA VEZ
+    tipoConsultaInput.val('PRIMERA VEZ');
+    console.log('✅ Valor DESPUÉS de forzar:', tipoConsultaInput.val());
+    
+    const citaUuid = $('input[name="cita_uuid"]').val();
+    console.log('🔍 Cita UUID detectado:', citaUuid);
+    
+    // Validar diagnóstico principal
+    if (!$('#idDiagnostico').val()) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Debe seleccionar un diagnóstico principal'
+        });
+        console.log('❌ Validación fallida - falta diagnóstico principal');
+        return;
+    }
+    
+    // Validar campos requeridos de psicología
+    if (!$('#motivo').val()) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'El motivo de consulta es obligatorio'
+        });
+        return;
+    }
+    
+    if (!$('#psicologia_descripcion_problema').val()) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'La descripción del problema es obligatoria'
+        });
+        return;
+    }
+    
+    if (!$('#psicologia_plan_intervencion_recomendacion').val()) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'El plan de intervención es obligatorio'
+        });
+        return;
+    }
+    
+    console.log('✅ Validación exitosa, preparando envío...');
+    
+    $('#loading_overlay').show();
+    
+    // ✅ CREAR FORMDATA
+    const formData = new FormData(this);
+    
+    // ✅✅✅ PASO 2: VERIFICAR Y FORZAR EN FORMDATA ✅✅✅
+    console.log('🔍 tipo_consulta en FormData ANTES:', formData.get('tipo_consulta'));
+    
+    if (formData.get('tipo_consulta') !== 'PRIMERA VEZ') {
+        console.log('⚠️ Corrigiendo tipo_consulta en FormData de', formData.get('tipo_consulta'), 'a PRIMERA VEZ');
+        formData.set('tipo_consulta', 'PRIMERA VEZ');
+    }
+    
+    console.log('✅ tipo_consulta en FormData DESPUÉS:', formData.get('tipo_consulta'));
+    
+    let respuestaProcesada = false;
+    
+    const timeoutId = setTimeout(function() {
+        if (respuestaProcesada) {
+            console.log('⏰ Timeout ignorado - respuesta ya procesada');
             return;
         }
         
-        // Validar campos requeridos de psicología
-        if (!$('#motivo').val()) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'El motivo de consulta es obligatorio'
-            });
-            return;
-        }
+        console.log('⏰ Timeout alcanzado (15s), procesando...');
+        respuestaProcesada = true;
         
-        if (!$('#psicologia_descripcion_problema').val()) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'La descripción del problema es obligatoria'
-            });
-            return;
-        }
+        $('#loading_overlay').hide();
         
-        if (!$('#psicologia_plan_intervencion_recomendacion').val()) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'El plan de intervención es obligatorio'
-            });
-            return;
-        }
+        dispararEventoHistoriaGuardada(citaUuid, null, false);
         
-        console.log('✅ Validación exitosa, preparando envío...');
-        
-        $('#loading_overlay').show();
-        
-        const formData = new FormData(this);
-        let respuestaProcesada = false;
-        
-        const timeoutId = setTimeout(function() {
+        Swal.fire({
+            icon: 'info',
+            title: 'Procesando...',
+            text: 'La historia clínica se está guardando. Será redirigido al cronograma.',
+            timer: 2000,
+            showConfirmButton: false,
+            allowOutsideClick: false
+        }).then(() => {
+            window.location.href = '{{ route("cronograma.index") }}';
+        });
+    }, 15000);
+    
+    $.ajax({
+        url: $(this).attr('action'),
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        timeout: 30000,
+        success: function(response) {
             if (respuestaProcesada) {
-                console.log('⏰ Timeout ignorado - respuesta ya procesada');
+                console.log('⚠️ Respuesta ignorada - ya se procesó por timeout');
                 return;
             }
             
-            console.log('⏰ Timeout alcanzado (15s), procesando...');
             respuestaProcesada = true;
+            clearTimeout(timeoutId);
+            
+            console.log('✅ Respuesta recibida:', response);
             
             $('#loading_overlay').hide();
             
-            dispararEventoHistoriaGuardada(citaUuid, null, false);
-            
-            Swal.fire({
-                icon: 'info',
-                title: 'Procesando...',
-                text: 'La historia clínica se está guardando. Será redirigido al cronograma.',
-                timer: 2000,
-                showConfirmButton: false,
-                allowOutsideClick: false
-            }).then(() => {
-                window.location.href = '{{ route("cronograma.index") }}';
-            });
-        }, 15000);
-        
-        $.ajax({
-            url: $(this).attr('action'),
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            timeout: 30000,
-            success: function(response) {
-                if (respuestaProcesada) {
-                    console.log('⚠️ Respuesta ignorada - ya se procesó por timeout');
-                    return;
-                }
-                
-                respuestaProcesada = true;
-                clearTimeout(timeoutId);
-                
-                console.log('✅ Respuesta recibida:', response);
-                
-                $('#loading_overlay').hide();
-                
-                if (response.success) {
-                    dispararEventoHistoriaGuardada(
-                        citaUuid,
-                        response.historia_uuid || null,
-                        response.offline || false
-                    );
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: '¡Éxito!',
-                        text: response.message || 'Historia clínica de psicología guardada exitosamente.',
-                        timer: 2000,
-                        showConfirmButton: false,
-                        allowOutsideClick: false
-                    }).then(() => {
-                        if (response.redirect_url) {
-                            window.location.href = response.redirect_url;
-                        } else {
-                            window.location.href = '{{ route("cronograma.index") }}';
-                        }
-                    });
-                    
-                } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: response.error || 'Error guardando la historia clínica',
-                        confirmButtonText: 'Entendido',
-                        allowOutsideClick: false
-                    });
-                }
-            },
-            error: function(xhr, status, error) {
-                if (respuestaProcesada) {
-                    console.log('⚠️ Error ignorado - ya se procesó por timeout');
-                    return;
-                }
-                
-                respuestaProcesada = true;
-                clearTimeout(timeoutId);
-                
-                console.error('❌ Error en AJAX PSICOLOGÍA:', {
-                    status: xhr.status,
-                    statusText: status,
-                    error: error,
-                    responseText: xhr.responseText
-                });
-                
-                $('#loading_overlay').hide();
-                
-                let errorMessage = 'Error interno del servidor';
-                let shouldRedirect = false;
-                
-                if (status === 'timeout') {
-                    errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado correctamente.';
-                    shouldRedirect = true;
-                    dispararEventoHistoriaGuardada(citaUuid, null, false);
-                    
-                } else if (xhr.status === 422) {
-                    const errors = xhr.responseJSON?.errors;
-                    if (errors) {
-                        errorMessage = Object.values(errors).flat().join('\n');
-                    }
-                } else if (xhr.responseJSON?.error) {
-                    errorMessage = xhr.responseJSON.error;
-                } else if (xhr.status === 0) {
-                    errorMessage = 'No se pudo conectar con el servidor. Verifique su conexión.';
-                }
+            if (response.success) {
+                dispararEventoHistoriaGuardada(
+                    citaUuid,
+                    response.historia_uuid || null,
+                    response.offline || false
+                );
                 
                 Swal.fire({
-                    icon: shouldRedirect ? 'warning' : 'error',
-                    title: shouldRedirect ? 'Atención' : 'Error',
-                    html: errorMessage.replace(/\n/g, '<br>'),
-                    confirmButtonText: 'Entendido',
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: response.message || 'Historia clínica de psicología guardada exitosamente.',
+                    timer: 2000,
+                    showConfirmButton: false,
                     allowOutsideClick: false
                 }).then(() => {
-                    if (shouldRedirect) {
+                    if (response.redirect_url) {
+                        window.location.href = response.redirect_url;
+                    } else {
                         window.location.href = '{{ route("cronograma.index") }}';
                     }
                 });
-            },
-            complete: function() {
-                console.log('🏁 Petición AJAX PSICOLOGÍA completada');
-                setTimeout(function() {
-                    $('#loading_overlay').hide();
-                }, 100);
+                
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: response.error || 'Error guardando la historia clínica',
+                    confirmButtonText: 'Entendido',
+                    allowOutsideClick: false
+                });
             }
-        });
+        },
+        error: function(xhr, status, error) {
+            if (respuestaProcesada) {
+                console.log('⚠️ Error ignorado - ya se procesó por timeout');
+                return;
+            }
+            
+            respuestaProcesada = true;
+            clearTimeout(timeoutId);
+            
+            console.error('❌ Error en AJAX PSICOLOGÍA:', {
+                status: xhr.status,
+                statusText: status,
+                error: error,
+                responseText: xhr.responseText
+            });
+            
+            $('#loading_overlay').hide();
+            
+            let errorMessage = 'Error interno del servidor';
+            let shouldRedirect = false;
+            
+            if (status === 'timeout') {
+                errorMessage = 'La solicitud tardó demasiado. La historia clínica puede haberse guardado correctamente.';
+                shouldRedirect = true;
+                dispararEventoHistoriaGuardada(citaUuid, null, false);
+                
+            } else if (xhr.status === 422) {
+                const errors = xhr.responseJSON?.errors;
+                if (errors) {
+                    errorMessage = Object.values(errors).flat().join('\n');
+                }
+            } else if (xhr.responseJSON?.error) {
+                errorMessage = xhr.responseJSON.error;
+            } else if (xhr.status === 0) {
+                errorMessage = 'No se pudo conectar con el servidor. Verifique su conexión.';
+            }
+            
+            Swal.fire({
+                icon: shouldRedirect ? 'warning' : 'error',
+                title: shouldRedirect ? 'Atención' : 'Error',
+                html: errorMessage.replace(/\n/g, '<br>'),
+                confirmButtonText: 'Entendido',
+                allowOutsideClick: false
+            }).then(() => {
+                if (shouldRedirect) {
+                    window.location.href = '{{ route("cronograma.index") }}';
+                }
+            });
+        },
+        complete: function() {
+            console.log('🏁 Petición AJAX PSICOLOGÍA completada');
+            setTimeout(function() {
+                $('#loading_overlay').hide();
+            }, 100);
+        }
     });
-
-}); // ✅ FIN DOCUMENT.READY
+});
+ // ✅ FIN DOCUMENT.READY
 </script>
 @endpush
