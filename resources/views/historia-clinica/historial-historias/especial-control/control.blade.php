@@ -6,278 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historia Clínica Medicina General - Control</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background-color: #f5f5f5;
-            font-family: Arial, sans-serif;
-            font-size: 10px;
-            padding: 15px;
-            line-height: 1.4;
-            color: #000;
-        }
-
-        .container-historia {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        /* BOTÓN REGRESAR */
-        .btn-regresar {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background-color: #6c757d;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            transition: background-color 0.3s;
-            font-size: 14px;
-        }
-
-        .btn-regresar:hover {
-            background-color: #5a6268;
-        }
-
-        /* ENCABEZADO */
-        .header-box {
-            border: 2px solid #0f0fef;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .header-logo {
-            width: 80px;
-            height: auto;
-        }
-
-        .header-text {
-            flex: 1;
-            text-align: center;
-        }
-
-        .header-text h3 {
-            font-size: 13px;
-            font-weight: bold;
-            margin-bottom: 4px;
-            color: #000;
-        }
-
-        .header-text p {
-            font-size: 9px;
-            margin: 2px 0;
-            color: #000;
-        }
-
-        /* FIELDSETS CON BORDES AZULES */
-        fieldset {
-            border: 1px solid #0f0fef;
-            margin-bottom: 12px;
-            padding: 12px;
-        }
-
-        legend {
-            padding: 0 8px;
-            font-size: 11px;
-            font-weight: bold;
-            color: #0f0fef;
-        }
-
-        /* GRIDS DE DATOS */
-        .datos-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-
-        .datos-grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-        }
-
-        .datos-grid-2 {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-
-        .dato-item {
-            text-align: center;
-        }
-
-        .dato-label {
-            font-weight: bold;
-            font-size: 9px;
-            margin-bottom: 4px;
-            color: #000;
-            text-transform: uppercase;
-        }
-
-        .dato-valor {
-            font-size: 9px;
-            color: #000;
-        }
-
-        /* TABLAS */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 8px 0;
-        }
-
-        table, th, td {
-            border: 1px solid #000;
-        }
-
-        th {
-            background-color: #fff;
-            color: #000;
-            padding: 6px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 9px;
-        }
-
-        td {
-            padding: 5px 6px;
-            text-align: left;
-            font-size: 9px;
-            color: #000;
-        }
-
-        /* SIGNOS VITALES */
-        .signos-vitales-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin: 10px 0;
-        }
-
-        /* EXAMEN FÍSICO GRID */
-        .examen-fisico-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-            margin: 10px 0;
-        }
-
-        .examen-item {
-            padding: 6px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .examen-label {
-            font-weight: bold;
-            font-size: 9px;
-            color: #000;
-            margin-bottom: 2px;
-        }
-
-        .examen-valor {
-            font-size: 9px;
-            color: #000;
-        }
-
-        /* FIRMAS */
-        .firmas-box {
-            border: 1px solid #0f0fef;
-            padding: 15px;
-            margin-top: 15px;
-        }
-
-        .firmas-content {
-            display: flex;
-            justify-content: space-around;
-            align-items: flex-start;
-            gap: 30px;
-        }
-
-        .firma-item {
-            flex: 1;
-            text-align: center;
-        }
-
-        .firma-imagen {
-            width: 250px;
-            height: 60px;
-            margin-bottom: 8px;
-        }
-
-        .firma-titulo {
-            font-weight: bold;
-            font-size: 10px;
-            margin-bottom: 4px;
-            color: #000;
-        }
-
-        .firma-info {
-            font-size: 9px;
-            font-style: italic;
-            color: #000;
-        }
-
-        /* OCULTAR EN IMPRESIÓN */
-        .no-print {
-            display: block;
-        }
-
-        @media print {
-            body {
-                padding: 0;
-                background-color: white;
-            }
-
-            .container-historia {
-                box-shadow: none;
-                padding: 10px;
-            }
-
-            .no-print {
-                display: none !important;
-            }
-        }
-
-        /* SECCIÓN DE OBSERVACIONES */
-        .observacion-box {
-            border: 1px solid #ddd;
-            padding: 8px;
-            margin: 8px 0;
-            background-color: #f9f9f9;
-        }
-
-        .observacion-titulo {
-            font-weight: bold;
-            font-size: 9px;
-            margin-bottom: 4px;
-            color: #000;
-        }
-
-        .observacion-contenido {
-            font-size: 9px;
-            text-align: justify;
-            line-height: 1.5;
-            color: #000;
-        }
-    </style>
+    @include('historia-clinica.historial-historias.partials.styles')
 </head>
 <body>
     <div class="container-historia">
@@ -413,11 +142,11 @@
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">PARENTESCO</div>
-                    <div class="dato-valor">{{ $historia['parentesco'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['acu_parentesco'] ?? 'N/A' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">TELÉFONO</div>
-                    <div class="dato-valor">{{ $historia['telefono_acudiente'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['acu_telefono'] ?? 'N/A' }}</div>
                 </div>
             </div>
         </fieldset>
@@ -441,12 +170,13 @@
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">CLASIFICACIÓN</div>
-                    <div class="dato-valor">{{ $historia['clasificacion_imc'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['clasificacion'] ?? 'N/A' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">PERÍMETRO ABDOMINAL</div>
                     <div class="dato-valor">{{ $historia['perimetro_abdominal'] ?? 'N/A' }}</div>
                 </div>
+                
             </div>
         </fieldset>
 
@@ -516,19 +246,19 @@
             <div class="signos-vitales-grid">
                 <div class="dato-item">
                     <div class="dato-label">PRESIÓN SISTÓLICA</div>
-                    <div class="dato-valor">{{ $historia['ef_pa_sistolica_sentado_pie'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['presion_arterial_sistolica_sentado_pie'] ?? 'N/A' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">PRESIÓN DIASTÓLICA</div>
-                    <div class="dato-valor">{{ $historia['ef_pa_distolica_sentado_pie'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['presion_arterial_distolica_sentado_pie'] ?? 'N/A' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">FRECUENCIA CARDIACA</div>
-                    <div class="dato-valor">{{ $historia['ef_frecuencia_fisica'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['frecuencia_cardiaca'] ?? 'N/A' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">FRECUENCIA RESPIRATORIA</div>
-                    <div class="dato-valor">{{ $historia['ef_frecuencia_respiratoria'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['frecuencia_respiratoria'] ?? 'N/A' }}</div>
                 </div>
             </div>
         </fieldset>
@@ -592,21 +322,21 @@
             @if(!empty($historia['fex_es']) || !empty($historia['hcElectrocardiograma']))
             <div class="examen-item">
                 <div class="examen-label">ELECTROCARDIOGRAMA ({{ $historia['fex_es'] ?? 'N/A' }}):</div>
-                <div class="examen-valor">{{ $historia['hcElectrocardiograma'] ?? 'N/A' }}</div>
+                <div class="examen-valor">{{ $historia['electrocardiograma'] ?? 'N/A' }}</div>
             </div>
             @endif
 
             @if(!empty($historia['fex_es1']) || !empty($historia['hcEcocardiograma']))
             <div class="examen-item">
                 <div class="examen-label">ECOCARDIOGRAMA ({{ $historia['fex_es1'] ?? 'N/A' }}):</div>
-                <div class="examen-valor">{{ $historia['hcEcocardiograma'] ?? 'N/A' }}</div>
+                <div class="examen-valor">{{ $historia['ecocardiograma'] ?? 'N/A' }}</div>
             </div>
             @endif
 
             @if(!empty($historia['fex_es2']) || !empty($historia['hcEcografiaRenal']))
             <div class="examen-item">
                 <div class="examen-label">ECOGRAFÍA RENAL ({{ $historia['fex_es2'] ?? 'N/A' }}):</div>
-                <div class="examen-valor">{{ $historia['hcEcografiaRenal'] ?? 'N/A' }}</div>
+                <div class="examen-valor">{{ $historia['ecografia_renal'] ?? 'N/A' }}</div>
             </div>
             @endif
         </fieldset>
@@ -819,20 +549,29 @@
             <strong>FINALIDAD:</strong> {{ $historia['finalidad'] ?? 'NO APLICA' }}
         </div>
 
-        {{-- ✅ FIRMAS --}}
+
+        {{-- ✅ FIRMAS CON BORDE AZUL --}}
         @php
             $profesionalNombre = 'N/A';
-            $profesionalProfesion = 'MEDICINA GENERAL';
+            $profesionalProfesion = 'PSICOLOGÍA';
             $profesionalRegistro = 'N/A';
             $profesionalFirma = null;
             
             if (isset($historia['cita']['agenda']['usuario_medico'])) {
                 $medico = $historia['cita']['agenda']['usuario_medico'];
+                
+                // ✅ NOMBRE COMPLETO (viene directo del backend)
                 $profesionalNombre = $medico['nombre_completo'] ?? 'N/A';
+                
+                // ✅ ESPECIALIDAD (acceder al array anidado)
                 $profesionalProfesion = isset($medico['especialidad']['nombre']) 
                     ? strtoupper($medico['especialidad']['nombre']) 
-                    : 'MEDICINA GENERAL';
+                    : 'PSICOLOGÍA';
+                
+                // ✅ REGISTRO PROFESIONAL
                 $profesionalRegistro = $medico['registro_profesional'] ?? 'N/A';
+                
+                // ✅ FIRMA
                 $profesionalFirma = $medico['firma'] ?? null;
             }
         @endphp
@@ -861,12 +600,7 @@
         </div>
 
     </div>
+    @include('historia-clinica.historial-historias.partials.scripts')
 
-    <script>
-        window.onafterprint = function() {
-            // Opcional: cerrar ventana después de imprimir
-            // window.close();
-        }
-    </script>
 </body>
 </html>

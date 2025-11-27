@@ -136,36 +136,37 @@ $(document).ready(function() {
     });
 
     // ✅ FUNCIÓN PARA CARGAR HISTORIAS
-        function cargarHistorias() {
-            $('#loadingHistorias').show();
-            $('#tablaHistoriasContainer').hide();
+    function cargarHistorias() {
+        $('#loadingHistorias').show();
+        $('#tablaHistoriasContainer').hide();
 
-            $.ajax({
-                url: '{{ route("historia-clinica.index") }}',
-                method: 'GET',
-                data: { ...currentFilters, page: currentPage },
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        // ✅ CORRECCIÓN: Acceder a response.data.data
-                        renderHistorias(response.data.data);  // ← Cambio aquí
-                        renderPaginacion(response.data);       // ← Cambio aquí
-                    } else {
-                        mostrarError('Error cargando historias');
-                    }
-                },
-                error: function() {
-                    mostrarError('Error de conexión');
-                },
-                complete: function() {
-                    $('#loadingHistorias').hide();
-                    $('#tablaHistoriasContainer').show();
+        $.ajax({
+            url: '{{ route("historia-clinica.index") }}',
+            method: 'GET',
+            data: { ...currentFilters, page: currentPage },
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            success: function(response) {
+                if (response.success) {
+                    renderHistorias(response.data.data);
+                    renderPaginacion(response.data);
+                } else {
+                    mostrarError('Error cargando historias');
                 }
-            });
-        }
-    // ✅ RENDERIZAR HISTORIAS (CORREGIDO)
+            },
+            error: function() {
+                mostrarError('Error de conexión');
+            },
+            complete: function() {
+                $('#loadingHistorias').hide();
+                $('#tablaHistoriasContainer').show();
+            }
+        });
+    }
+
+
+    // ✅ FUNCIÓN PARA RENDERIZAR HISTORIAS
     function renderHistorias(historias) {
         const tbody = $('#tbodyHistorias');
         tbody.empty();
@@ -173,7 +174,7 @@ $(document).ready(function() {
         if (!historias || historias.length === 0) {
             tbody.html(`
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
+                    <td colspan="6" class="text-center text-muted py-4">
                         <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
                         No se encontraron historias clínicas con los filtros aplicados
                     </td>
@@ -182,31 +183,60 @@ $(document).ready(function() {
             return;
         }
 
-        historias.forEach(historia => {
-            // ✅ VALIDAR QUE EXISTAN LAS RELACIONES ANTES DE ACCEDER
+        historias.forEach((historia) => {
             if (!historia.cita || !historia.cita.paciente) {
-                console.warn('Historia sin cita o paciente:', historia);
-                return; // Saltar esta historia
+                return;
             }
 
-            // ✅ ACCESO CORRECTO A LOS DATOS ANIDADOS
             const paciente = historia.cita.paciente;
             const agenda = historia.cita.agenda || {};
             const profesional = agenda.usuario_medico || { nombre_completo: 'N/A' };
             
-            // ✅ FORMATEAR FECHA
-            const fecha = historia.cita.fecha ? 
-                        new Date(historia.cita.fecha).toLocaleDateString('es-CO') : 
-                        'N/A';
+            // ✅ FORMATEAR FECHA SIN USAR new Date()
+            let fecha = 'N/A';
+            if (historia.cita.fecha) {
+                const fechaCompleta = String(historia.cita.fecha);
+                const fechaSolo = fechaCompleta.split(' ')[0];
+                const partes = fechaSolo.split('-');
+                
+                if (partes.length === 3) {
+                    const [year, month, day] = partes;
+                    fecha = `${day}/${month}/${year}`;
+                }
+            }
             
-            // ✅ BADGE PARA TIPO DE CONSULTA
+            // ✅ MOSTRAR RANGO DE HORAS
+            let horario = '';
+            if (historia.cita.hora_inicio && historia.cita.hora_final) {
+                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${historia.cita.hora_inicio} - ${historia.cita.hora_final}</small>`;
+            } else if (historia.cita.hora_inicio) {
+                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${historia.cita.hora_inicio}</small>`;
+            }
+            
             const tipoBadge = historia.tipo_consulta === 'PRIMERA VEZ' ? 'primary' : 'info';
+            
+            // ✅ FORMATEAR FECHA DE REGISTRO
+            let fechaRegistro = 'N/A';
+            if (historia.created_at) {
+                const fechaCompleta = String(historia.created_at);
+                const partes = fechaCompleta.split(' ');
+                
+                if (partes.length >= 2) {
+                    const fechaParte = partes[0];
+                    const horaParte = partes[1];
+                    const [year, month, day] = fechaParte.split('-');
+                    const [hora, minuto] = horaParte.split(':');
+                    fechaRegistro = `${day}/${month}/${year} ${hora}:${minuto}`;
+                }
+            }
             
             tbody.append(`
                 <tr>
                     <td>
-                        <div><span class="badge bg-secondary">${paciente.tipo_documento || 'CC'}</span>
-                        ${paciente.documento || 'N/A'} </div>
+                        <div>
+                            <span class="badge bg-secondary">${paciente.tipo_documento || 'CC'}</span>
+                            ${paciente.documento || 'N/A'}
+                        </div>
                         <strong>${paciente.nombre_completo || 'N/A'}</strong>
                     </td>
                     <td>
@@ -214,7 +244,9 @@ $(document).ready(function() {
                     </td>
                     <td>${historia.especialidad || 'N/A'}</td>
                     <td>${profesional.nombre_completo}</td>
-                    <td>${fecha}</td>
+                    <td>
+                        <div><strong>${fecha}</strong></div>
+                    </td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm">
                             <a href="{{ url('historia-clinica') }}/${historia.uuid}" 
@@ -233,6 +265,7 @@ $(document).ready(function() {
             `);
         });
     }
+
 
 
    // ✅ RENDERIZAR PAGINACIÓN
@@ -286,7 +319,7 @@ $(document).ready(function() {
 
     // ✅ FUNCIÓN PARA IMPRIMIR
     window.imprimirHistoria = function(uuid) {
-        window.open(`{{ url('historia-clinica') }}/${uuid}/imprimir`, '_blank');
+        window.open(`{{ url('historia-clinica') }}/${uuid}?print=1`, '_blank');
     };
 
     // ✅ FUNCIÓN PARA MOSTRAR ERRORES

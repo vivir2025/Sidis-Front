@@ -1,12 +1,12 @@
-{{-- resources/views/historia-clinica/historial-historias/psicologia/control.blade.php --}}
+{{-- resources/views/historia-clinica/historial-historias/fisioterapia/primera-vez.blade.php --}}
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Historia Clínica Psicología - Control</title>
+    <title>Historia Clínica Fisioterapia - Primera Vez</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-   @include('historia-clinica.historial-historias.partials.styles')
+    @include('historia-clinica.historial-historias.partials.styles')
 </head>
 <body>
     <div class="container-historia">
@@ -27,7 +27,8 @@
                 <div class="header-text">
                     <h3>FUNDACIÓN NACER PARA VIVIR IPS</h3>
                     <p>NIT: 900817959-1</p>
-                    <p>PSICOLOGÍA CONTROL - PROGRAMA DE GESTIÓN DEL RIESGO</p>
+                    <p>HISTORIA CLÍNICA FISIOTERAPIA PRIMERA VEZ</p>
+                    <p>APERTURA PROGRAMA DE GESTIÓN DEL RIESGO CARDIORENAL</p>
                     <p>{{ $historia['cita']['fecha'] ?? date('Y-m-d') }}</p>
                 </div>
                 <div>
@@ -65,21 +66,18 @@
                 $sexo = ($paciente['sexo'] ?? '') == 'M' ? 'MASCULINO' : (($paciente['sexo'] ?? '') == 'F' ? 'FEMENINO' : 'N/A');
                 $estadoCivil = $paciente['estado_civil'] ?? 'N/A';
                 $telefono = $paciente['telefono'] ?? 'N/A';
-                $ocupacion = $paciente['ocupacion'] ?? 'N/A';
                 $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
                 $documento = $paciente['documento'] ?? 'N/A';
                 $nombreCompleto = $paciente['nombre_completo'] ?? 'N/A';
                 
                 $departamento = $paciente['departamento']['nombre'] ?? 'N/A';
                 $municipio = $paciente['municipio']['nombre'] ?? 'N/A';
-                $direccion = $paciente['direccion'] ?? 'N/A';
+                $direccion = ($paciente['direccion'] ?? '') . ' - ' . $municipio;
                 $empresa = $paciente['empresa']['nombre'] ?? 'N/A';
                 $regimen = $paciente['regimen']['nombre'] ?? 'N/A';
                 $ocupacion = $paciente['ocupacion']['nombre'] ?? 'N/A';
                 $brigada = $paciente['brigada']['nombre'] ?? 'N/A';
             }
-            
-            
         @endphp
 
         <fieldset>
@@ -113,7 +111,6 @@
             <div class="datos-grid">
                 <div class="dato-item">
                     <div class="dato-label">DIRECCIÓN</div>
-                    <div class="dato-valor">{{ $departamento }} - {{ $municipio }}</div>
                     <div class="dato-valor">{{ $direccion }}</div>
                 </div>
                 <div class="dato-item">
@@ -142,7 +139,7 @@
             <div class="datos-grid-3">
                 <div class="dato-item">
                     <div class="dato-label">NOMBRE ACOMPAÑANTE</div>
-                    <div class="dato-valor">{{ $historia['acompanante'] ?? 'N/A' }}</div>
+                    <div class="dato-valor">{{ $historia['acompanante'] ?? 'Sin acompañante' }}</div>
                 </div>
                 <div class="dato-item">
                     <div class="dato-label">PARENTESCO</div>
@@ -156,67 +153,121 @@
         </fieldset>
         @endif
 
-        {{-- ✅ HISTORIA CLÍNICA - CONTROL --}}
-        @php
-            $complementaria = $historia['complementaria'] ?? null;
-        @endphp
-
+        {{-- ✅ MOTIVO DE CONSULTA --}}
+        @if(!empty($historia['motivo_consulta']))
         <fieldset>
-            <legend>HISTORIA CLÍNICA - CONTROL PSICOLOGÍA</legend>
-
-                <div style="display: flex; gap: 20px;">
-                    
-                    <div class="campo-historia" style="flex: 1;">
-                        <div class="campo-titulo">1. MOTIVO DE CONSULTA</div>
-                        <div class="campo-contenido">
-                            {{ $historia['motivo_consulta'] ?? 'N/A' }}
-                        </div>
-
-                    </div>
-
-                
-                    <div class="campo-historia" style="flex: 1;">
-                        <div class="campo-titulo">2. DESCRIPCIÓN DEL PROBLEMA (DESCRIPCIÓN DEL PACIENTE DE LA SITUACIÓN QUE LO AFECTA)</div>
-                        <div class="campo-contenido">
-                            {{ $complementaria['psicologia_descripcion_problema'] ?? 'N/A' }}
-                        </div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 20px;">
-                    
-                    <div class="campo-historia" style="flex: 1;">
-                        <div class="campo-titulo">3. PLAN DE INTERVENCIÓN Y RECOMENDACIONES</div>
-                        <div class="campo-contenido">
-                            {{ $complementaria['psicologia_plan_intervencion_recomendacion'] ?? 'N/A' }}
-                        </div>
-
-                    </div>
-
-                
-                    <div class="campo-historia" style="flex: 1;">
-                        <div class="campo-titulo">4. AVANCE DEL PACIENTE (CAMBIOS EN LA SITUACIÓN INICIAL POR LA CUAL SE ATENDIÓ EN PSICOLOGÍA)</div>
-                        <div class="campo-contenido">
-                            {{ $complementaria['avance_paciente'] ?? 'N/A' }}
-                        </div>
-                    </div>
-                </div>
-  
+            <legend>MOTIVO CONSULTA</legend>
+            <div class="campo-historia">
+                <div class="campo-contenido">{{ $historia['motivo_consulta'] }}</div>
+            </div>
         </fieldset>
+        @endif
 
-        {{-- ✅ FINALIDAD CON BORDE AZUL --}}
-        <div class="observacion-box">
-            <strong>FINALIDAD:</strong> {{ $historia['finalidad'] ?? 'NO APLICA' }}
-        </div>
-
-        {{-- ✅ TABLA DE DIAGNÓSTICOS --}}
+        {{-- ✅ DATOS FÍSICOS --}}
         <fieldset>
-            <legend>DIAGNÓSTICOS</legend>
+            <legend>DATOS FÍSICOS</legend>
+            <div class="datos-grid">
+                <div class="dato-item">
+                    <div class="dato-label">PESO KG</div>
+                    <div class="dato-valor">{{ $historia['peso'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">TALLA CM</div>
+                    <div class="dato-valor">{{ $historia['talla'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">IMC</div>
+                    <div class="dato-valor">{{ $historia['imc'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">CLASIFICACIÓN IMC</div>
+                    <div class="dato-valor">{{ $historia['clasificacion'] ?? 'N/A' }}</div>
+                </div>
+                <div class="dato-item">
+                    <div class="dato-label">PERÍMETRO ABDOMINAL</div>
+                    <div class="dato-valor">{{ $historia['perimetro_abdominal'] ?? 'N/A' }}</div>
+                </div>
+            </div>
+        </fieldset>
+        
+
+        {{-- ✅ EVALUACIONES COMPLETAS --}}
+        @if(!empty($historia['complementaria']))
+        <fieldset>
+            <legend>EVALUACIONES</legend>
+            
+            {{-- Grid de Evaluaciones Principales (2 columnas) --}}
+            <div class="examen-fisico-grid">
+                <div class="examen-item">
+                    <div class="examen-label">ACTITUD POSTURAL:</div>
+                    <div class="examen-valor">{{ strtoupper($historia['complementaria']['actitud'] ?? 'NORMAL') }}</div>
+                </div>
+                <div class="examen-item">
+                    <div class="examen-label">EVALUACIÓN DE SENSIBILIDAD:</div>
+                    <div class="examen-valor">{{ strtoupper($historia['complementaria']['evaluacion_d'] ?? 'SUPERFICIAL') }}</div>
+                </div>
+                <div class="examen-item">
+                    <div class="examen-label">EVALUACIÓN DE PIEL:</div>
+                    <div class="examen-valor">{{ strtoupper($historia['complementaria']['evaluacion_p'] ?? 'COLOR') }}</div>
+                </div>
+                <div class="examen-item">
+                    <div class="examen-label">ESTADO:</div>
+                    <div class="examen-valor">{{ strtoupper($historia['complementaria']['estado'] ?? 'SECA') }}</div>
+                </div>
+            </div>
+
+            {{-- Evaluación del Dolor --}}
+            @if(!empty($historia['complementaria']['evaluacion_dolor']))
+            <div class="campo-historia">
+                <div class="campo-titulo">EVALUACIÓN DEL DOLOR</div>
+                <div class="campo-contenido">{{ $historia['complementaria']['evaluacion_dolor'] }}</div>
+            </div>
+            @endif
+
+            {{-- Evaluación Osteoarticular --}}
+            @if(!empty($historia['complementaria']['evaluacion_os']))
+            <div class="campo-historia">
+                <div class="campo-titulo">EVALUACIÓN OSTEOARTICULAR</div>
+                <div class="campo-contenido">{{ $historia['complementaria']['evaluacion_os'] }}</div>
+            </div>
+            @endif
+
+            {{-- Evaluación Neuromuscular --}}
+            @if(!empty($historia['complementaria']['evaluacion_neu']))
+            <div class="campo-historia">
+                <div class="campo-titulo">EVALUACIÓN NEUROMUSCULAR</div>
+                <div class="campo-contenido">{{ $historia['complementaria']['evaluacion_neu'] }}</div>
+            </div>
+            @endif
+
+            {{-- Enfermedad Concomitante --}}
+            @if(!empty($historia['complementaria']['comitante']))
+            <div class="campo-historia">
+                <div class="campo-titulo">PADECE DE UNA ENFERMEDAD CONCOMITANTE</div>
+                <div class="campo-contenido">{{ $historia['complementaria']['comitante'] }}</div>
+            </div>
+            @endif
+        </fieldset>
+        @endif
+
+        {{-- ✅ PLAN DE TRATAMIENTO --}}
+        @if(!empty($historia['complementaria']['plan_seguir']))
+        <fieldset>
+            <legend>PLAN DE TRATAMIENTO</legend>
+            <div class="campo-historia">
+                <div class="campo-titulo">DIAGNÓSTICO</div>
+                <div class="campo-contenido">{{ $historia['complementaria']['plan_seguir'] }}</div>
+            </div>
+        </fieldset>
+        @endif
+
+        {{-- ✅ DIAGNÓSTICOS --}}
+        <fieldset>
+            <legend>FORMATO DIAGNÓSTICA</legend>
             <table>
                 <thead>
                     <tr>
-                        <th colspan="4">FORMATO DIAGNÓSTICO {{ date('Y-m-d') }}</th>
-                    </tr>
-                    <tr>
+                        <th>#</th>
                         <th>CÓDIGO</th>
                         <th>DIAGNÓSTICO</th>
                         <th>CLASIFICACIÓN</th>
@@ -224,12 +275,13 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @if(!empty($historia['diagnosticos']) && is_array($historia['diagnosticos']))
-                        @foreach($historia['diagnosticos'] as $diag)
+                    @if(!empty($historia['diagnosticos']) && count($historia['diagnosticos']) > 0)
+                        @foreach($historia['diagnosticos'] as $index => $diag)
                         <tr>
+                            <td>{{ $index + 1 }}</td>
                             <td>{{ $diag['diagnostico']['codigo'] ?? 'N/A' }}</td>
                             <td>{{ $diag['diagnostico']['nombre'] ?? 'N/A' }}</td>
-                            <td>{{ $diag['tipo'] == 'PRINCIPAL' ? 'PRINCIPAL' : 'SECUNDARIO' }}</td>
+                            <td>{{ $diag['tipo'] == 'PRINCIPAL' ? 'PRINCIPAL' : 'TIPO' }}</td>
                             <td>
                                 @if($diag['tipo_diagnostico'] == 'IMPRESION_DIAGNOSTICA')
                                     IMPRESIÓN DIAGNÓSTICA
@@ -245,22 +297,27 @@
                         @endforeach
                     @else
                     <tr>
-                        <td colspan="4" style="text-align: center;">No hay diagnósticos registrados</td>
+                        <td colspan="5" style="text-align: center;">No hay diagnósticos registrados</td>
                     </tr>
                     @endif
                 </tbody>
             </table>
+
+            {{-- Causa Externa y Finalidad --}}
+            <div style="margin-top: 8px;">
+                <div class="campo-historia">
+                    <strong>CAUSA EXTERNA:</strong> {{ $historia['causa_externa'] ?? 'ENFERMEDAD GENERAL' }}
+                </div>
+                <div class="campo-historia">
+                    <strong>FINALIDAD:</strong> {{ $historia['finalidad'] ?? 'NO APLICA' }}
+                </div>
+            </div>
         </fieldset>
 
-        {{-- ✅ CAUSA EXTERNA CON BORDE AZUL --}}
-        <div class="info-box">
-            <strong>CAUSA EXTERNA:</strong> {{ $historia['causa_externa'] ?? 'OTRA' }}
-        </div>
-
-        {{-- ✅ MEDICAMENTOS (SI EXISTEN) --}}
-        @if(!empty($historia['medicamentos']) && is_array($historia['medicamentos']) && count($historia['medicamentos']) > 0)
+        {{-- ✅ MEDICAMENTOS --}}
+        @if(!empty($historia['medicamentos']) && count($historia['medicamentos']) > 0)
         <fieldset>
-            <legend>MEDICAMENTOS FORMULADOS</legend>
+            <legend>MEDICAMENTOS</legend>
             <table>
                 <thead>
                     <tr>
@@ -282,23 +339,23 @@
         </fieldset>
         @endif
 
-        {{-- ✅ REMISIONES (SI EXISTEN) --}}
+        {{-- ✅ REMISIONES --}}
         @if(!empty($historia['remisiones']) && count($historia['remisiones']) > 0)
         <fieldset>
-            <legend>REMISIONES</legend>
+            <legend>REMISIÓN</legend>
             <table>
                 <thead>
                     <tr>
-                        <th>Remisión</th>
-                        <th>Tipo</th>
-                        <th>Observación</th>
+                        <th>CÓDIGO</th>
+                        <th>REMISIÓN</th>
+                        <th>OBSERVACIÓN</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($historia['remisiones'] as $remision)
                     <tr>
+                        <td>{{ $remision['remision']['codigo'] ?? 'N/A' }}</td>
                         <td>{{ $remision['remision']['nombre'] ?? 'N/A' }}</td>
-                        <td>{{ $remision['remision']['tipo'] ?? 'N/A' }}</td>
                         <td>{{ $remision['observacion'] ?? 'Sin observaciones' }}</td>
                     </tr>
                     @endforeach
@@ -307,16 +364,15 @@
         </fieldset>
         @endif
 
-        {{-- ✅ PROCEDIMIENTOS CUPS (SI EXISTEN) --}}
-        @if(!empty($historia['cups']) && is_array($historia['cups']) && count($historia['cups']) > 0)
+        {{-- ✅ AYUDAS DIAGNÓSTICAS --}}
+        @if(!empty($historia['cups']) && count($historia['cups']) > 0)
         <fieldset>
-            <legend>PROCEDIMIENTOS (CUPS)</legend>
+            <legend>AYUDAS DIAGNÓSTICAS</legend>
             <table>
                 <thead>
                     <tr>
-                        <th>CÓDIGO CUPS</th>
-                        <th>DESCRIPCIÓN</th>
-                        <th>CANTIDAD</th>
+                        <th>CÓDIGO</th>
+                        <th>CUPS</th>
                         <th>OBSERVACIONES</th>
                     </tr>
                 </thead>
@@ -324,9 +380,8 @@
                     @foreach($historia['cups'] as $cup)
                     <tr>
                         <td>{{ $cup['cups']['codigo'] ?? 'N/A' }}</td>
-                        <td>{{ $cup['cups']['descripcion'] ?? 'N/A' }}</td>
-                        <td>{{ $cup['cantidad'] ?? 1 }}</td>
-                        <td>{{ $cup['observaciones'] ?? '-' }}</td>
+                        <td>{{ $cup['cups']['nombre'] ?? 'N/A' }}</td>
+                        <td>{{ $cup['observacion'] ?? '' }}</td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -334,40 +389,25 @@
         </fieldset>
         @endif
 
-        {{-- ✅ NOTA ADICIONAL (SI EXISTE) --}}
-        @if(!empty($historia['adicional']))
-        <div class="info-box">
-            <strong>NOTA ADICIONAL:</strong> {{ $historia['adicional'] }}
-        </div>
-        @endif
-
         {{-- ✅ FIRMAS CON BORDE AZUL --}}
         @php
             $profesionalNombre = 'N/A';
-            $profesionalProfesion = 'PSICOLOGÍA';
+            $profesionalProfesion = 'FISIOTERAPIA';
             $profesionalRegistro = 'N/A';
             $profesionalFirma = null;
             
             if (isset($historia['cita']['agenda']['usuario_medico'])) {
                 $medico = $historia['cita']['agenda']['usuario_medico'];
-                
-                // ✅ NOMBRE COMPLETO (viene directo del backend)
                 $profesionalNombre = $medico['nombre_completo'] ?? 'N/A';
-                
-                // ✅ ESPECIALIDAD (acceder al array anidado)
                 $profesionalProfesion = isset($medico['especialidad']['nombre']) 
                     ? strtoupper($medico['especialidad']['nombre']) 
-                    : 'PSICOLOGÍA';
-                
-                // ✅ REGISTRO PROFESIONAL
+                    : 'FISIOTERAPIA';
                 $profesionalRegistro = $medico['registro_profesional'] ?? 'N/A';
-                
-                // ✅ FIRMA
                 $profesionalFirma = $medico['firma'] ?? null;
             }
         @endphp
 
- <div class="firmas-box">
+        <div class="firmas-box">
             <div class="firmas-content">
                 <div class="firma-item">
                     @if($profesionalFirma)
@@ -383,8 +423,7 @@
                 <div class="firma-item">
                     <div class="firma-titulo">FIRMA PACIENTE</div>
                     <div class="firma-info">
-                        {{ $tipoDocumento }}-{{ $documento }}<br>
-                        {{ $nombreCompleto }}
+                        {{ $tipoDocumento }}-{{ $documento }} {{ $nombreCompleto }}
                     </div>
                 </div>
             </div>
