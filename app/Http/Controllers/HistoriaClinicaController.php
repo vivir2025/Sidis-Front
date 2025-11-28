@@ -2700,24 +2700,25 @@ public function determinarVista(Request $request, string $citaUuid)
             'es_solo_control' => $esSoloControl
         ]);
 
-        // ✅ OBTENER HISTORIA PREVIA SOLO PARA CONTROL
-        $historiaPrevia = null;
-        if ($tipoConsulta === 'CONTROL') {
-            // ✅ PARA MEDICINA GENERAL, USAR EL MÉTODO ESPECÍFICO
-            if ($especialidad === 'MEDICINA GENERAL') {
-                $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-                Log::info('🔄 Historia previa offline para Medicina General', [
-                    'tiene_historia' => !empty($historiaPrevia)
-                ]);
-            } else {
-                // ✅ PARA OTRAS ESPECIALIDADES (NEFROLOGIA, INTERNISTA, ETC)
-                $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-                Log::info('🔄 Historia previa offline para especialidad', [
-                    'especialidad' => $especialidad,
-                    'tiene_historia' => !empty($historiaPrevia)
-                ]);
-            }
-        }
+       // ✅ OBTENER HISTORIA PREVIA SOLO PARA CONTROL
+$historiaPrevia = null;
+if ($tipoConsulta === 'CONTROL') {
+    // ✅ PARA MEDICINA GENERAL, USAR EL MÉTODO ESPECÍFICO
+    if ($especialidad === 'MEDICINA GENERAL') {
+        $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+        Log::info('🔄 Historia previa offline para Medicina General', [
+            'tiene_historia' => !empty($historiaPrevia)
+        ]);
+    } else {
+        // ✅ PARA OTRAS ESPECIALIDADES (NEFROLOGIA, INTERNISTA, ETC)
+        $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+        Log::info('🔄 Historia previa offline para especialidad', [
+            'especialidad' => $especialidad,
+            'tiene_historia' => !empty($historiaPrevia)
+        ]);
+    }
+}
+
 
         return $this->renderizarVistaEspecifica($vistaInfo, $cita, $historiaPrevia, $usuario, $isOffline);
 
