@@ -259,6 +259,26 @@ $(document).ready(function() {
                                     title="Imprimir">
                                 <i class="fas fa-print"></i>
                             </button>
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/medicamentos" 
+                                class="btn btn-outline-success" 
+                                title="Ver Medicamentos"
+                                target="_blank">
+                                    <i class="fas fa-pills"></i>
+                            </a>
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/remisiones" 
+                                class="btn btn-outline-info" 
+                                title="Ver Remisiones"
+                                target="_blank">
+                                    <i class="fas fa-file-medical"></i>
+                            </a>
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/ayudas-diagnosticas" 
+                                class="btn btn-outline-warning" 
+                                title="Ver Ayudas Diagnósticas"
+                                target="_blank">
+                                    <i class="fas fa-flask"></i>
+                            </a>
+
+
                         </div>
                     </td>
                 </tr>

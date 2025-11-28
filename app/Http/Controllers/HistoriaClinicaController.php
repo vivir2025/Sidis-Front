@@ -1331,6 +1331,145 @@ private function validateHistoriaClinica(Request $request): array
 }
 
 /**
+ * ✅ VISTA DE MEDICAMENTOS
+ */
+public function medicamentos($uuid)
+{
+    try {
+        Log::info('💊 Mostrando vista de medicamentos', [
+            'historia_uuid' => $uuid
+        ]);
+
+        $historia = $this->obtenerHistoriaCompleta($uuid);
+        
+        return view('historia-clinica.historial-historias.medicamentos.medicamentos', compact('historia'));
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error mostrando medicamentos', [
+            'error' => $e->getMessage(),
+            'historia_uuid' => $uuid
+        ]);
+        
+        return back()->with('error', 'Error cargando medicamentos');
+    }
+}
+
+/**
+ * ✅ VISTA DE REMISIONES
+ */
+public function remisiones($uuid)
+{
+    try {
+        Log::info('📋 Mostrando vista de remisiones', [
+            'historia_uuid' => $uuid
+        ]);
+
+        $historia = $this->obtenerHistoriaCompleta($uuid);
+        
+        return view('historia-clinica.historial-historias.remisiones.remisiones', compact('historia'));
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error mostrando remisiones', [
+            'error' => $e->getMessage(),
+            'historia_uuid' => $uuid
+        ]);
+        
+        return back()->with('error', 'Error cargando remisiones');
+    }
+}
+
+/**
+ * ✅ VISTA DE AYUDAS DIAGNÓSTICAS
+ */
+public function ayudasDiagnosticas($uuid)
+{
+    try {
+        Log::info('🧪 Mostrando vista de ayudas diagnósticas', [
+            'historia_uuid' => $uuid
+        ]);
+
+        $historia = $this->obtenerHistoriaCompleta($uuid);
+        
+        return view('historia-clinica.historial-historias.ayudas-diagnosticas.ayudas-diagnosticas', compact('historia'));
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error mostrando ayudas diagnósticas', [
+            'error' => $e->getMessage(),
+            'historia_uuid' => $uuid
+        ]);
+        
+        return back()->with('error', 'Error cargando ayudas diagnósticas');
+    }
+}
+
+/**
+ * ✅ OBTENER HISTORIA COMPLETA DESDE API (REUTILIZA FORMATEO)
+ */
+private function obtenerHistoriaCompleta($uuid)
+{
+    try {
+        Log::info('🔍 Obteniendo historia completa desde API', [
+            'historia_uuid' => $uuid
+        ]);
+
+        // ✅ 1. INTENTAR OBTENER DESDE API
+        $historia = null;
+        
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->get("/historias-clinicas/{$uuid}");
+                
+                if ($response['success']) {
+                    $historia = $response['data'];
+                    
+                    Log::info('✅ Historia obtenida desde API', [
+                        'historia_uuid' => $uuid,
+                        'tiene_medicamentos' => !empty($historia['medicamentos']),
+                        'tiene_remisiones' => !empty($historia['remisiones']),
+                        'tiene_diagnosticos' => !empty($historia['diagnosticos']),
+                        'tiene_cups' => !empty($historia['cups'])
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error obteniendo historia desde API, intentando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ 2. FALLBACK OFFLINE SI NO SE OBTUVO ONLINE
+        if (!$historia) {
+            $historia = $this->obtenerHistoriaOffline($uuid);
+            
+            if (!$historia) {
+                Log::error('❌ Historia no encontrada ni online ni offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                
+                abort(404, 'Historia clínica no encontrada');
+            }
+            
+            Log::info('✅ Historia obtenida desde offline', [
+                'historia_uuid' => $uuid
+            ]);
+        }
+
+        // ✅ 3. FORMATEAR HISTORIA (REUTILIZA EL MÉTODO EXISTENTE)
+        return $this->formatearHistoriaParaVista($historia);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historia completa', [
+            'error' => $e->getMessage(),
+            'historia_uuid' => $uuid,
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        abort(500, 'Error cargando historia clínica');
+    }
+}
+
+
+/**
  * ✅ FILTRAR ELEMENTOS VACÍOS DE ARRAYS - CORREGIDO PARA UUIDs
  */
 private function filterEmptyArrayElements(Request $request): void

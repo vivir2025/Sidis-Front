@@ -179,6 +179,16 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::patch('/{uuid}/estado', [CitaController::class, 'cambiarEstado'])->name('cambiar-estado');
 
     });
+  
+    Route::get('/historia-clinica/{uuid}/medicamentos', [HistoriaClinicaController::class, 'medicamentos'])
+        ->name('historia-clinica.medicamentos');
+
+    Route::get('/historia-clinica/{uuid}/remisiones', [HistoriaClinicaController::class, 'remisiones'])
+        ->name('historia-clinica.remisiones');
+
+    Route::get('/historia-clinica/{uuid}/ayudas-diagnosticas', [HistoriaClinicaController::class, 'ayudasDiagnosticas'])
+        ->name('historia-clinica.ayudas-diagnosticas');
+
 
 
     //CUPS
