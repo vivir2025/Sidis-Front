@@ -1456,22 +1456,79 @@ private function obtenerDatosMaestrosHibrido(): array
     }
 
     // ✅ CUPS - Ya funciona
-    try {
-        if ($this->apiService->isOnline()) {
-            $response = $this->apiService->get('/cups');
-            if ($response['success'] && !empty($response['data'])) {
-                $datos['cups'] = $response['data'];
-                Log::info('✅ CUPS obtenidos desde API', ['count' => count($response['data'])]);
+   // ✅ CUPS - CORREGIDO PARA PAGINACIÓN
+try {
+    if ($this->apiService->isOnline()) {
+        $response = $this->apiService->get('/cups');
+        if ($response['success'] && !empty($response['data'])) {
+            // 🔍 VERIFICAR SI ES PAGINADO
+            $cupsArray = [];
+            
+            if (isset($response['data']['data']) && is_array($response['data']['data'])) {
+                // ✅ RESPUESTA PAGINADA - EXTRAER data.data
+                $cupsArray = $response['data']['data'];
+                
+                Log::info('✅ CUPS paginados detectados', [
+                    'total_en_pagina' => count($cupsArray),
+                    'pagina_actual' => $response['data']['current_page'] ?? 1,
+                    'total_registros' => $response['data']['total'] ?? 'N/A',
+                    'total_paginas' => $response['data']['last_page'] ?? 'N/A'
+                ]);
+            } elseif (is_array($response['data']) && isset($response['data'][0]['uuid'])) {
+                // ✅ RESPUESTA DIRECTA (SIN PAGINACIÓN)
+                $cupsArray = $response['data'];
+                
+                Log::info('✅ CUPS directos detectados', [
+                    'total' => count($cupsArray)
+                ]);
             } else {
-                throw new \Exception('API sin datos');
+                Log::warning('⚠️ Estructura de CUPS desconocida', [
+                    'response_keys' => array_keys($response['data']),
+                    'first_item_type' => gettype($response['data'][0] ?? null)
+                ]);
+                throw new \Exception('Estructura de respuesta CUPS no reconocida');
             }
+            
+            $datos['cups'] = $cupsArray;
+            Log::info('✅ CUPS obtenidos desde API', ['count' => count($cupsArray)]);
+            
+            // 🆕 GUARDAR CADA CUPS EN SQLITE
+            $guardados = 0;
+            foreach ($cupsArray as $cup) {
+                try {
+                    // Verificar que sea un array válido
+                    if (is_array($cup) && isset($cup['uuid']) && isset($cup['codigo'])) {
+                        $this->offlineService->storeCupsOffline($cup);
+                        $guardados++;
+                    } else {
+                        Log::warning('⚠️ CUPS inválido', [
+                            'cup' => is_array($cup) ? array_keys($cup) : $cup,
+                            'tipo' => gettype($cup)
+                        ]);
+                    }
+                } catch (\Exception $storeError) {
+                    Log::error('❌ Error guardando CUPS individual', [
+                        'cup_uuid' => $cup['uuid'] ?? 'N/A',
+                        'error' => $storeError->getMessage()
+                    ]);
+                }
+            }
+            
+            Log::info('💾 CUPS guardados en SQLite', [
+                'total_obtenidos' => count($cupsArray),
+                'guardados_exitosos' => $guardados
+            ]);
         } else {
-            throw new \Exception('API offline');
+            throw new \Exception('API sin datos');
         }
-    } catch (\Exception $e) {
-        Log::warning('⚠️ CUPS API falló, usando offline', ['error' => $e->getMessage()]);
-        $datos['cups'] = $this->offlineService->getCupsActivosOffline();
+    } else {
+        throw new \Exception('API offline');
     }
+} catch (\Exception $e) {
+    Log::warning('⚠️ CUPS API falló, usando offline', ['error' => $e->getMessage()]);
+    $datos['cups'] = $this->offlineService->getCupsActivosOffline();
+}
+
 
     return $datos;
 }
