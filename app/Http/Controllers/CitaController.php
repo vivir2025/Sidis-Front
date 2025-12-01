@@ -543,49 +543,419 @@ class CitaController extends Controller
             }
         }
 
-        /**
-     * ✅ NUEVO: Endpoint para determinar tipo de consulta ANTES de crear cita
-     */
-    public function determinarTipoConsultaPrevio(Request $request)
-    {
-        try {
-            $request->validate([
-                'paciente_uuid' => 'required|string',
-                'agenda_uuid' => 'required|string'
-            ]);
+/**
+ * ✅ CORREGIDO: Endpoint para determinar tipo de consulta ANTES de crear cita
+ */
+public function determinarTipoConsultaPrevio(Request $request)
+{
+    try {
+        $request->validate([
+            'paciente_uuid' => 'required|string',
+            'agenda_uuid' => 'required|string'
+        ]);
 
-            Log::info('🔍 Frontend: Determinando tipo de consulta previo', [
-                'paciente_uuid' => $request->paciente_uuid,
-                'agenda_uuid' => $request->agenda_uuid
-            ]);
+        Log::info('🔍 Frontend: Determinando tipo de consulta previo', [
+            'paciente_uuid' => $request->paciente_uuid,
+            'agenda_uuid' => $request->agenda_uuid,
+            'is_online' => $this->apiService->isOnline()
+        ]);
 
-            // ✅ LLAMAR A LA API BACKEND QUE YA TIENE LA LÓGICA
-            $response = $this->apiService->post('/citas/determinar-tipo-consulta', [
-                'paciente_uuid' => $request->paciente_uuid,
-                'agenda_uuid' => $request->agenda_uuid
-            ]);
+        // ✅ INTENTAR ONLINE PRIMERO
+        if ($this->apiService->isOnline()) {
+            try {
+                $response = $this->apiService->post('/citas/determinar-tipo-consulta', [
+                    'paciente_uuid' => $request->paciente_uuid,
+                    'agenda_uuid' => $request->agenda_uuid
+                ]);
 
-            if ($response['success']) {
-                Log::info('✅ Tipo de consulta determinado desde API', $response['data']);
-                return response()->json($response);
+                if ($response['success']) {
+                    Log::info('✅ Tipo de consulta determinado desde API', $response['data']);
+                    return response()->json($response);
+                }
+                
+                Log::warning('⚠️ API respondió con error, usando lógica offline', [
+                    'error' => $response['error'] ?? 'Error desconocido'
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Excepción con API, usando lógica offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ FALLBACK: LÓGICA OFFLINE
+        Log::info('💾 Determinando tipo de consulta en modo offline');
+        
+        $resultado = $this->determinarTipoConsultaOffline(
+            $request->paciente_uuid,
+            $request->agenda_uuid
+        );
+
+        return response()->json($resultado);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando tipo de consulta previo', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error interno del servidor'
+        ], 500);
+    }
+}
+/**
+ * ✅ CORREGIDO: Determinar tipo de consulta OFFLINE CON MÁS LOGGING
+ */
+private function determinarTipoConsultaOffline(string $pacienteUuid, string $agendaUuid): array
+{
+    try {
+        Log::info('🔍 Iniciando determinación offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'agenda_uuid' => $agendaUuid
+        ]);
+
+        // ✅ PASO 1: OBTENER LA AGENDA
+        Log::info('📋 PASO 1: Obteniendo agenda offline');
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if (!$agenda) {
+            Log::error('❌ PASO 1 FALLÓ: Agenda no encontrada', [
+                'agenda_uuid' => $agendaUuid
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Agenda no encontrada offline'
+            ];
+        }
+
+        Log::info('✅ PASO 1 COMPLETADO: Agenda encontrada', [
+            'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
+            'agenda_keys' => array_keys($agenda)
+        ]);
+
+        // ✅ PASO 2: OBTENER PROCESO DE LA AGENDA
+        Log::info('📋 PASO 2: Extrayendo proceso de la agenda');
+        
+        // ✅ VERIFICAR ESTRUCTURA DE LA AGENDA
+        if (!isset($agenda['proceso'])) {
+            Log::error('❌ PASO 2 FALLÓ: Agenda sin campo proceso', [
+                'agenda_uuid' => $agendaUuid,
+                'agenda_keys' => array_keys($agenda),
+                'agenda_data' => $agenda
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'La agenda no tiene información del proceso'
+            ];
+        }
+
+        Log::info('🔍 Estructura del proceso en agenda', [
+            'proceso_type' => gettype($agenda['proceso']),
+            'proceso_keys' => is_array($agenda['proceso']) ? array_keys($agenda['proceso']) : 'NO_ES_ARRAY',
+            'proceso_data' => $agenda['proceso']
+        ]);
+
+        $procesoNombre = null;
+        
+        // ✅ MANEJAR DIFERENTES ESTRUCTURAS DE PROCESO
+        if (is_array($agenda['proceso'])) {
+            $procesoNombre = $agenda['proceso']['nombre'] ?? null;
+        } elseif (is_string($agenda['proceso'])) {
+            $procesoNombre = $agenda['proceso'];
+        }
+        
+        if (!$procesoNombre) {
+            Log::error('❌ PASO 2 FALLÓ: No se pudo extraer nombre del proceso', [
+                'agenda_uuid' => $agendaUuid,
+                'proceso_structure' => $agenda['proceso']
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'La agenda no tiene un proceso asignado'
+            ];
+        }
+
+        $procesoNombre = strtoupper(trim($procesoNombre));
+
+        Log::info('✅ PASO 2 COMPLETADO: Proceso identificado', [
+            'proceso_nombre' => $procesoNombre
+        ]);
+
+        // ✅ PASO 3: VALIDAR REQUISITO DE ESPECIAL CONTROL
+        Log::info('📋 PASO 3: Validando requisito de ESPECIAL CONTROL');
+        
+        $validacionEspecialControl = $this->validarRequisitoEspecialControlOffline(
+            $pacienteUuid, 
+            $procesoNombre
+        );
+
+        if (!$validacionEspecialControl['success']) {
+            Log::warning('⚠️ PASO 3: Validación de ESPECIAL CONTROL falló', [
+                'error' => $validacionEspecialControl['error'] ?? 'Error desconocido'
+            ]);
+            
+            return $validacionEspecialControl;
+        }
+
+        Log::info('✅ PASO 3 COMPLETADO: Validación de ESPECIAL CONTROL exitosa');
+
+        // ✅ PASO 4: DETERMINAR TIPO DE CONSULTA
+        Log::info('📋 PASO 4: Determinando tipo de consulta');
+        
+        $tipoConsulta = $this->determinarTipoConsultaConReglasOffline(
+            $pacienteUuid, 
+            $agendaUuid, 
+            $procesoNombre
+        );
+
+        Log::info('✅ PASO 4 COMPLETADO: Tipo de consulta determinado', [
+            'tipo_consulta' => $tipoConsulta,
+            'proceso' => $procesoNombre
+        ]);
+
+        // ✅ CONSTRUIR RESPUESTA FINAL
+        $resultado = [
+            'success' => true,
+            'data' => [
+                'tipo_consulta' => $tipoConsulta,
+                'proceso_nombre' => $procesoNombre,
+                'requiere_especial_control' => false,
+                'mensaje' => $this->generarMensajeTipoConsulta($tipoConsulta, $procesoNombre)
+            ],
+            'offline' => true
+        ];
+
+        Log::info('✅ DETERMINACIÓN OFFLINE COMPLETADA EXITOSAMENTE', [
+            'resultado' => $resultado
+        ]);
+
+        return $resultado;
+
+    } catch (\Exception $e) {
+        Log::error('❌ EXCEPCIÓN CRÍTICA en determinación offline', [
+            'error_message' => $e->getMessage(),
+            'error_file' => $e->getFile(),
+            'error_line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'paciente_uuid' => $pacienteUuid ?? 'N/A',
+            'agenda_uuid' => $agendaUuid ?? 'N/A'
+        ]);
+
+        return [
+            'success' => false,
+            'error' => 'Error determinando tipo de consulta offline: ' . $e->getMessage(),
+            'debug' => [
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]
+        ];
+    }
+}
+
+
+private function validarRequisitoEspecialControlOffline(string $pacienteUuid, string $procesoNombre): array
+{
+    try {
+        // ✅ SI ES ESPECIAL CONTROL, NO VALIDAR
+        if ($procesoNombre === 'ESPECIAL CONTROL') {
+            Log::info('✅ Proceso es ESPECIAL CONTROL, validación omitida');
+            return ['success' => true];
+        }
+
+        Log::info('🔍 Validando requisito de ESPECIAL CONTROL offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'proceso_solicitado' => $procesoNombre
+        ]);
+
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+
+        Log::info('📋 Obteniendo citas del paciente', [
+            'paciente_uuid' => $pacienteUuid,
+            'sede_id' => $sedeId
+        ]);
+
+        // ✅ BUSCAR CITAS DEL PACIENTE OFFLINE
+        $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        Log::info('📊 Citas del paciente encontradas offline', [
+            'total_citas' => count($citasPaciente),
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ VERIFICAR SI TIENE ESPECIAL CONTROL - PRIMERA VEZ
+        $tienePrimeraVezEspecialControl = false;
+        $citasRevisadas = 0;
+        
+        foreach ($citasPaciente as $cita) {
+            $citasRevisadas++;
+            
+            // ✅ VERIFICAR ESTRUCTURA DE LA CITA
+            if (!isset($cita['agenda'])) {
+                Log::warning('⚠️ Cita sin datos de agenda', [
+                    'cita_uuid' => $cita['uuid'] ?? 'NO_UUID',
+                    'cita_keys' => array_keys($cita)
+                ]);
+                continue;
             }
 
-            return response()->json([
-                'success' => false,
-                'error' => $response['error'] ?? 'Error desconocido'
-            ]);
+            if (!isset($cita['agenda']['proceso'])) {
+                Log::warning('⚠️ Agenda sin datos de proceso', [
+                    'cita_uuid' => $cita['uuid'] ?? 'NO_UUID',
+                    'agenda_keys' => array_keys($cita['agenda'])
+                ]);
+                continue;
+            }
 
-        } catch (\Exception $e) {
-            Log::error('❌ Error determinando tipo de consulta previo', [
-                'error' => $e->getMessage()
+            $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
+            $estadoCita = $cita['estado'] ?? '';
+            
+            Log::debug('🔍 Revisando cita', [
+                'cita_numero' => $citasRevisadas,
+                'cita_uuid' => $cita['uuid'],
+                'proceso' => $procesoNombreCita,
+                'estado' => $estadoCita
             ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error interno del servidor'
-            ], 500);
+            
+            if ($procesoNombreCita === 'ESPECIAL CONTROL' &&
+                in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA'])) {
+                $tienePrimeraVezEspecialControl = true;
+                
+                Log::info('✅ Encontrada cita de ESPECIAL CONTROL válida', [
+                    'cita_uuid' => $cita['uuid'],
+                    'estado' => $estadoCita,
+                    'proceso' => $procesoNombreCita
+                ]);
+                break;
+            }
         }
+
+        Log::info('📊 Resultado de validación', [
+            'citas_revisadas' => $citasRevisadas,
+            'tiene_especial_control' => $tienePrimeraVezEspecialControl
+        ]);
+
+        if (!$tienePrimeraVezEspecialControl) {
+            Log::warning('⚠️ Paciente sin ESPECIAL CONTROL - PRIMERA VEZ', [
+                'paciente_uuid' => $pacienteUuid,
+                'proceso_solicitado' => $procesoNombre
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'El paciente debe tener primero una cita de ESPECIAL CONTROL - PRIMERA VEZ antes de agendar otras especialidades',
+                'requiere_especial_control' => true,
+                'data' => [
+                    'tipo_consulta' => null,
+                    'proceso_nombre' => $procesoNombre,
+                    'requiere_especial_control' => true,
+                    'mensaje' => 'Se requiere cita de ESPECIAL CONTROL - PRIMERA VEZ'
+                ]
+            ];
+        }
+
+        Log::info('✅ Validación de ESPECIAL CONTROL exitosa');
+        return ['success' => true];
+
+    } catch (\Exception $e) {
+        Log::error('❌ EXCEPCIÓN en validación de ESPECIAL CONTROL offline', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'success' => false,
+            'error' => 'Error validando requisitos del paciente: ' . $e->getMessage()
+        ];
     }
+}
+
+/**
+ * ✅ DETERMINAR TIPO DE CONSULTA CON REGLAS OFFLINE
+ */
+private function determinarTipoConsultaConReglasOffline(
+    string $pacienteUuid, 
+    string $agendaUuid, 
+    string $procesoNombre
+): string {
+    try {
+        // ✅ REGLA 1: NEFROLOGÍA e INTERNISTA siempre son CONTROL
+        $procesosSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+        
+        if (in_array($procesoNombre, $procesosSoloControl)) {
+            Log::info('✅ Proceso solo permite CONTROL offline', [
+                'proceso' => $procesoNombre
+            ]);
+            return 'CONTROL';
+        }
+
+        // ✅ REGLA 2: Verificar historial del paciente
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+
+        $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ CONTAR CITAS ANTERIORES DEL MISMO PROCESO
+        $citasAnteriores = 0;
+        
+        foreach ($citasPaciente as $cita) {
+            $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
+            $estadoCita = $cita['estado'] ?? '';
+            
+            if ($procesoNombreCita === $procesoNombre &&
+                in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA', 'EN_ATENCION'])) {
+                $citasAnteriores++;
+            }
+        }
+
+        Log::info('📊 Citas anteriores encontradas offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'proceso_buscado' => $procesoNombre,
+            'citas_anteriores' => $citasAnteriores
+        ]);
+
+        // ✅ DETERMINAR TIPO DE CONSULTA
+        $tipoConsulta = ($citasAnteriores > 0) ? 'CONTROL' : 'PRIMERA VEZ';
+        
+        Log::info('✅ Tipo de consulta determinado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'citas_previas' => $citasAnteriores
+        ]);
+
+        return $tipoConsulta;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando tipo de consulta offline', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return 'PRIMERA VEZ';
+    }
+}
+
+/**
+ * ✅ GENERAR MENSAJE DE TIPO DE CONSULTA
+ */
+private function generarMensajeTipoConsulta(string $tipoConsulta, string $procesoNombre): string
+{
+    if ($tipoConsulta === 'PRIMERA VEZ') {
+        return "Esta será la primera consulta de {$procesoNombre} para este paciente.";
+    } else {
+        return "Esta será una consulta de control de {$procesoNombre} para este paciente.";
+    }
+}
+
     /**
      * ✅ CORREGIDO: Obtener citas existentes CON SEDE DE LA AGENDA
      */

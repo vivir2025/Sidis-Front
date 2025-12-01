@@ -696,7 +696,6 @@ function validarPaso(paso) {
 }
 
 // ✅ FUNCIÓN SIMPLIFICADA: Determinar tipo de consulta automático
-// ✅ FUNCIÓN CORREGIDA
 async function determinarTipoConsultaAutomatico() {
     if (!pacienteSeleccionado || !agendaSeleccionada) {
         console.log('⚠️ Faltan datos para determinar tipo de consulta');
@@ -706,11 +705,14 @@ async function determinarTipoConsultaAutomatico() {
     try {
         console.log('🔍 Determinando tipo de consulta automático', {
             paciente_uuid: pacienteSeleccionado.uuid,
-            agenda_uuid: agendaSeleccionada.uuid
+            agenda_uuid: agendaSeleccionada.uuid,
+            modo: navigator.onLine ? 'ONLINE' : 'OFFLINE'
         });
 
-        // ✅ CAMBIAR LA URL AQUÍ
-        const response = await fetch(`/citas/determinar-tipo-consulta-previo?paciente_uuid=${pacienteSeleccionado.uuid}&agenda_uuid=${agendaSeleccionada.uuid}`, {
+        // ✅ CONSTRUIR URL CON PARÁMETROS
+        const url = `/citas/determinar-tipo-consulta-previo?paciente_uuid=${pacienteSeleccionado.uuid}&agenda_uuid=${agendaSeleccionada.uuid}`;
+        
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
@@ -721,68 +723,294 @@ async function determinarTipoConsultaAutomatico() {
 
         const data = await response.json();
 
-        console.log('📥 Respuesta de tipo de consulta', data);
+        console.log('📥 Respuesta de tipo de consulta', {
+            success: data.success,
+            offline: data.offline,
+            data: data.data
+        });
 
         if (data.success && data.data) {
             const { tipo_consulta, cups_recomendado, mensaje, proceso_nombre } = data.data;
 
-            // ✅ MOSTRAR MENSAJE INFORMATIVO
-            Swal.fire({
+            // ✅ CONSTRUIR MENSAJE INFORMATIVO
+            let htmlContent = `
+                <div class="text-start">
+                    <p><strong>Especialidad:</strong> ${proceso_nombre}</p>
+                    <p>${mensaje}</p>
+            `;
+
+            // ✅ AGREGAR INFO DE CUPS SI ESTÁ DISPONIBLE
+            if (cups_recomendado && cups_recomendado.uuid) {
+                htmlContent += `
+                    <hr>
+                    <p><strong>CUPS Recomendado:</strong></p>
+                    <div class="alert alert-info mb-0">
+                        <code>${cups_recomendado.codigo}</code><br>
+                        <small>${cups_recomendado.nombre}</small>
+                    </div>
+                `;
+            }
+
+            htmlContent += '</div>';
+
+            // ✅ MOSTRAR ALERTA CON INDICADOR DE MODO
+            const modoIndicador = data.offline ? 
+                '<span class="badge bg-warning">📱 Modo Offline</span>' : 
+                '<span class="badge bg-success">🌐 Modo Online</span>';
+
+            await Swal.fire({
                 title: `Tipo de Consulta: ${tipo_consulta}`,
                 html: `
-                    <div class="text-start">
-                        <p><strong>Especialidad:</strong> ${proceso_nombre}</p>
-                        <p>${mensaje}</p>
-                        ${cups_recomendado ? `
-                            <hr>
-                            <p><strong>CUPS Recomendado:</strong></p>
-                            <div class="alert alert-info mb-0">
-                                <code>${cups_recomendado.codigo}</code><br>
-                                <small>${cups_recomendado.nombre}</small>
-                            </div>
-                        ` : ''}
-                    </div>
+                    <div class="mb-2">${modoIndicador}</div>
+                    ${htmlContent}
                 `,
                 icon: 'info',
                 confirmButtonText: 'Entendido',
-                timer: 6000
+                timer: 8000,
+                timerProgressBar: true
             });
 
             // ✅ AUTO-LLENAR CUPS SI ESTÁ DISPONIBLE
             if (cups_recomendado && cups_recomendado.uuid) {
-                document.getElementById('cups_codigo').value = cups_recomendado.codigo;
-                document.getElementById('cups_nombre').value = cups_recomendado.nombre;
-                document.getElementById('cups_contratado_uuid').value = cups_recomendado.uuid;
-
-                // Mostrar info del CUPS
-                mostrarInfoCups({
-                    codigo: cups_recomendado.codigo,
-                    nombre: cups_recomendado.nombre,
-                    categoria: cups_recomendado.categoria,
-                    cups_contratado_uuid: cups_recomendado.uuid
-                });
-
-                console.log('✅ CUPS auto-asignado', cups_recomendado);
+                await autoAsignarCups(cups_recomendado);
             }
+
+            // ✅ MOSTRAR BANNER INFORMATIVO EN LA PÁGINA
+            mostrarBannerTipoConsulta(tipo_consulta, proceso_nombre, data.offline);
+
         } else {
             console.warn('⚠️ No se pudo determinar tipo de consulta', data);
             
             if (data.requiere_medicina_general) {
-                Swal.fire({
+                await Swal.fire({
                     title: 'Atención',
                     text: data.error || 'El paciente requiere primero una consulta de MEDICINA GENERAL',
-                    icon: 'warning'
+                    icon: 'warning',
+                    confirmButtonText: 'Entendido'
+                });
+            } else if (data.error) {
+                await Swal.fire({
+                    title: 'Información',
+                    text: data.error,
+                    icon: 'info',
+                    confirmButtonText: 'Entendido'
                 });
             }
         }
 
     } catch (error) {
         console.error('❌ Error determinando tipo de consulta', error);
+        
+        // ✅ MOSTRAR ERROR AMIGABLE
+        await Swal.fire({
+            title: 'Error de Conexión',
+            html: `
+                <p>No se pudo determinar el tipo de consulta automáticamente.</p>
+                <p class="text-muted small">Error: ${error.message}</p>
+                <p class="mt-2">Puedes continuar con la cita de todas formas.</p>
+            `,
+            icon: 'warning',
+            confirmButtonText: 'Continuar'
+        });
+    }
+}
+// ✅ FUNCIÓN MEJORADA: Auto-asignar CUPS (FUNCIONA ONLINE Y OFFLINE)
+async function autoAsignarCups(cupsRecomendado) {
+    try {
+        console.log('🔍 === INICIANDO AUTO-ASIGNACIÓN DE CUPS ===');
+        console.log('📋 CUPS recomendado recibido:', cupsRecomendado);
+        console.log('📋 Estructura completa:', JSON.stringify(cupsRecomendado, null, 2));
+
+        // ✅ OBTENER CAMPOS
+        const codigoInput = document.getElementById('cups_codigo');
+        const nombreInput = document.getElementById('cups_nombre');
+        const uuidInput = document.getElementById('cups_contratado_uuid');
+
+        if (!codigoInput || !nombreInput || !uuidInput) {
+            console.error('❌ No se encontraron los campos de CUPS en el DOM');
+            return;
+        }
+
+        console.log('✅ Campos encontrados en el DOM');
+
+        // ✅ EXTRAER UUID CORRECTO (puede venir como uuid o cups_contratado_uuid)
+        const cupsUuid = cupsRecomendado.cups_contratado_uuid || 
+                        cupsRecomendado.uuid || 
+                        cupsRecomendado.cups_uuid;
+
+        if (!cupsUuid) {
+            console.error('❌ No se encontró UUID válido en cupsRecomendado:', cupsRecomendado);
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'warning',
+                title: 'CUPS sin UUID',
+                text: 'No se pudo auto-asignar el CUPS (falta UUID)',
+                showConfirmButton: false,
+                timer: 3000
+            });
+            return;
+        }
+
+        console.log('✅ UUID extraído:', cupsUuid);
+
+        // ✅ REMOVER READONLY TEMPORALMENTE
+        nombreInput.removeAttribute('readonly');
+        console.log('✅ Readonly removido temporalmente');
+
+        // ✅ LLENAR CAMPOS CON VALORES CORRECTOS
+        const codigoValue = cupsRecomendado.codigo || '';
+        const nombreValue = cupsRecomendado.nombre || '';
+        const uuidValue = cupsUuid;
+
+        codigoInput.value = codigoValue;
+        nombreInput.value = nombreValue;
+        uuidInput.value = uuidValue;
+
+        console.log('✅ Campos llenados:', {
+            codigo: codigoValue,
+            nombre: nombreValue,
+            uuid: uuidValue
+        });
+
+        // ✅ RESTAURAR READONLY
+        nombreInput.setAttribute('readonly', 'readonly');
+        console.log('✅ Readonly restaurado');
+
+        // ✅ DISPARAR EVENTOS PARA ACTUALIZAR INTERFAZ
+        codigoInput.dispatchEvent(new Event('input', { bubbles: true }));
+        codigoInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // ✅ RESALTAR CAMPOS BREVEMENTE CON ANIMACIÓN
+        [codigoInput, nombreInput].forEach(input => {
+            const originalBg = input.style.backgroundColor;
+            const originalBorder = input.style.borderColor;
+            
+            input.style.transition = 'all 0.3s ease';
+            input.style.backgroundColor = '#d4edda';
+            input.style.borderColor = '#28a745';
+            input.style.borderWidth = '2px';
+            
+            setTimeout(() => {
+                input.style.backgroundColor = originalBg;
+                input.style.borderColor = originalBorder;
+                input.style.borderWidth = '';
+            }, 2000);
+        });
+
+        // ✅ MOSTRAR INFO DEL CUPS EN EL CUADRO DE ABAJO
+        mostrarInfoCups({
+            codigo: codigoValue,
+            nombre: nombreValue,
+            categoria: cupsRecomendado.categoria || 'Sin categoría',
+            cups_contratado_uuid: uuidValue
+        });
+
+        // ✅ ACTUALIZAR AUTOCOMPLETE SI EXISTE
+        if (cupsAutocomplete && typeof cupsAutocomplete.setSelected === 'function') {
+            try {
+                cupsAutocomplete.setSelected({
+                    uuid: uuidValue,
+                    codigo: codigoValue,
+                    nombre: nombreValue,
+                    categoria: cupsRecomendado.categoria,
+                    cups_contratado_uuid: uuidValue
+                });
+                console.log('✅ Autocomplete actualizado');
+            } catch (error) {
+                console.warn('⚠️ No se pudo actualizar autocomplete:', error.message);
+            }
+        }
+
+        console.log('🎉 === CUPS AUTO-ASIGNADO EXITOSAMENTE ===');
+
+        // ✅ MOSTRAR NOTIFICACIÓN TOAST
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'CUPS Auto-asignado',
+            html: `<strong>${codigoValue}</strong><br><small>${nombreValue}</small>`,
+            showConfirmButton: false,
+            timer: 4000,
+            timerProgressBar: true
+        });
+
+        // ✅ SCROLL SUAVE HACIA LA SECCIÓN DE CUPS
+        setTimeout(() => {
+            const cupsSection = document.querySelector('.card:has(#cups_codigo)');
+            if (cupsSection) {
+                cupsSection.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center'
+                });
+            }
+        }, 500);
+
+    } catch (error) {
+        console.error('❌ === ERROR AUTO-ASIGNANDO CUPS ===');
+        console.error('Error completo:', error);
+        console.error('Stack:', error.stack);
+        
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'No se pudo auto-asignar el CUPS',
+            text: 'Puedes seleccionarlo manualmente',
+            showConfirmButton: false,
+            timer: 3000
+        });
     }
 }
 
+// ✅ NUEVA FUNCIÓN: Mostrar banner de tipo de consulta
+function mostrarBannerTipoConsulta(tipoConsulta, procesoNombre, esOffline) {
+    // ✅ REMOVER BANNER ANTERIOR SI EXISTE
+    const bannerAnterior = document.getElementById('banner-tipo-consulta');
+    if (bannerAnterior) {
+        bannerAnterior.remove();
+    }
 
-// ✅ LLAMAR AL LLEGAR AL PASO 4
+    // ✅ DETERMINAR CLASE DE ALERTA
+    const alertClass = tipoConsulta === 'PRIMERA VEZ' ? 'alert-info' : 'alert-success';
+    const icon = tipoConsulta === 'PRIMERA VEZ' ? 'fa-info-circle' : 'fa-check-circle';
+    const modoIcon = esOffline ? '📱' : '🌐';
+    const modoTexto = esOffline ? 'Offline' : 'Online';
+
+    // ✅ CREAR BANNER
+    const banner = document.createElement('div');
+    banner.id = 'banner-tipo-consulta';
+    banner.className = `alert ${alertClass} alert-dismissible fade show`;
+    banner.style.marginBottom = '20px';
+    banner.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="fas ${icon} fa-2x me-3"></i>
+            <div class="flex-grow-1">
+                <h6 class="alert-heading mb-1">
+                    <strong>${tipoConsulta}</strong> - ${procesoNombre}
+                </h6>
+                <small class="text-muted">
+                    ${modoIcon} Determinado en modo ${modoTexto}
+                </small>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+
+    // ✅ INSERTAR AL INICIO DEL PASO 4
+    const step4 = document.getElementById('step4');
+    if (step4) {
+        const primeraSeccion = step4.querySelector('.row');
+        if (primeraSeccion) {
+            step4.insertBefore(banner, primeraSeccion);
+        } else {
+            step4.insertBefore(banner, step4.firstChild);
+        }
+    }
+}
+
+// ✅ ACTUALIZAR siguientePaso PARA LLAMAR LA FUNCIÓN
 function siguientePaso() {
     if (pasoActual < 4) {
         if (validarPaso(pasoActual)) {
@@ -795,13 +1023,117 @@ function siguientePaso() {
                 mostrarInfoHorarioSeleccionado();
             } else if (siguientePaso === 4) {
                 actualizarResumenFinal();
-                // ✅ DETERMINAR TIPO DE CONSULTA AUTOMÁTICAMENTE
+                // ✅ DETERMINAR TIPO DE CONSULTA AUTOMÁTICAMENTE (ONLINE/OFFLINE)
                 determinarTipoConsultaAutomatico();
             }
         }
     }
 }
 
+// ✅ FUNCIÓN MEJORADA: Mostrar info de CUPS en el cuadro de abajo
+function mostrarInfoCups(cups) {
+    const infoDiv = document.getElementById('cups_info');
+    const infoText = document.getElementById('cups_info_text');
+    
+    if (!infoDiv || !infoText) {
+        console.warn('⚠️ No se encontraron elementos cups_info en el DOM');
+        return;
+    }
+    
+    // ✅ CONSTRUIR HTML CON INFORMACIÓN COMPLETA Y VISUAL MEJORADO
+    infoText.innerHTML = `
+        <div class="d-flex align-items-start">
+            <div class="me-3">
+                <i class="fas fa-check-circle text-success fa-2x"></i>
+            </div>
+            <div class="flex-grow-1">
+                <div class="mb-2">
+                    <strong class="text-primary fs-6">${cups.codigo}</strong>
+                    <span class="text-muted"> - </span>
+                    <span class="text-dark">${cups.nombre}</span>
+                </div>
+                ${cups.categoria && cups.categoria !== 'Sin categoría' ? `
+                    <div class="mb-1">
+                        <small class="text-muted">
+                            <i class="fas fa-folder me-1"></i>
+                            <strong>Categoría:</strong> ${cups.categoria}
+                        </small>
+                    </div>
+                ` : ''}
+                <div class="mb-1">
+                    <small class="text-success">
+                        <i class="fas fa-robot me-1"></i>
+                        <strong>Auto-asignado</strong> por recomendación del sistema
+                    </small>
+                </div>
+                <div>
+                    <small class="text-muted">
+                        <i class="fas fa-key me-1"></i>
+                        UUID: <code class="text-primary">${cups.cups_contratado_uuid}</code>
+                    </small>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // ✅ CAMBIAR CLASE DE ALERTA A SUCCESS
+    infoDiv.className = 'alert alert-success mt-3';
+    infoDiv.style.borderLeft = '4px solid #28a745';
+    infoDiv.style.boxShadow = '0 2px 8px rgba(40, 167, 69, 0.2)';
+    
+    // ✅ MOSTRAR CON ANIMACIÓN SUAVE
+    infoDiv.style.display = 'none';
+    setTimeout(() => {
+        infoDiv.style.display = 'block';
+        infoDiv.style.animation = 'slideDown 0.4s ease-out';
+    }, 100);
+    
+    // ✅ SCROLL SUAVE HACIA EL CUPS INFO
+    setTimeout(() => {
+        infoDiv.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'nearest',
+            inline: 'nearest'
+        });
+    }, 600);
+    
+    console.log('✅ Info de CUPS mostrada en cuadro de abajo');
+}
+
+
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    #banner-tipo-consulta {
+        animation: slideDown 0.4s ease-out;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .alert-dismissible .btn-close {
+        padding: 0.5rem 0.75rem;
+    }
+`;
+document.head.appendChild(style);
 
 // ✅ INICIALIZAR CUPS AUTOCOMPLETE - CORREGIDO
 function initCupsAutocomplete() {
@@ -978,12 +1310,51 @@ function mostrarInfoCups(cups) {
     }
 }
 
+// ✅ FUNCIÓN MEJORADA: Ocultar info de CUPS
 function ocultarInfoCups() {
     const infoDiv = document.getElementById('cups_info');
     if (infoDiv) {
-        infoDiv.style.display = 'none';
+        infoDiv.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => {
+            infoDiv.style.display = 'none';
+            infoDiv.style.animation = '';
+            infoDiv.className = 'mt-3'; // Reset class
+        }, 300);
     }
 }
+// ✅ AGREGAR ESTILOS ADICIONALES
+const additionalStyles = document.createElement('style');
+additionalStyles.textContent = `
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+    }
+
+    .cups-input.auto-filled {
+        animation: pulse 0.5s ease-in-out;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.02);
+        }
+    }
+
+    #cups_info .alert {
+        border-left: 4px solid #28a745;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+`;
+document.head.appendChild(additionalStyles);
 
 async function sincronizarCupsDesdeServidor() {
     const btn = document.getElementById('btnSincronizarCups');

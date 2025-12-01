@@ -535,3 +535,258 @@ Route::get('/debug-pacientes-pending', function() {
         'api_online' => app(\App\Services\ApiService::class)->isOnline()
     ]);
 })->middleware('custom.auth');
+
+// routes/web.php
+Route::get('/fix-agendas-uuid', function() {
+    try {
+        $offlineService = app(\App\Services\OfflineService::class);
+        
+        // 1. Recrear tabla con campos UUID
+        $offlineService->recreateAgendasTable();
+        
+        // 2. Obtener agendas de la API
+        $apiService = app(\App\Services\ApiService::class);
+        $response = $apiService->get('/agendas');
+        
+        if (!$response['success']) {
+            return response()->json([
+                'success' => false,
+                'error' => 'API devolvió success=false',
+                'response' => $response
+            ]);
+        }
+        
+        // ✅ EXTRAER SOLO EL ARRAY 'data' DE LA PAGINACIÓN
+        $responseData = $response['data'];
+        
+        // Verificar si tiene estructura de paginación Laravel
+        if (isset($responseData['data']) && is_array($responseData['data'])) {
+            // ✅ CASO 1: Respuesta paginada
+            $agendas = $responseData['data'];
+            $totalPages = $responseData['last_page'] ?? 1;
+            $currentPage = $responseData['current_page'] ?? 1;
+            
+            Log::info('📄 Respuesta paginada detectada', [
+                'current_page' => $currentPage,
+                'last_page' => $totalPages,
+                'per_page' => $responseData['per_page'] ?? 'unknown',
+                'total' => $responseData['total'] ?? 'unknown',
+                'agendas_en_pagina' => count($agendas)
+            ]);
+            
+            // ✅ OBTENER TODAS LAS PÁGINAS
+            $todasLasAgendas = $agendas;
+            
+            for ($page = 2; $page <= $totalPages; $page++) {
+                Log::info("📄 Obteniendo página {$page}/{$totalPages}");
+                
+                $pageResponse = $apiService->get("/agendas?page={$page}");
+                
+                if ($pageResponse['success'] && isset($pageResponse['data']['data'])) {
+                    $todasLasAgendas = array_merge(
+                        $todasLasAgendas, 
+                        $pageResponse['data']['data']
+                    );
+                }
+            }
+            
+            $agendas = $todasLasAgendas;
+            
+        } elseif (is_array($responseData)) {
+            // ✅ CASO 2: Respuesta simple (array directo)
+            $agendas = $responseData;
+        } else {
+            return response()->json([
+                'success' => false,
+                'error' => 'Estructura de respuesta no reconocida',
+                'data_type' => gettype($responseData)
+            ]);
+        }
+        
+        // ✅ VERIFICAR QUE HAY AGENDAS
+        if (empty($agendas)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No hay agendas para sincronizar',
+                'total' => 0
+            ]);
+        }
+        
+        // 3. Guardar cada agenda
+        $guardadas = 0;
+        $errores = [];
+        
+        foreach ($agendas as $index => $agenda) {
+            try {
+                if (!is_array($agenda)) {
+                    $errores[] = [
+                        'index' => $index,
+                        'error' => 'Item no es array',
+                        'type' => gettype($agenda)
+                    ];
+                    continue;
+                }
+                
+                $offlineService->storeAgendaOffline($agenda, false);
+                $guardadas++;
+                
+            } catch (\Exception $e) {
+                $errores[] = [
+                    'index' => $index,
+                    'error' => $e->getMessage(),
+                    'agenda_uuid' => $agenda['uuid'] ?? 'sin-uuid'
+                ];
+                
+                Log::error('❌ Error guardando agenda', [
+                    'index' => $index,
+                    'error' => $e->getMessage(),
+                    'agenda' => $agenda
+                ]);
+            }
+        }
+        
+        // 4. Verificar resultado
+        $totalEnDB = DB::connection('offline')->table('agendas')->count();
+        
+        Log::info('✅ Sincronización completada', [
+            'total_api' => count($agendas),
+            'guardadas' => $guardadas,
+            'errores' => count($errores),
+            'total_en_db' => $totalEnDB
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Agendas sincronizadas exitosamente',
+            'total_api' => count($agendas),
+            'guardadas' => $guardadas,
+            'errores_count' => count($errores),
+            'errores' => $errores,
+            'total_en_db' => $totalEnDB
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en fix-agendas-uuid', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ]);
+    }
+});
+// routes/web.php
+Route::get('/test-sqlite', function() {
+    try {
+        $results = [];
+        
+        // 1. Verificar configuración
+        $dbPath = database_path('offline.sqlite');
+        $results['db_path'] = $dbPath;
+        $results['db_exists'] = file_exists($dbPath);
+        $results['db_writable'] = is_writable($dbPath);
+        $results['db_size'] = file_exists($dbPath) ? filesize($dbPath) : 0;
+        
+        // 2. Verificar conexión
+        try {
+            DB::connection('offline')->getPdo();
+            $results['connection'] = 'OK';
+        } catch (\Exception $e) {
+            $results['connection'] = 'ERROR: ' . $e->getMessage();
+        }
+        
+        // 3. Verificar tablas
+        $tables = DB::connection('offline')
+            ->select("SELECT name FROM sqlite_master WHERE type='table'");
+        $results['tables'] = array_map(fn($t) => $t->name, $tables);
+        
+        // 4. Contar registros
+        if (in_array('agendas', $results['tables'])) {
+            $results['agendas_count'] = DB::connection('offline')
+                ->table('agendas')
+                ->count();
+        }
+        
+        // 5. Intentar insertar un registro de prueba
+        try {
+            DB::connection('offline')->table('agendas')->insert([
+                'uuid' => 'test-' . uniqid(),
+                'sede_id' => 1,
+                'modalidad' => 'TEST',
+                'fecha' => now()->format('Y-m-d'),
+                'hora_inicio' => '08:00',
+                'hora_fin' => '12:00',
+                'estado' => 'ACTIVO',
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+            
+            $results['insert_test'] = 'OK';
+            $results['agendas_count_after'] = DB::connection('offline')
+                ->table('agendas')
+                ->count();
+                
+        } catch (\Exception $e) {
+            $results['insert_test'] = 'ERROR: ' . $e->getMessage();
+        }
+        
+        return response()->json($results);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+});
+// routes/web.php
+Route::get('/init-sqlite', function() {
+    try {
+        $dbPath = database_path('offline.sqlite');
+        
+        // Crear archivo si no existe
+        if (!file_exists($dbPath)) {
+            touch($dbPath);
+            chmod($dbPath, 0666);
+        }
+        
+        // Crear tablas
+        $offlineService = app(\App\Services\OfflineService::class);
+        $offlineService->ensureDatabaseExists();
+        
+        // Verificar tablas creadas
+        $tables = DB::connection('offline')
+            ->select("SELECT name FROM sqlite_master WHERE type='table'");
+        
+        $tableNames = array_map(fn($t) => $t->name, $tables);
+        
+        // Contar registros en agendas
+        $agendasCount = 0;
+        if (in_array('agendas', $tableNames)) {
+            $agendasCount = DB::connection('offline')->table('agendas')->count();
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Base de datos SQLite inicializada',
+            'db_path' => $dbPath,
+            'db_exists' => file_exists($dbPath),
+            'db_writable' => is_writable($dbPath),
+            'db_size' => filesize($dbPath),
+            'tables' => $tableNames,
+            'agendas_count' => $agendasCount
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+});

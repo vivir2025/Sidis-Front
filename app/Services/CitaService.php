@@ -232,8 +232,7 @@ private function cleanFiltersForOffline(array $filters): array
 }
 
 
-
-   public function store(array $data): array
+public function store(array $data): array
 {
     try {
         Log::info('🩺 CitaService::store - Datos recibidos', [
@@ -352,9 +351,45 @@ private function cleanFiltersForOffline(array $filters): array
             }
         }
 
-        // ✅ CREAR OFFLINE
+        // ✅ NUEVO: MODO OFFLINE - ASIGNAR CUPS AUTOMÁTICAMENTE
         Log::info('💾 Creando cita en modo offline...');
         
+        // ✅ SI NO TIENE CUPS, INTENTAR ASIGNARLO AUTOMÁTICAMENTE
+        if (empty($data['cups_contratado_uuid'])) {
+            Log::info('🔍 CUPS no proporcionado, asignando automáticamente...');
+            
+            $resultadoCups = $this->asignarCupsAutomatico(
+                $data['paciente_uuid'],
+                $data['agenda_uuid']
+            );
+
+            if (!$resultadoCups['success']) {
+                Log::error('❌ No se pudo asignar CUPS automáticamente', [
+                    'error' => $resultadoCups['error']
+                ]);
+                
+                return [
+                    'success' => false,
+                    'error' => $resultadoCups['error'],
+                    'requiere_especial_control' => $resultadoCups['requiere_especial_control'] ?? false
+                ];
+            }
+
+            // ✅ ASIGNAR EL CUPS AUTOMÁTICAMENTE
+            $data['cups_contratado_uuid'] = $resultadoCups['cups_contratado_uuid'];
+
+            Log::info('✅ CUPS asignado automáticamente offline', [
+                'cups_contratado_uuid' => $data['cups_contratado_uuid'],
+                'cups_nombre' => $resultadoCups['cups_nombre'],
+                'tipo_consulta' => $resultadoCups['tipo_consulta']
+            ]);
+        } else {
+            Log::info('✅ CUPS ya proporcionado, usando el enviado', [
+                'cups_contratado_uuid' => $data['cups_contratado_uuid']
+            ]);
+        }
+        
+        // ✅ CREAR CITA OFFLINE
         $data['uuid'] = \Illuminate\Support\Str::uuid();
         $this->offlineService->storeCitaOffline($data, true);
 
@@ -365,6 +400,7 @@ private function cleanFiltersForOffline(array $filters): array
             'uuid' => $data['uuid'],
             'agenda_uuid' => $data['agenda_uuid'],
             'fecha_corregida' => $data['fecha'],
+            'cups_contratado_uuid' => $data['cups_contratado_uuid'] ?? 'NO_ASIGNADO',
             'needs_sync' => true
         ]);
 
@@ -372,13 +408,18 @@ private function cleanFiltersForOffline(array $filters): array
             'success' => true,
             'data' => $data,
             'message' => '📱 Cita creada offline (se sincronizará cuando vuelva la conexión)',
-            'offline' => true
+            'offline' => true,
+            'meta' => [
+                'cups_asignado' => $resultadoCups['cups_nombre'] ?? 'Manual',
+                'tipo_consulta' => $resultadoCups['tipo_consulta'] ?? 'N/A'
+            ]
         ];
 
     } catch (\Exception $e) {
         Log::error('💥 Error crítico creando cita', [
             'error' => $e->getMessage(),
-            'data' => $data
+            'data' => $data,
+            'trace' => $e->getTraceAsString()
         ]);
         
         return [
@@ -387,6 +428,7 @@ private function cleanFiltersForOffline(array $filters): array
         ];
     }
 }
+
 
 private function actualizarAgendaOfflineDespuesDeCita(string $agendaUuid): void
 {
@@ -1350,5 +1392,472 @@ private function calcularHorariosDisponibles(array $agenda, string $fecha): arra
         return [];
     }
 }
+private function asignarCupsAutomatico(string $pacienteUuid, string $agendaUuid): array
+{
+    try {
+        Log::info('🔍 Frontend: Asignando CUPS automático', [
+            'paciente_uuid' => $pacienteUuid,
+            'agenda_uuid' => $agendaUuid
+        ]);
+
+        // ✅ PASO 1: OBTENER LA AGENDA OFFLINE
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if (!$agenda) {
+            return [
+                'success' => false,
+                'error' => 'Agenda no encontrada',
+                'cups_contratado_uuid' => null
+            ];
+        }
+
+        // ✅ PASO 2: OBTENER PROCESO USANDO getProcesoOffline()
+        $procesoId = $agenda['proceso_id'] ?? null;
+        
+        if (!$procesoId) {
+            Log::error('❌ Agenda sin proceso_id', [
+                'agenda_uuid' => $agendaUuid,
+                'agenda_data' => $agenda
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'La agenda no tiene un proceso asignado',
+                'cups_contratado_uuid' => null
+            ];
+        }
+
+        Log::info('🔍 Buscando proceso offline', [
+            'proceso_id' => $procesoId,
+            'agenda_uuid' => $agendaUuid
+        ]);
+
+        // ✅ OBTENER PROCESO OFFLINE
+        $proceso = $this->offlineService->getProcesoOffline($procesoId);
+        
+        if (!$proceso) {
+            Log::error('❌ Proceso no encontrado offline', [
+                'proceso_id' => $procesoId,
+                'agenda_uuid' => $agendaUuid
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => 'Proceso no encontrado en caché offline',
+                'cups_contratado_uuid' => null
+            ];
+        }
+
+        $procesoNombre = strtoupper(trim($proceso['nombre']));
+
+        Log::info('✅ Proceso identificado offline', [
+            'proceso_id' => $procesoId,
+            'proceso_nombre' => $procesoNombre,
+            'proceso_data' => $proceso
+        ]);
+
+        // ✅ PASO 3: VALIDAR REQUISITO DE ESPECIAL CONTROL
+        $validacionEspecialControl = $this->validarRequisitoEspecialControl(
+            $pacienteUuid, 
+            $procesoNombre
+        );
+
+        if (!$validacionEspecialControl['success']) {
+            return $validacionEspecialControl;
+        }
+
+        // ✅ PASO 4: DETERMINAR TIPO DE CONSULTA
+        $tipoConsulta = $this->determinarTipoConsultaConReglas(
+            $pacienteUuid, 
+            $agendaUuid, 
+            $procesoNombre
+        );
+        
+        Log::info('✅ Tipo de consulta determinado', [
+            'tipo_consulta' => $tipoConsulta,
+            'proceso' => $procesoNombre
+        ]);
+
+        // ✅ PASO 5: OBTENER PALABRAS CLAVE PARA BUSCAR CUPS
+        $palabrasClave = $this->obtenerPalabrasClaveProcesoParaCups($procesoNombre);
+        
+        Log::info('🔍 Palabras clave para búsqueda CUPS', [
+            'proceso' => $procesoNombre,
+            'palabras_clave' => $palabrasClave
+        ]);
+
+        // ✅ PASO 6: BUSCAR CUPS CONTRATADO OFFLINE
+        $cupsContratado = $this->buscarCupsContratadoOffline(
+            $tipoConsulta, 
+            $palabrasClave
+        );
+
+        if (!$cupsContratado) {
+            return [
+                'success' => false,
+                'error' => "No hay CUPS contratado activo para '{$tipoConsulta}' en {$procesoNombre}",
+                'cups_contratado_uuid' => null,
+                'tipo_consulta' => $tipoConsulta
+            ];
+        }
+
+        Log::info('✅ CUPS automático asignado offline', [
+            'cups_contratado_uuid' => $cupsContratado['uuid'],
+            'cups_codigo' => $cupsContratado['cups']['codigo'] ?? 'N/A',
+            'cups_nombre' => $cupsContratado['cups']['nombre'] ?? 'N/A',
+            'tipo_consulta' => $tipoConsulta
+        ]);
+
+        return [
+            'success' => true,
+            'cups_contratado_uuid' => $cupsContratado['uuid'],
+            'cups_codigo' => $cupsContratado['cups']['codigo'] ?? 'N/A',
+            'cups_nombre' => $cupsContratado['cups']['nombre'] ?? 'N/A',
+            'tipo_consulta' => $tipoConsulta,
+            'proceso_nombre' => $procesoNombre
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('💥 Error asignando CUPS automático offline', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'success' => false,
+            'error' => 'Error interno al asignar CUPS: ' . $e->getMessage(),
+            'cups_contratado_uuid' => null
+        ];
+    }
+}
+private function validarRequisitoEspecialControl(string $pacienteUuid, string $procesoNombre): array
+{
+    try {
+        // ✅ SI ES ESPECIAL CONTROL, NO VALIDAR
+        if ($procesoNombre === 'ESPECIAL CONTROL') {
+            return ['success' => true];
+        }
+
+        Log::info('🔍 Validando requisito de ESPECIAL CONTROL', [
+            'paciente_uuid' => $pacienteUuid,
+            'proceso_solicitado' => $procesoNombre
+        ]);
+
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+
+        // ✅ BUSCAR CITAS DEL PACIENTE OFFLINE
+        $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ VERIFICAR SI TIENE ESPECIAL CONTROL - PRIMERA VEZ
+        $tienePrimeraVezEspecialControl = false;
+        
+        foreach ($citasPaciente as $cita) {
+            // ✅ OBTENER PROCESO DE LA AGENDA
+            $agendaCita = $cita['agenda'] ?? null;
+            
+            if (!$agendaCita) {
+                continue;
+            }
+            
+            // ✅ CARGAR PROCESO SI NO ESTÁ PRESENTE
+            $procesoCita = null;
+            
+            if (isset($agendaCita['proceso'])) {
+                $procesoCita = $agendaCita['proceso'];
+            } elseif (isset($agendaCita['proceso_id'])) {
+                $procesoCita = $this->offlineService->getProcesoOffline($agendaCita['proceso_id']);
+            }
+            
+            if (!$procesoCita) {
+                continue;
+            }
+            
+            $procesoNombreCita = strtoupper($procesoCita['nombre']);
+            $categoriaCups = strtoupper($cita['cups_contratado']['categoria_cups']['nombre'] ?? '');
+            $estadoCita = $cita['estado'] ?? '';
+            
+            if ($procesoNombreCita === 'ESPECIAL CONTROL' && 
+                $categoriaCups === 'PRIMERA VEZ' &&
+                in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA'])) {
+                $tienePrimeraVezEspecialControl = true;
+                
+                Log::info('✅ Encontrada cita ESPECIAL CONTROL - PRIMERA VEZ', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                    'estado' => $estadoCita
+                ]);
+                
+                break;
+            }
+        }
+
+        if (!$tienePrimeraVezEspecialControl) {
+            Log::warning('⚠️ Paciente sin ESPECIAL CONTROL - PRIMERA VEZ', [
+                'paciente_uuid' => $pacienteUuid
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'El paciente debe tener primero una cita de ESPECIAL CONTROL - PRIMERA VEZ antes de agendar otras especialidades',
+                'requiere_especial_control' => true,
+                'cups_contratado_uuid' => null
+            ];
+        }
+
+        return ['success' => true];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error validando requisito ESPECIAL CONTROL', [
+            'error' => $e->getMessage()
+        ]);
+
+        return [
+            'success' => false,
+            'error' => 'Error validando requisitos del paciente'
+        ];
+    }
+}
+
+private function determinarTipoConsultaConReglas(
+    string $pacienteUuid, 
+    string $agendaUuid, 
+    string $procesoNombre
+): string {
+    try {
+        // ✅ REGLA 1: NEFROLOGÍA e INTERNISTA siempre son CONTROL
+        $procesosSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+        
+        if (in_array($procesoNombre, $procesosSoloControl)) {
+            Log::info('✅ Proceso solo permite CONTROL', [
+                'proceso' => $procesoNombre
+            ]);
+            return 'CONTROL';
+        }
+
+        // ✅ REGLA 2: Verificar historial del paciente
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+
+        $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ CONTAR CITAS ANTERIORES DEL MISMO PROCESO
+        $citasAnteriores = 0;
+        
+        foreach ($citasPaciente as $cita) {
+            // ✅ OBTENER PROCESO DE LA AGENDA DE LA CITA
+            $agendaCita = $cita['agenda'] ?? null;
+            
+            if (!$agendaCita) {
+                Log::debug('⚠️ Cita sin agenda', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A'
+                ]);
+                continue;
+            }
+            
+            // ✅ CARGAR PROCESO SI NO ESTÁ PRESENTE
+            $procesoCita = null;
+            
+            if (isset($agendaCita['proceso'])) {
+                // Ya tiene el proceso cargado
+                $procesoCita = $agendaCita['proceso'];
+            } elseif (isset($agendaCita['proceso_id'])) {
+                // Cargar el proceso manualmente
+                $procesoCita = $this->offlineService->getProcesoOffline($agendaCita['proceso_id']);
+            }
+            
+            if (!$procesoCita) {
+                Log::debug('⚠️ No se pudo obtener proceso de la cita', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                    'agenda_uuid' => $agendaCita['uuid'] ?? 'N/A'
+                ]);
+                continue;
+            }
+            
+            $procesoNombreCita = strtoupper($procesoCita['nombre']);
+            $estadoCita = $cita['estado'] ?? '';
+            
+            Log::debug('🔍 Analizando cita', [
+                'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                'proceso_cita' => $procesoNombreCita,
+                'proceso_buscado' => $procesoNombre,
+                'estado' => $estadoCita,
+                'coincide' => $procesoNombreCita === $procesoNombre
+            ]);
+            
+            // ✅ IGUAL QUE EL BACKEND: NO FILTRAR POR FECHA
+            if ($procesoNombreCita === $procesoNombre &&
+                in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA', 'EN_ATENCION'])) {
+                $citasAnteriores++;
+                
+                Log::info('✅ Cita anterior válida encontrada', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                    'proceso' => $procesoNombreCita,
+                    'estado' => $estadoCita,
+                    'total_hasta_ahora' => $citasAnteriores
+                ]);
+            }
+        }
+
+        Log::info('📊 Citas anteriores encontradas offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'proceso_buscado' => $procesoNombre,
+            'citas_anteriores' => $citasAnteriores,
+            'total_citas_analizadas' => count($citasPaciente)
+        ]);
+
+        // ✅ DETERMINAR TIPO DE CONSULTA
+        $tipoConsulta = ($citasAnteriores > 0) ? 'CONTROL' : 'PRIMERA VEZ';
+        
+        Log::info('✅ Tipo de consulta determinado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'citas_previas' => $citasAnteriores
+        ]);
+
+        return $tipoConsulta;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error determinando tipo de consulta', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return 'PRIMERA VEZ';
+    }
+}
+
+/**
+ * ✅ OBTENER PALABRAS CLAVE PARA BUSCAR CUPS
+ */
+private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): array
+{
+    $procesoNombre = strtoupper(trim($procesoNombre));
+    
+    $mapeo = [
+        'ESPECIAL CONTROL' => [
+            'MEDICINA GENERAL',
+            'GENERAL'
+        ],
+        'NUTRICIONISTA' => [
+            'NUTRICION Y DIETETICA',
+            'NUTRICION',
+            'DIETETICA',
+            'NUTRICI?N'
+        ],
+        'PSICOLOGIA' => [
+            'PSICOLOGIA',
+            'PSICOLOG?A',
+            'PSICOLOGO'
+        ],
+        'FISIOTERAPIA' => [
+            'FISIOTERAPIA'
+        ],
+        'NEFROLOGIA' => [
+            'NEFROLOGIA',
+            'NEFROLOG?A',
+            'ESPECIALISTA EN NEFROLOGIA'
+        ],
+        'INTERNISTA' => [
+            'MEDICINA INTERNA',
+            'ESPECIALISTA EN MEDICINA INTERNA'
+        ],
+        'TRABAJO SOCIAL' => [
+            'TRABAJO SOCIAL'
+        ],
+        'REFORMULACION' => [
+            'MEDICINA GENERAL',
+            'GENERAL'
+        ]
+    ];
+    
+    if (isset($mapeo[$procesoNombre])) {
+        return $mapeo[$procesoNombre];
+    }
+    
+    // Buscar por coincidencia parcial
+    foreach ($mapeo as $key => $palabras) {
+        if (str_contains($procesoNombre, $key) || str_contains($key, $procesoNombre)) {
+            return $palabras;
+        }
+    }
+    
+    return [$procesoNombre];
+}
+
+/**
+ * ✅ BUSCAR CUPS CONTRATADO OFFLINE
+ */
+private function buscarCupsContratadoOffline(string $tipoConsulta, array $palabrasClave): ?array
+{
+    try {
+        // ✅ OBTENER CUPS CONTRATADOS DESDE OFFLINE
+        $cupsContratados = $this->offlineService->getCupsContratadosOffline();
+        
+        if (empty($cupsContratados)) {
+            Log::warning('⚠️ No hay CUPS contratados en caché offline');
+            return null;
+        }
+
+        Log::info('🔍 Buscando CUPS contratado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'palabras_clave' => $palabrasClave,
+            'total_cups_disponibles' => count($cupsContratados)
+        ]);
+
+        // ✅ FILTRAR POR CATEGORÍA Y PALABRAS CLAVE
+        foreach ($cupsContratados as $cupsContratado) {
+            $categoriaNombre = strtoupper($cupsContratado['categoria_cups']['nombre'] ?? '');
+            $cupsNombre = strtoupper($cupsContratado['cups']['nombre'] ?? '');
+            $estado = strtoupper($cupsContratado['estado'] ?? '');
+            
+            // Verificar categoría
+            if ($categoriaNombre !== strtoupper($tipoConsulta)) {
+                continue;
+            }
+            
+            // Verificar estado
+            if ($estado !== 'ACTIVO') {
+                continue;
+            }
+            
+            // Verificar palabras clave
+            $coincide = false;
+            foreach ($palabrasClave as $palabra) {
+                if (str_contains($cupsNombre, strtoupper($palabra))) {
+                    $coincide = true;
+                    break;
+                }
+            }
+            
+            if ($coincide) {
+                Log::info('✅ CUPS contratado encontrado offline', [
+                    'cups_uuid' => $cupsContratado['uuid'],
+                    'cups_nombre' => $cupsNombre,
+                    'categoria' => $categoriaNombre
+                ]);
+                
+                return $cupsContratado;
+            }
+        }
+
+        Log::warning('⚠️ No se encontró CUPS contratado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'palabras_clave' => $palabrasClave
+        ]);
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando CUPS contratado offline', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return null;
+    }
+}
+
 
 }

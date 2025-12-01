@@ -128,6 +128,12 @@ class OfflineService
                 $this->createCupsContratadosTable();
                 Log::info('✅ Tabla cups_contratados creada');
             }
+
+            if (!in_array('categorias_cups', $existingTables)) {
+                $this->createCategoriasCupsTable();
+                Log::info('✅ Tabla categorias_cups creada');
+            }
+
             if (!in_array('contratos', $existingTables)) {
                 $this->createContratosTable();
                 Log::info('✅ Tabla contratos creada');
@@ -174,18 +180,15 @@ class OfflineService
         $this->createNovedadesTable();
         $this->createAuxiliaresTable();
         $this->createBrigadasTable();
-        
-        // ✅ AGREGAR ESTA LÍNEA QUE FALTA
         $this->createProcesosTable();
-         $this->createUsuariosTable();
-        // ✅ CREAR NUEVAS TABLAS
+        $this->createUsuariosTable();
         $this->createAgendasTable();
         $this->createCitasTable();
         $this->createCupsTable();
         $this->createPacientesTable();
-         $this->createCupsContratadosTable(); 
+        $this->createCupsContratadosTable();
+        $this->createCategoriasCupsTable(); 
         $this->createContratosTable();
-    
         $this->createMedicamentosTable();
         $this->createDiagnosticosTable();
         $this->createRemisionesTable();
@@ -203,7 +206,37 @@ class OfflineService
         throw $e;
     }
 }
-        private function createAgendasTable(): void
+
+/**
+ * ✅ Asegurar que la base de datos SQLite existe con todas las tablas
+ */
+public function ensureDatabaseExists(): void
+{
+    try {
+        Log::info('🔄 Verificando existencia de base de datos SQLite');
+        
+        if (!$this->isSQLiteAvailable()) {
+            Log::warning('⚠️ SQLite no está disponible');
+            return;
+        }
+        
+        // Llamar al método privado que crea las tablas
+        $this->createTablesIfNotExist();
+        
+        Log::info('✅ Base de datos SQLite verificada/creada exitosamente');
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando base de datos SQLite', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        throw $e;
+    }
+}
+
+
+
+        public function createAgendasTable(): void
 {
       DB::connection('offline')->statement('
         CREATE TABLE IF NOT EXISTS agendas (
@@ -218,9 +251,11 @@ class OfflineService
             intervalo TEXT,
             etiqueta TEXT,
             estado TEXT DEFAULT "ACTIVO",
-            proceso_id TEXT NULL, 
+            proceso_id TEXT NULL,
+            proceso_uuid TEXT NULL, 
             usuario_id INTEGER,
             brigada_id TEXT NULL,
+            brigada_uuid TEXT NULL,
             usuario_medico_id TEXT NULL,  
             cupos_disponibles INTEGER DEFAULT 0,
             sync_status TEXT DEFAULT "synced",
@@ -918,6 +953,11 @@ private function createContratosTable(): void
         if (isset($masterData['procesos'])) {
             $this->syncProcesos($masterData['procesos']);
             $syncResults['procesos'] = count($masterData['procesos']);
+        }
+
+        if (isset($masterData['categorias_cups'])) {
+            $this->syncCategoriasCups($masterData['categorias_cups']);
+            $syncResults['categorias_cups'] = count($masterData['categorias_cups']);
         }
 
          if (isset($masterData['usuarios_con_especialidad'])) {
@@ -2315,7 +2355,6 @@ public function getAllUsuariosOffline(array $filters = []): array
             mkdir($this->storagePath, 0755, true);
         }
     }
-
 public function storeAgendaOffline(array $agendaData, bool $needsSync = false): void
 {
     try {
@@ -2350,6 +2389,54 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             ]);
         }
 
+        // ✅ CONVERTIR proceso_id A INTEGER Y EXTRAER UUID
+        $procesoId = null;
+        $procesoUuid = null; // ← LÍNEA AGREGADA
+        
+        if (isset($agendaData['proceso_id']) && 
+            !empty($agendaData['proceso_id']) && 
+            $agendaData['proceso_id'] !== 'null') {
+            
+            $procesoId = (int) $agendaData['proceso_id'];
+            
+            Log::info('✅ proceso_id convertido', [
+                'original' => $agendaData['proceso_id'],
+                'tipo_original' => gettype($agendaData['proceso_id']),
+                'convertido' => $procesoId,
+                'tipo_convertido' => gettype($procesoId)
+            ]);
+        }
+        
+        // ✅ EXTRAER proceso_uuid SI EXISTE
+        if (!empty($agendaData['proceso_uuid']) && $agendaData['proceso_uuid'] !== 'null') {
+            $procesoUuid = $agendaData['proceso_uuid'];
+            Log::info('✅ proceso_uuid extraído', ['proceso_uuid' => $procesoUuid]);
+        }
+
+        // ✅ CONVERTIR brigada_id A INTEGER Y EXTRAER UUID
+        $brigadaId = null;
+        $brigadaUuid = null; // ← LÍNEA AGREGADA
+        
+        if (isset($agendaData['brigada_id']) && 
+            !empty($agendaData['brigada_id']) && 
+            $agendaData['brigada_id'] !== 'null') {
+            
+            $brigadaId = (int) $agendaData['brigada_id'];
+            
+            Log::info('✅ brigada_id convertido', [
+                'original' => $agendaData['brigada_id'],
+                'tipo_original' => gettype($agendaData['brigada_id']),
+                'convertido' => $brigadaId,
+                'tipo_convertido' => gettype($brigadaId)
+            ]);
+        }
+        
+        // ✅ EXTRAER brigada_uuid SI EXISTE
+        if (!empty($agendaData['brigada_uuid']) && $agendaData['brigada_uuid'] !== 'null') {
+            $brigadaUuid = $agendaData['brigada_uuid'];
+            Log::info('✅ brigada_uuid extraído', ['brigada_uuid' => $brigadaUuid]);
+        }
+
         // ✅ PREPARAR DATOS PARA SQLITE
         $sqliteData = [
             'uuid' => $agendaData['uuid'],
@@ -2362,10 +2449,12 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'intervalo' => $agendaData['intervalo'] ?? '15',
             'etiqueta' => $agendaData['etiqueta'] ?? '',
             'estado' => $agendaData['estado'] ?? 'ACTIVO',
-            'proceso_id' => $agendaData['proceso_id'] ?? null,
+            'proceso_id' => $procesoId, // ✅ AHORA ESTÁ DEFINIDO
+            'proceso_uuid' => $procesoUuid, // ✅ AHORA ESTÁ DEFINIDO
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
-            'usuario_medico_id' => $usuarioMedicoValue, // ✅ USAR VALOR NORMALIZADO
-            'brigada_id' => $agendaData['brigada_id'] ?? null,
+            'usuario_medico_id' => $usuarioMedicoValue,
+            'brigada_id' => $brigadaId, // ✅ AHORA ESTÁ DEFINIDO
+            'brigada_uuid' => $brigadaUuid, // ✅ AHORA ESTÁ DEFINIDO
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'operation_type' => $needsSync ? 'create' : 'sync',
@@ -2385,23 +2474,22 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
 
         // ✅ ENRIQUECER JSON CON AMBOS CAMPOS PARA COMPATIBILIDAD
         $jsonData = array_merge($agendaData, [
-            'usuario_medico_uuid' => $usuarioMedicoValue, // ✅ CAMPO PARA API
-            'usuario_medico_id' => $usuarioMedicoValue,   // ✅ COMPATIBILIDAD
+            'usuario_medico_uuid' => $usuarioMedicoValue,
+            'usuario_medico_id' => $usuarioMedicoValue,
             'sync_status' => $sqliteData['sync_status']
         ]);
         
         $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $jsonData);
 
-        Log::debug('✅ Agenda almacenada offline con usuario médico normalizado', [
+        Log::debug('✅ Agenda almacenada offline con IDs convertidos', [
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'],
+            'proceso_id' => $procesoId,
+            'proceso_uuid' => $procesoUuid, // ✅ AHORA SE PUEDE LOGGEAR
+            'brigada_id' => $brigadaId,
+            'brigada_uuid' => $brigadaUuid, // ✅ AHORA SE PUEDE LOGGEAR
             'usuario_medico_value' => $usuarioMedicoValue,
-            'campos_originales' => [
-                'usuario_medico_uuid' => $agendaData['usuario_medico_uuid'] ?? 'no-set',
-                'usuario_medico_id' => $agendaData['usuario_medico_id'] ?? 'no-set',
-                'medico_uuid' => $agendaData['medico_uuid'] ?? 'no-set'
-            ],
             'sync_status' => $sqliteData['sync_status']
         ]);
 
@@ -2413,6 +2501,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         ]);
     }
 }
+
 
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
@@ -2642,6 +2731,13 @@ public function getCitasOffline($sedeId, array $filters = [])
                 ]);
             }
 
+            if (!empty($filters['paciente_uuid'])) {
+                $query->where('citas.paciente_uuid', $filters['paciente_uuid']);
+                Log::info('🔍 Filtro paciente_uuid aplicado', [
+                    'paciente_uuid' => $filters['paciente_uuid']
+                ]);
+            }
+
             if (!empty($filters['fecha'])) {
                 // ✅ LIMPIAR FECHA
                 $fechaLimpia = $filters['fecha'];
@@ -2689,50 +2785,69 @@ public function getCitasOffline($sedeId, array $filters = [])
             $citas = $results->map(function ($cita) {
                 $citaArray = (array) $cita;
                 
-              // ✅ CONSTRUIR OBJETO PACIENTE CON FALLBACK
-if ($citaArray['paciente_nombre_completo']) {
-    $citaArray['paciente'] = [
-        'uuid' => $citaArray['paciente_uuid'],
-        'nombre_completo' => $citaArray['paciente_nombre_completo'],
-        'documento' => $citaArray['paciente_documento'],
-        'telefono' => $citaArray['paciente_telefono'],
-        'fecha_nacimiento' => $citaArray['paciente_fecha_nacimiento'],
-        'sexo' => $citaArray['paciente_sexo']
-    ];
-} else {
-    // ✅ FALLBACK: BUSCAR PACIENTE SI EL JOIN FALLÓ
-    if (!empty($citaArray['paciente_uuid'])) {
-        $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
-        if ($paciente) {
-            $citaArray['paciente'] = [
-                'uuid' => $paciente['uuid'],
-                'nombre_completo' => $paciente['nombre_completo'],
-                'documento' => $paciente['documento'] ?? 'N/A',
-                'telefono' => $paciente['telefono'] ?? 'N/A',
-                'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? null,
-                'sexo' => $paciente['sexo'] ?? 'M'
-            ];
-            Log::info('✅ Paciente cargado via fallback', [
-                'cita_uuid' => $citaArray['uuid'],
-                'paciente_nombre' => $paciente['nombre_completo']
-            ]);
-        } else {
-            // ✅ PACIENTE POR DEFECTO SI NO SE ENCUENTRA
-            $citaArray['paciente'] = [
-                'uuid' => $citaArray['paciente_uuid'],
-                'nombre_completo' => 'Paciente no encontrado',
-                'documento' => 'N/A',
-                'telefono' => 'N/A',
-                'fecha_nacimiento' => null,
-                'sexo' => 'M'
-            ];
-            Log::warning('⚠️ Paciente no encontrado, usando datos por defecto', [
-                'paciente_uuid' => $citaArray['paciente_uuid']
-            ]);
-        }
-    }
-}
-
+                // ✅ ENRIQUECER CON AGENDA COMPLETA (INCLUYENDO PROCESO)
+                if (!empty($citaArray['agenda_uuid'])) {
+                    $agenda = $this->getAgendaOffline($citaArray['agenda_uuid']);
+                    
+                    if ($agenda) {
+                        $citaArray['agenda'] = $agenda;
+                        
+                        Log::debug('✅ Agenda cargada para cita', [
+                            'cita_uuid' => $citaArray['uuid'] ?? 'N/A',
+                            'agenda_uuid' => $citaArray['agenda_uuid'],
+                            'proceso_nombre' => $agenda['proceso']['nombre'] ?? 'N/A'
+                        ]);
+                    } else {
+                        Log::warning('⚠️ Agenda no encontrada para cita', [
+                            'cita_uuid' => $citaArray['uuid'] ?? 'N/A',
+                            'agenda_uuid' => $citaArray['agenda_uuid']
+                        ]);
+                    }
+                }
+                
+                // ✅ CONSTRUIR OBJETO PACIENTE CON FALLBACK
+                if ($citaArray['paciente_nombre_completo']) {
+                    $citaArray['paciente'] = [
+                        'uuid' => $citaArray['paciente_uuid'],
+                        'nombre_completo' => $citaArray['paciente_nombre_completo'],
+                        'documento' => $citaArray['paciente_documento'],
+                        'telefono' => $citaArray['paciente_telefono'],
+                        'fecha_nacimiento' => $citaArray['paciente_fecha_nacimiento'],
+                        'sexo' => $citaArray['paciente_sexo']
+                    ];
+                } else {
+                    // ✅ FALLBACK: BUSCAR PACIENTE SI EL JOIN FALLÓ
+                    if (!empty($citaArray['paciente_uuid'])) {
+                        $paciente = $this->getPacienteOffline($citaArray['paciente_uuid']);
+                        if ($paciente) {
+                            $citaArray['paciente'] = [
+                                'uuid' => $paciente['uuid'],
+                                'nombre_completo' => $paciente['nombre_completo'],
+                                'documento' => $paciente['documento'] ?? 'N/A',
+                                'telefono' => $paciente['telefono'] ?? 'N/A',
+                                'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? null,
+                                'sexo' => $paciente['sexo'] ?? 'M'
+                            ];
+                            Log::info('✅ Paciente cargado via fallback', [
+                                'cita_uuid' => $citaArray['uuid'],
+                                'paciente_nombre' => $paciente['nombre_completo']
+                            ]);
+                        } else {
+                            // ✅ PACIENTE POR DEFECTO SI NO SE ENCUENTRA
+                            $citaArray['paciente'] = [
+                                'uuid' => $citaArray['paciente_uuid'],
+                                'nombre_completo' => 'Paciente no encontrado',
+                                'documento' => 'N/A',
+                                'telefono' => 'N/A',
+                                'fecha_nacimiento' => null,
+                                'sexo' => 'M'
+                            ];
+                            Log::warning('⚠️ Paciente no encontrado, usando datos por defecto', [
+                                'paciente_uuid' => $citaArray['paciente_uuid']
+                            ]);
+                        }
+                    }
+                }
 
                 // ✅ LIMPIAR CAMPOS DUPLICADOS
                 unset(
@@ -2783,6 +2898,11 @@ if ($citaArray['paciente_nombre_completo']) {
                             $data['agenda_uuid'] !== $filters['agenda_uuid']) {
                             $cumpleFiltros = false;
                         }
+
+                        if (!empty($filters['paciente_uuid']) && 
+                            $data['paciente_uuid'] !== $filters['paciente_uuid']) {
+                            $cumpleFiltros = false;
+                        }
                         
                         if (!empty($filters['fecha'])) {
                             $fechaLimpia = $filters['fecha'];
@@ -2801,6 +2921,18 @@ if ($citaArray['paciente_nombre_completo']) {
                         }
                         
                         if ($cumpleFiltros) {
+                            // ✅ ENRIQUECER CON AGENDA (INCLUYENDO PROCESO)
+                            if (!empty($data['agenda_uuid'])) {
+                                $agenda = $this->getAgendaOffline($data['agenda_uuid']);
+                                if ($agenda) {
+                                    $data['agenda'] = $agenda;
+                                    Log::debug('✅ Agenda JSON cargada', [
+                                        'cita_uuid' => $data['uuid'] ?? 'N/A',
+                                        'proceso_nombre' => $agenda['proceso']['nombre'] ?? 'N/A'
+                                    ]);
+                                }
+                            }
+
                             // ✅ ENRIQUECER CON PACIENTE SI NO ESTÁ
                             if (!isset($data['paciente']) && !empty($data['paciente_uuid'])) {
                                 $paciente = $this->getPacienteOffline($data['paciente_uuid']);
@@ -2854,6 +2986,7 @@ if ($citaArray['paciente_nombre_completo']) {
         return [];
     }
 }
+
 
 public function actualizarEstadoCitaOffline(string $uuid, string $nuevoEstado, int $sedeId): bool
 {
@@ -3389,67 +3522,413 @@ public function getConteoEstadosPendientes(): int
     }
 }
 /**
- * ✅ CORREGIDO: Obtener agenda offline por UUID
+ * ✅ CORREGIDO: Obtener agenda offline CON DATOS DE PROCESO ENRIQUECIDOS
  */
 public function getAgendaOffline(string $uuid): ?array
 {
     try {
+        Log::info('🔍 OfflineService: Buscando agenda offline', [
+            'agenda_uuid' => $uuid
+        ]);
+
+        $agenda = null;
+
         // ✅ BUSCAR EN SQLite PRIMERO
         if ($this->isSQLiteAvailable()) {
-            $agenda = DB::connection('offline')->table('agendas')
+            $result = DB::connection('offline')->table('agendas')
                 ->where('uuid', $uuid)
                 ->whereNull('deleted_at')
                 ->first();
-            
-            if ($agenda) {
-                $agendaArray = (array) $agenda;
-                
-                // ✅ ASEGURAR QUE LA ETIQUETA ESTÉ DISPONIBLE
-                if (empty($agendaArray['etiqueta'])) {
-                    $agendaArray['etiqueta'] = 'Sin etiqueta';
-                }
+
+            if ($result) {
+                $agenda = (array) $result;
                 
                 Log::info('✅ OfflineService: Agenda encontrada en SQLite', [
-                    'agenda_uuid' => $agendaArray['uuid'],
-                    'agenda_fecha' => $agendaArray['fecha'],
-                    'etiqueta' => $agendaArray['etiqueta'] // ✅ LOGGING DE ETIQUETA
+                    'agenda_uuid' => $uuid,
+                    'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA',
+                    'etiqueta' => $agenda['etiqueta'] ?? 'NO_ETIQUETA',
+                    'proceso_id' => $agenda['proceso_id'] ?? 'NO_PROCESO_ID',
+                    'proceso_uuid' => $agenda['proceso_uuid'] ?? 'NO_PROCESO_UUID'
                 ]);
-                return $agendaArray;
             }
         }
 
         // ✅ FALLBACK A JSON
-        $path = $this->storagePath . "/agendas/{$uuid}.json";
-        
-        if (file_exists($path)) {
-            $content = file_get_contents($path);
-            $agenda = json_decode($content, true);
+        if (!$agenda) {
+            $filePath = $this->storagePath . '/agendas/' . $uuid . '.json';
             
-            // ✅ ASEGURAR QUE LA ETIQUETA ESTÉ DISPONIBLE
-            if (empty($agenda['etiqueta'])) {
-                $agenda['etiqueta'] = 'Sin etiqueta';
+            if (file_exists($filePath)) {
+                $agenda = json_decode(file_get_contents($filePath), true);
+                
+                Log::info('✅ OfflineService: Agenda encontrada en JSON', [
+                    'agenda_uuid' => $uuid
+                ]);
             }
-            
-            Log::info('✅ OfflineService: Agenda encontrada en JSON', [
-                'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
-                'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA',
-                'etiqueta' => $agenda['etiqueta'] // ✅ LOGGING DE ETIQUETA
-            ]);
-            
-            return $agenda;
         }
 
-        Log::info('⚠️ OfflineService: Agenda no encontrada', ['uuid' => $uuid]);
-        return null;
+        if (!$agenda) {
+            Log::warning('⚠️ OfflineService: Agenda no encontrada offline', [
+                'agenda_uuid' => $uuid
+            ]);
+            return null;
+        }
+
+        // ✅ ENRIQUECER CON DATOS DEL PROCESO (CORREGIDO)
+        if (!isset($agenda['proceso'])) {
+            $proceso = null;
+            
+            // ✅ CONVERTIR proceso_id A INTEGER
+            $procesoId = !empty($agenda['proceso_id']) && $agenda['proceso_id'] !== 'null' 
+                ? (int) $agenda['proceso_id'] 
+                : null;
+            
+            $procesoUuid = !empty($agenda['proceso_uuid']) && $agenda['proceso_uuid'] !== 'null' 
+                ? $agenda['proceso_uuid'] 
+                : null;
+            
+            Log::info('🔍 Intentando enriquecer proceso', [
+                'proceso_id_original' => $agenda['proceso_id'] ?? 'null',
+                'proceso_id_convertido' => $procesoId,
+                'proceso_uuid' => $procesoUuid
+            ]);
+            
+            // ✅ PRIORIDAD 1: Buscar por UUID
+            if ($procesoUuid) {
+                $proceso = $this->getProcesoByUuid($procesoUuid);
+                
+                if ($proceso) {
+                    Log::info('✅ Proceso encontrado por UUID', [
+                        'proceso_uuid' => $procesoUuid,
+                        'proceso_nombre' => $proceso['nombre']
+                    ]);
+                } else {
+                    Log::warning('⚠️ Proceso no encontrado por UUID', [
+                        'proceso_uuid' => $procesoUuid
+                    ]);
+                }
+            }
+            
+            // ✅ PRIORIDAD 2: Buscar por ID (FALLBACK)
+            if (!$proceso && $procesoId) {
+                Log::info('🔍 Buscando proceso por ID', [
+                    'proceso_id' => $procesoId
+                ]);
+                
+                $proceso = $this->getProcesoById($procesoId);
+                
+                if ($proceso) {
+                    Log::info('✅ Proceso encontrado por ID', [
+                        'proceso_id' => $procesoId,
+                        'proceso_nombre' => $proceso['nombre']
+                    ]);
+                } else {
+                    Log::error('❌ Proceso no encontrado por ID', [
+                        'proceso_id' => $procesoId
+                    ]);
+                }
+            }
+            
+            // ✅ AGREGAR PROCESO A LA AGENDA
+            if ($proceso) {
+                $agenda['proceso'] = $proceso;
+                Log::info('✅ Proceso agregado a la agenda', [
+                    'proceso_uuid' => $proceso['uuid'],
+                    'proceso_nombre' => $proceso['nombre'],
+                    'proceso_n_cups' => $proceso['n_cups']
+                ]);
+            } else {
+                Log::error('❌ NO SE PUDO ENCONTRAR EL PROCESO', [
+                    'agenda_uuid' => $uuid,
+                    'proceso_id' => $procesoId,
+                    'proceso_uuid' => $procesoUuid
+                ]);
+            }
+        }
+
+        // ✅ ENRIQUECER CON BRIGADA (PRIORIDAD: UUID)
+        if (!isset($agenda['brigada']) && !empty($agenda['brigada_uuid']) && $agenda['brigada_uuid'] !== 'null') {
+            $brigada = $this->getBrigadaByUuid($agenda['brigada_uuid']);
+            if ($brigada) {
+                $agenda['brigada'] = $brigada;
+                Log::info('✅ Brigada agregada a la agenda', [
+                    'brigada_uuid' => $brigada['uuid'],
+                    'brigada_nombre' => $brigada['nombre']
+                ]);
+            }
+        }
+
+        // ✅ ENRIQUECER CON DATOS DE USUARIO (MÉDICO)
+        if (!empty($agenda['usuario_medico_id']) && !isset($agenda['usuario_medico'])) {
+            $usuarioMedico = $this->getUsuarioOffline($agenda['usuario_medico_id']);
+            if ($usuarioMedico) {
+                $agenda['usuario_medico'] = $usuarioMedico;
+                Log::info('✅ Usuario médico agregado a la agenda', [
+                    'usuario_uuid' => $usuarioMedico['uuid'],
+                    'usuario_nombre' => $usuarioMedico['nombre_completo']
+                ]);
+            }
+        }
+
+        return $agenda;
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo agenda offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid,
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return null;
+    }
+}
+
+public function getProcesoByUuid(string $uuid): ?array
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $result = DB::connection('offline')->table('procesos')
+                ->where('uuid', $uuid)
+                ->first();
+            
+            if ($result) {
+                return [
+                    'id' => $result->id,
+                    'uuid' => $result->uuid,
+                    'nombre' => $result->nombre,
+                    'n_cups' => $result->n_cups, // ← AGREGADO
+                    'created_at' => $result->created_at,
+                    'updated_at' => $result->updated_at,
+                    'deleted_at' => $result->deleted_at ?? null
+                ];
+            }
+        }
+        
+        // Fallback a JSON
+        $procesosPath = $this->storagePath . '/procesos';
+        if (is_dir($procesosPath)) {
+            $files = glob($procesosPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && ($data['uuid'] ?? null) === $uuid) {
+                    return $data;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo proceso por UUID', [
             'uuid' => $uuid,
             'error' => $e->getMessage()
         ]);
         return null;
     }
 }
+
+/**
+ * ✅ CORREGIDO: Obtener proceso por ID con logging detallado
+ */
+public function getProcesoById($id): ?array
+{
+    try {
+        $id = (int) $id; // Asegurar que sea integer
+        
+        Log::info('🔍 getProcesoById: Iniciando búsqueda', [
+            'proceso_id' => $id,
+            'sqlite_available' => $this->isSQLiteAvailable()
+        ]);
+        
+        if ($this->isSQLiteAvailable()) {
+            // ✅ VERIFICAR SI LA TABLA EXISTE
+            $tableExists = DB::connection('offline')
+                ->select("SELECT name FROM sqlite_master WHERE type='table' AND name='procesos'");
+            
+            Log::info('🔍 Verificando tabla procesos', [
+                'table_exists' => !empty($tableExists)
+            ]);
+            
+            if (empty($tableExists)) {
+                Log::error('❌ Tabla procesos NO EXISTE en SQLite');
+                return null;
+            }
+            
+            // ✅ CONTAR REGISTROS
+            $count = DB::connection('offline')->table('procesos')->count();
+            Log::info('📊 Total de procesos en SQLite', ['count' => $count]);
+            
+            // ✅ BUSCAR EL PROCESO
+            $result = DB::connection('offline')->table('procesos')
+                ->where('id', $id)
+                ->first();
+            
+            Log::info('🔍 Resultado de búsqueda por ID', [
+                'proceso_id' => $id,
+                'found' => $result !== null,
+                'result' => $result ? (array) $result : null
+            ]);
+            
+            if ($result) {
+                $proceso = [
+                    'id' => $result->id,
+                    'uuid' => $result->uuid,
+                    'nombre' => $result->nombre,
+                    'n_cups' => $result->n_cups,
+                    'created_at' => $result->created_at,
+                    'updated_at' => $result->updated_at,
+                    'deleted_at' => $result->deleted_at ?? null
+                ];
+                
+                Log::info('✅ Proceso encontrado en SQLite', [
+                    'proceso_id' => $proceso['id'],
+                    'proceso_nombre' => $proceso['nombre'],
+                    'proceso_n_cups' => $proceso['n_cups']
+                ]);
+                
+                return $proceso;
+            } else {
+                Log::warning('⚠️ Proceso no encontrado en SQLite', [
+                    'proceso_id' => $id
+                ]);
+            }
+        }
+        
+        // ✅ FALLBACK A JSON
+        Log::info('🔍 Buscando proceso en archivos JSON');
+        
+        $procesosPath = $this->storagePath . '/procesos';
+        
+        if (!is_dir($procesosPath)) {
+            Log::warning('⚠️ Directorio de procesos no existe', [
+                'path' => $procesosPath
+            ]);
+            return null;
+        }
+        
+        $files = glob($procesosPath . '/*.json');
+        Log::info('📁 Archivos JSON encontrados', [
+            'count' => count($files),
+            'path' => $procesosPath
+        ]);
+        
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            if ($data && ($data['id'] ?? null) == $id) {
+                Log::info('✅ Proceso encontrado en JSON', [
+                    'file' => basename($file),
+                    'proceso_id' => $data['id'],
+                    'proceso_nombre' => $data['nombre']
+                ]);
+                return $data;
+            }
+        }
+        
+        Log::error('❌ Proceso no encontrado en ningún lado', [
+            'proceso_id' => $id,
+            'sqlite_checked' => $this->isSQLiteAvailable(),
+            'json_files_checked' => count($files ?? [])
+        ]);
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo proceso por ID', [
+            'id' => $id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return null;
+    }
+}
+
+
+/**
+ * ✅ NUEVO: Obtener brigada por UUID
+ */
+public function getBrigadaByUuid(string $uuid): ?array
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $result = DB::connection('offline')->table('brigadas')
+                ->where('uuid', $uuid)
+                ->first();
+            
+            if ($result) {
+                return (array) $result;
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        return null;
+    }
+}
+/**
+ * ✅ NUEVO: Obtener proceso offline por ID
+ */
+public function getProcesoOffline($procesoId): ?array
+{
+    try {
+        Log::info('🔍 Buscando proceso offline', [
+            'proceso_id' => $procesoId
+        ]);
+
+        $proceso = null;
+
+        // ✅ BUSCAR EN SQLite PRIMERO
+        if ($this->isSQLiteAvailable()) {
+            $result = DB::connection('offline')->table('procesos')
+                ->where('id', $procesoId)
+                ->first();
+
+            if ($result) {
+                $proceso = (array) $result;
+                
+                Log::info('✅ Proceso encontrado en SQLite', [
+                    'proceso_id' => $procesoId,
+                    'proceso_nombre' => $proceso['nombre'] ?? 'NO_NOMBRE'
+                ]);
+                
+                return $proceso;
+            }
+        }
+
+        // ✅ FALLBACK A JSON
+        $procesosPath = $this->storagePath . '/procesos';
+        if (is_dir($procesosPath)) {
+            $files = glob($procesosPath . '/*.json');
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                
+                if ($data && ($data['id'] ?? null) == $procesoId) {
+                    Log::info('✅ Proceso encontrado en JSON', [
+                        'proceso_id' => $procesoId,
+                        'proceso_nombre' => $data['nombre'] ?? 'NO_NOMBRE'
+                    ]);
+                    
+                    return $data;
+                }
+            }
+        }
+
+        Log::warning('⚠️ Proceso no encontrado offline', [
+            'proceso_id' => $procesoId
+        ]);
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo proceso offline', [
+            'error' => $e->getMessage(),
+            'proceso_id' => $procesoId
+        ]);
+        
+        return null;
+    }
+}
+
 public function getCitaOffline(string $uuid): ?array
 {
     try {
@@ -7225,5 +7704,242 @@ public function getHistoriasClinicasByPacienteYEspecialidad(string $pacienteUuid
         return [];
     }
 }
+/**
+ * ✅ OBTENER CUPS CONTRATADOS DESDE OFFLINE
+ */
+public function getCupsContratadosOffline(): array
+{
+    try {
+        Log::info('🔍 Obteniendo CUPS contratados desde offline');
+        
+        $cupsContratados = [];
+        
+        // ✅ BUSCAR EN SQLite PRIMERO
+        if ($this->isSQLiteAvailable()) {
+            $results = DB::connection('offline')->table('cups_contratados')
+                ->where('estado', 'ACTIVO')
+                ->where('contrato_estado', 'ACTIVO')
+                ->get();
+            
+            $cupsContratados = $results->map(function($item) {
+                $cupsContratado = (array) $item;
+                
+                // ✅ ENRIQUECER CON DATOS DE CUPS
+                if (!empty($cupsContratado['cups_uuid'])) {
+                    $cups = $this->getCupsOffline($cupsContratado['cups_uuid']);
+                    if ($cups) {
+                        $cupsContratado['cups'] = $cups;
+                    }
+                }
+                
+                // ✅ ENRIQUECER CON CATEGORÍA CUPS
+                if (!empty($cupsContratado['categoria_cups_id'])) {
+                    $categoria = $this->getCategoriaCupsOffline($cupsContratado['categoria_cups_id']);
+                    if ($categoria) {
+                        $cupsContratado['categoria_cups'] = $categoria;
+                    }
+                }
+                
+                return $cupsContratado;
+            })->toArray();
+            
+            Log::info('✅ CUPS contratados obtenidos desde SQLite', [
+                'total' => count($cupsContratados)
+            ]);
+        } else {
+            // ✅ FALLBACK A JSON
+            $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+            if (is_dir($cupsContratadosPath)) {
+                $files = glob($cupsContratadosPath . '/*.json');
+                
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    
+                    if ($data && 
+                        ($data['estado'] ?? '') === 'ACTIVO' &&
+                        ($data['contrato_estado'] ?? '') === 'ACTIVO') {
+                        
+                        // ✅ VALIDAR VIGENCIA
+                        $fechaActual = now()->format('Y-m-d');
+                        if ($this->validarVigenciaContrato($data, $fechaActual)) {
+                            $cupsContratados[] = $data;
+                        }
+                    }
+                }
+                
+                Log::info('✅ CUPS contratados obtenidos desde JSON', [
+                    'total' => count($cupsContratados)
+                ]);
+            }
+        }
+        
+        return $cupsContratados;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS contratados offline', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [];
+    }
+}
+/**
+ * ✅ OBTENER CATEGORÍA CUPS OFFLINE
+ */
+public function getCategoriaCupsOffline($categoriaId): ?array
+{
+    try {
+        // ✅ BUSCAR EN SQLite
+        if ($this->isSQLiteAvailable()) {
+            $categoria = DB::connection('offline')->table('categorias_cups')
+                ->where('id', $categoriaId)
+                ->first();
+            
+            if ($categoria) {
+                return (array) $categoria;
+            }
+        }
+        
+        // ✅ FALLBACK A JSON
+        $categoriasPath = $this->storagePath . '/categorias_cups';
+        if (is_dir($categoriasPath)) {
+            $files = glob($categoriasPath . '/*.json');
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && ($data['id'] ?? null) == $categoriaId) {
+                    return $data;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo categoría CUPS offline', [
+            'error' => $e->getMessage(),
+            'categoria_id' => $categoriaId
+        ]);
+        
+        return null;
+    }
+}
+/**
+ * ✅ SINCRONIZAR CATEGORÍAS CUPS DESDE API
+ */
+public function syncCategoriasCupsFromApi(array $categorias): bool
+{
+    try {
+        Log::info('🔄 Sincronizando categorías CUPS offline', [
+            'count' => count($categorias)
+        ]);
+
+        // ✅ CREAR TABLA SI NO EXISTE
+        if ($this->isSQLiteAvailable()) {
+            $this->createCategoriasCupsTable();
+            
+            // Limpiar datos existentes
+            DB::connection('offline')->table('categorias_cups')->delete();
+            
+            foreach ($categorias as $categoria) {
+                DB::connection('offline')->table('categorias_cups')->insert([
+                    'id' => $categoria['id'],
+                    'uuid' => $categoria['uuid'] ?? null,
+                    'nombre' => $categoria['nombre'],
+                    'descripcion' => $categoria['descripcion'] ?? null,
+                    'created_at' => now()->toISOString(),
+                    'updated_at' => now()->toISOString()
+                ]);
+            }
+        }
+
+        // ✅ TAMBIÉN GUARDAR EN JSON
+        foreach ($categorias as $categoria) {
+            $this->storeData('categorias_cups/' . $categoria['id'] . '.json', $categoria);
+        }
+
+        Log::info('✅ Categorías CUPS sincronizadas offline', [
+            'synced' => count($categorias)
+        ]);
+
+        return true;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronizando categorías CUPS offline', [
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ CREAR TABLA DE CATEGORÍAS CUPS
+ */
+private function createCategoriasCupsTable(): void
+{
+    DB::connection('offline')->statement('
+        CREATE TABLE IF NOT EXISTS categorias_cups (
+            id INTEGER PRIMARY KEY,
+            uuid TEXT UNIQUE,
+            nombre TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_categorias_cups_nombre ON categorias_cups(nombre)
+    ');
+}
+/**
+ * ✅ GUARDAR CONTRATO OFFLINE
+ */
+public function storeContratoOffline(array $contratoData): void
+{
+    try {
+        if (empty($contratoData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar contrato sin UUID');
+            return;
+        }
+
+        $offlineData = [
+            'uuid' => $contratoData['uuid'],
+            'empresa_id' => $contratoData['empresa_id'] ?? null,
+            'empresa_uuid' => $contratoData['empresa_uuid'] ?? null,
+            'empresa_nombre' => $contratoData['empresa']['nombre'] ?? null,
+            'numero_contrato' => $contratoData['numero_contrato'] ?? null,
+            'fecha_inicio' => $contratoData['fecha_inicio'],
+            'fecha_fin' => $contratoData['fecha_fin'],
+            'estado' => $contratoData['estado'] ?? 'ACTIVO',
+            'created_at' => $contratoData['created_at'] ?? now()->toISOString(),
+            'updated_at' => now()->toISOString()
+        ];
+
+        // ✅ GUARDAR EN SQLite
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('contratos')->updateOrInsert(
+                ['uuid' => $contratoData['uuid']],
+                $offlineData
+            );
+        }
+
+        // ✅ GUARDAR EN JSON
+        $this->storeData('contratos/' . $contratoData['uuid'] . '.json', $offlineData);
+
+        Log::debug('✅ Contrato almacenado offline', [
+            'uuid' => $contratoData['uuid'],
+            'numero' => $offlineData['numero_contrato']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error almacenando contrato offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $contratoData['uuid'] ?? 'sin-uuid'
+        ]);
+    }
+}
+
 
 }
