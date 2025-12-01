@@ -210,6 +210,33 @@
 
     </div>
 
-    @include('historia-clinica.historial-historias.partials.scripts')
+    <script>
+    // ✅ DETECTAR SI VIENE CON PARÁMETRO DE IMPRESIÓN Y VALIDAR MEDICAMENTOS
+    window.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shouldPrint = urlParams.get('print');
+        
+        if (shouldPrint === '1') {
+            // ✅ VALIDAR SI HAY MEDICAMENTOS
+            const hayMedicamentos = {{ !empty($historia['medicamentos']) && count($historia['medicamentos']) > 0 ? 'true' : 'false' }};
+            
+            if (!hayMedicamentos) {
+                // ❌ NO HAY MEDICAMENTOS - MOSTRAR ALERTA Y CERRAR
+                alert('No hay medicamentos registrados para esta historia clínica.');
+                window.close();
+            } else {
+                // ✅ HAY MEDICAMENTOS - PROCEDER CON IMPRESIÓN
+                setTimeout(function() {
+                    window.print();
+                    
+                    // Cerrar la ventana después de imprimir o cancelar
+                    window.onafterprint = function() {
+                        window.close();
+                    };
+                }, 1500); // Esperar 1.5 segundos
+            }
+        }
+    });
+    </script>
 </body>
 </html>

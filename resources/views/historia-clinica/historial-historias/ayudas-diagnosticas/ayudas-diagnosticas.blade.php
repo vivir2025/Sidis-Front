@@ -208,6 +208,33 @@
 
     </div>
 
-    @include('historia-clinica.historial-historias.partials.scripts')
+    <script>
+    // ✅ DETECTAR SI VIENE CON PARÁMETRO DE IMPRESIÓN Y VALIDAR AYUDAS DIAGNÓSTICAS
+    window.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shouldPrint = urlParams.get('print');
+        
+        if (shouldPrint === '1') {
+            // ✅ VALIDAR SI HAY AYUDAS DIAGNÓSTICAS (CUPS)
+            const hayCups = {{ !empty($historia['cups']) && count($historia['cups']) > 0 ? 'true' : 'false' }};
+            
+            if (!hayCups) {
+                // ❌ NO HAY AYUDAS DIAGNÓSTICAS - MOSTRAR ALERTA Y CERRAR
+                alert('No hay ayudas diagnósticas registradas para esta historia clínica.');
+                window.close();
+            } else {
+                // ✅ HAY AYUDAS DIAGNÓSTICAS - PROCEDER CON IMPRESIÓN
+                setTimeout(function() {
+                    window.print();
+                    
+                    // Cerrar la ventana después de imprimir o cancelar
+                    window.onafterprint = function() {
+                        window.close();
+                    };
+                }, 1500); // Esperar 1.5 segundos
+            }
+        }
+    });
+    </script>
 </body>
 </html>

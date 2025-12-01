@@ -208,6 +208,33 @@
 
     </div>
 
-    @include('historia-clinica.historial-historias.partials.scripts')
+    <script>
+    // ✅ DETECTAR SI VIENE CON PARÁMETRO DE IMPRESIÓN Y VALIDAR REMISIONES
+    window.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shouldPrint = urlParams.get('print');
+        
+        if (shouldPrint === '1') {
+            // ✅ VALIDAR SI HAY REMISIONES
+            const hayRemisiones = {{ !empty($historia['remisiones']) && count($historia['remisiones']) > 0 ? 'true' : 'false' }};
+            
+            if (!hayRemisiones) {
+                // ❌ NO HAY REMISIONES - MOSTRAR ALERTA Y CERRAR
+                alert('No hay remisiones registradas para esta historia clínica.');
+                window.close();
+            } else {
+                // ✅ HAY REMISIONES - PROCEDER CON IMPRESIÓN
+                setTimeout(function() {
+                    window.print();
+                    
+                    // Cerrar la ventana después de imprimir o cancelar
+                    window.onafterprint = function() {
+                        window.close();
+                    };
+                }, 1500); // Esperar 1.5 segundos
+            }
+        }
+    });
+    </script>
 </body>
 </html>

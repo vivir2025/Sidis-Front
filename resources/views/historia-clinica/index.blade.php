@@ -85,8 +85,7 @@
                         </div>
 
                         {{-- Paginación --}}
-                        <div id="paginacionContainer" class="d-flex justify-content-between align-items-center mt-3" style="display: none !important;">
-                            <div id="paginacionInfo" class="text-muted"></div>
+                        <div id="paginacionContainer" class="d-none justify-content-between align-items-center mt-3">
                             <nav>
                                 <ul class="pagination mb-0" id="paginacionLinks"></ul>
                             </nav>
@@ -120,19 +119,33 @@ $(document).ready(function() {
         cargarHistorias();
     });
 
-    // ✅ LIMPIAR FILTROS
+    // ✅ LIMPIAR FILTROS - VERSIÓN CORREGIDA
     $('#btnLimpiarFiltros').on('click', function() {
+        // 1. Resetear formulario
         $('#formFiltros')[0].reset();
+        
+        // 2. Limpiar variables
         currentFilters = {};
+        currentPage = 1; // ⚠️ ESTO FALTABA
+        
+        // 3. Mostrar mensaje inicial
         $('#tbodyHistorias').html(`
             <tr>
-                <td colspan="8" class="text-center text-muted py-5">
+                <td colspan="6" class="text-center text-muted py-5">
                     <i class="fas fa-search fa-3x mb-3 d-block"></i>
                     Utiliza los filtros para buscar historias clínicas
                 </td>
             </tr>
         `);
+        
+        // 4. Ocultar paginación
         $('#paginacionContainer').hide();
+        
+        // 5. Ocultar loading si estaba visible
+        $('#loadingHistorias').hide();
+        
+        // 6. Mostrar tabla
+        $('#tablaHistoriasContainer').show();
     });
 
     // ✅ FUNCIÓN PARA CARGAR HISTORIAS
@@ -259,21 +272,21 @@ $(document).ready(function() {
                                     title="Imprimir">
                                 <i class="fas fa-print"></i>
                             </button>
-                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/medicamentos" 
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/medicamentos?print=1" 
                                 class="btn btn-outline-success" 
-                                title="Ver Medicamentos"
+                                title="Imprimir Medicamentos"
                                 target="_blank">
                                     <i class="fas fa-pills"></i>
                             </a>
-                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/remisiones" 
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/remisiones?print=1" 
                                 class="btn btn-outline-info" 
-                                title="Ver Remisiones"
+                                title="Imprimir Remisiones"
                                 target="_blank">
                                     <i class="fas fa-file-medical"></i>
                             </a>
-                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/ayudas-diagnosticas" 
+                            <a href="{{ url('historia-clinica') }}/${historia.uuid}/ayudas-diagnosticas?print=1" 
                                 class="btn btn-outline-warning" 
-                                title="Ver Ayudas Diagnósticas"
+                                title="Imprimir Ayudas Diagnósticas"
                                 target="_blank">
                                     <i class="fas fa-flask"></i>
                             </a>
@@ -346,7 +359,7 @@ $(document).ready(function() {
     function mostrarError(mensaje) {
         Swal.fire({
             icon: 'error',
-            title: 'Error',
+            title: 'Error',l
             text: mensaje,
             confirmButtonColor: '#3085d6'
         });
