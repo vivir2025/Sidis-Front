@@ -28,13 +28,7 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
-        // ✅ AGREGAR ESTA CONEXIÓN NUEVA PARA MODO OFFLINE
-        'offline' => [
-            'driver' => 'sqlite',
-            'database' => database_path('offline.sqlite'),
-            'prefix' => '',
-            'foreign_key_constraints' => true,
-        ],
+      
 
         'mysql' => [
             'driver' => 'mysql',

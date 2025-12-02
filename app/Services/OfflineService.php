@@ -2391,7 +2391,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
 
         // ✅ CONVERTIR proceso_id A INTEGER Y EXTRAER UUID
         $procesoId = null;
-        $procesoUuid = null; // ← LÍNEA AGREGADA
+        $procesoUuid = null;
         
         if (isset($agendaData['proceso_id']) && 
             !empty($agendaData['proceso_id']) && 
@@ -2415,7 +2415,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
 
         // ✅ CONVERTIR brigada_id A INTEGER Y EXTRAER UUID
         $brigadaId = null;
-        $brigadaUuid = null; // ← LÍNEA AGREGADA
+        $brigadaUuid = null;
         
         if (isset($agendaData['brigada_id']) && 
             !empty($agendaData['brigada_id']) && 
@@ -2449,16 +2449,45 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'intervalo' => $agendaData['intervalo'] ?? '15',
             'etiqueta' => $agendaData['etiqueta'] ?? '',
             'estado' => $agendaData['estado'] ?? 'ACTIVO',
-            'proceso_id' => $procesoId, // ✅ AHORA ESTÁ DEFINIDO
-            'proceso_uuid' => $procesoUuid, // ✅ AHORA ESTÁ DEFINIDO
+            'proceso_id' => $procesoId,
+            'proceso_uuid' => $procesoUuid,
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
             'usuario_medico_id' => $usuarioMedicoValue,
-            'brigada_id' => $brigadaId, // ✅ AHORA ESTÁ DEFINIDO
-            'brigada_uuid' => $brigadaUuid, // ✅ AHORA ESTÁ DEFINIDO
+            'brigada_id' => $brigadaId,
+            'brigada_uuid' => $brigadaUuid,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'operation_type' => $needsSync ? 'create' : 'sync',
-            'original_data' => $needsSync ? json_encode($agendaData) : null,
+            
+            // ✅ GUARDAR DATOS COMPLETOS EN original_data (INCLUYENDO PROCESO)
+            'original_data' => json_encode([
+                'uuid' => $agendaData['uuid'],
+                'fecha' => $agendaData['fecha'],
+                'consultorio' => $agendaData['consultorio'] ?? '',
+                'hora_inicio' => $agendaData['hora_inicio'],
+                'hora_fin' => $agendaData['hora_fin'],
+                'intervalo' => $agendaData['intervalo'] ?? '15',
+                'etiqueta' => $agendaData['etiqueta'] ?? '',
+                'modalidad' => $agendaData['modalidad'] ?? 'Ambulatoria',
+                'estado' => $agendaData['estado'] ?? 'ACTIVO',
+                'proceso_id' => $procesoId,
+                'proceso_uuid' => $procesoUuid,
+                
+                // ✅ INCLUIR OBJETO PROCESO COMPLETO
+                'proceso' => isset($agendaData['proceso']) ? $agendaData['proceso'] : [
+                    'id' => $procesoId,
+                    'uuid' => $procesoUuid,
+                    'nombre' => $agendaData['proceso']['nombre'] ?? 'Proceso desconocido',
+                    'n_cups' => $agendaData['proceso']['n_cups'] ?? null
+                ],
+                
+                'brigada_id' => $brigadaId,
+                'brigada_uuid' => $brigadaUuid,
+                'usuario_medico_id' => $usuarioMedicoValue,
+                'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
+                'sede_id' => (int) $agendaData['sede_id']
+            ]),
+            
             'created_at' => $agendaData['created_at'] ?? now()->toISOString(),
             'updated_at' => now()->toISOString(),
             'deleted_at' => $agendaData['deleted_at'] ?? null
@@ -2472,23 +2501,32 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             );
         }
 
-        // ✅ ENRIQUECER JSON CON AMBOS CAMPOS PARA COMPATIBILIDAD
+        // ✅ ENRIQUECER JSON CON PROCESO COMPLETO
         $jsonData = array_merge($agendaData, [
             'usuario_medico_uuid' => $usuarioMedicoValue,
             'usuario_medico_id' => $usuarioMedicoValue,
-            'sync_status' => $sqliteData['sync_status']
+            'sync_status' => $sqliteData['sync_status'],
+            
+            // ✅ ASEGURAR QUE EL PROCESO ESTÉ COMPLETO EN JSON
+            'proceso' => isset($agendaData['proceso']) ? $agendaData['proceso'] : [
+                'id' => $procesoId,
+                'uuid' => $procesoUuid,
+                'nombre' => $agendaData['proceso']['nombre'] ?? 'Proceso desconocido',
+                'n_cups' => $agendaData['proceso']['n_cups'] ?? null
+            ]
         ]);
         
         $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $jsonData);
 
-        Log::debug('✅ Agenda almacenada offline con IDs convertidos', [
+        Log::debug('✅ Agenda almacenada offline con proceso completo', [
             'uuid' => $agendaData['uuid'],
             'fecha' => $agendaData['fecha'],
             'consultorio' => $agendaData['consultorio'],
             'proceso_id' => $procesoId,
-            'proceso_uuid' => $procesoUuid, // ✅ AHORA SE PUEDE LOGGEAR
+            'proceso_uuid' => $procesoUuid,
+            'proceso_nombre' => $jsonData['proceso']['nombre'] ?? 'N/A',
             'brigada_id' => $brigadaId,
-            'brigada_uuid' => $brigadaUuid, // ✅ AHORA SE PUEDE LOGGEAR
+            'brigada_uuid' => $brigadaUuid,
             'usuario_medico_value' => $usuarioMedicoValue,
             'sync_status' => $sqliteData['sync_status']
         ]);
@@ -2501,7 +2539,6 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         ]);
     }
 }
-
 
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
@@ -3543,12 +3580,31 @@ public function getAgendaOffline(string $uuid): ?array
             if ($result) {
                 $agenda = (array) $result;
                 
+                // ✅ DECODIFICAR original_data SI EXISTE
+                if (isset($agenda['original_data']) && is_string($agenda['original_data'])) {
+                    $originalData = json_decode($agenda['original_data'], true);
+                    
+                    if ($originalData) {
+                        // ✅ SI original_data TIENE EL PROCESO, USARLO
+                        if (isset($originalData['proceso'])) {
+                            $agenda['proceso'] = $originalData['proceso'];
+                            
+                            Log::info('✅ Proceso extraído de original_data', [
+                                'proceso_id' => $agenda['proceso']['id'] ?? 'N/A',
+                                'proceso_nombre' => $agenda['proceso']['nombre'] ?? 'N/A',
+                                'proceso_n_cups' => $agenda['proceso']['n_cups'] ?? 'N/A'
+                            ]);
+                        }
+                    }
+                }
+                
                 Log::info('✅ OfflineService: Agenda encontrada en SQLite', [
                     'agenda_uuid' => $uuid,
                     'agenda_fecha' => $agenda['fecha'] ?? 'NO_FECHA',
                     'etiqueta' => $agenda['etiqueta'] ?? 'NO_ETIQUETA',
                     'proceso_id' => $agenda['proceso_id'] ?? 'NO_PROCESO_ID',
-                    'proceso_uuid' => $agenda['proceso_uuid'] ?? 'NO_PROCESO_UUID'
+                    'proceso_uuid' => $agenda['proceso_uuid'] ?? 'NO_PROCESO_UUID',
+                    'tiene_proceso' => isset($agenda['proceso'])
                 ]);
             }
         }
@@ -3561,7 +3617,8 @@ public function getAgendaOffline(string $uuid): ?array
                 $agenda = json_decode(file_get_contents($filePath), true);
                 
                 Log::info('✅ OfflineService: Agenda encontrada en JSON', [
-                    'agenda_uuid' => $uuid
+                    'agenda_uuid' => $uuid,
+                    'tiene_proceso' => isset($agenda['proceso'])
                 ]);
             }
         }
@@ -3573,7 +3630,7 @@ public function getAgendaOffline(string $uuid): ?array
             return null;
         }
 
-        // ✅ ENRIQUECER CON DATOS DEL PROCESO (CORREGIDO)
+        // ✅ SI AÚN NO TIENE PROCESO, INTENTAR BUSCARLO
         if (!isset($agenda['proceso'])) {
             $proceso = null;
             
@@ -3681,7 +3738,6 @@ public function getAgendaOffline(string $uuid): ?array
         return null;
     }
 }
-
 public function getProcesoByUuid(string $uuid): ?array
 {
     try {
