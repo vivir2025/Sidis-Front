@@ -12,13 +12,18 @@
                     <label for="ClasificacionEstadoMetabolico" class="form-label">Clasificación Estado Metabólico <span class="text-danger">*</span></label>
                     <select class="form-select" id="ClasificacionEstadoMetabolico" name="ClasificacionEstadoMetabolico" required>
                         <option value="">Seleccione...</option>
-                        <option value="NORMAL" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'NORMAL' ? 'selected' : '' }}>Normal</option>
-                        <option value="PREDIABETES" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'PREDIABETES' ? 'selected' : '' }}>Prediabetes</option>
-                        <option value="DIABETES_TIPO_1" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'DIABETES_TIPO_1' ? 'selected' : '' }}>Diabetes Tipo 1</option>
-                        <option value="DIABETES_TIPO_2" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'DIABETES_TIPO_2' ? 'selected' : '' }}>Diabetes Tipo 2</option>
-                        <option value="DIABETES_GESTACIONAL" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'DIABETES_GESTACIONAL' ? 'selected' : '' }}>Diabetes Gestacional</option>
+                        <option value="DM_CON_COMPLICACIONES" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'DM_CON_COMPLICACIONES' ? 'selected' : '' }}>DM CON COMPLICACIONES</option>
+                        <option value="DM_SIN_COMPLICACIONES" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'DM_SIN_COMPLICACIONES' ? 'selected' : '' }}>DM SIN COMPLICACIONES</option>
+                        <option value="ERC_ESTADIO_IIIB" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'ERC_ESTADIO_IIIB' ? 'selected' : '' }}>ERC-ESTADIO IIIB</option>
+                        <option value="ERC_ESTADIO_IV" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'ERC_ESTADIO_IV' ? 'selected' : '' }}>ERC-ESTADIO IV</option>
+                        <option value="ERC_ESTADIO_V" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'ERC_ESTADIO_V' ? 'selected' : '' }}>ERC-ESTADIO V</option>
+                        <option value="HTA_RIESGO_ALTO" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'HTA_RIESGO_ALTO' ? 'selected' : '' }}>HTA RIESGO ALTO</option>
+                        <option value="HTA_RIESGO_BAJO" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'HTA_RIESGO_BAJO' ? 'selected' : '' }}>HTA RIESGO BAJO</option>
+                        <option value="HTA_RIESGO_MODERADO" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'HTA_RIESGO_MODERADO' ? 'selected' : '' }}>HTA RIESGO MODERADO</option>
+                        <option value="HTA_RIESGO_MUY_ALTO" {{ ($historiaPrevia['ClasificacionEstadoMetabolico'] ?? '') === 'HTA_RIESGO_MUY_ALTO' ? 'selected' : '' }}>HTA RIESGO MUY ALTO</option>
                     </select>
                 </div>
+
             </div>
             <div class="col-md-6">
                 <div class="mb-3">
