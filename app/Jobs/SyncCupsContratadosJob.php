@@ -1,5 +1,4 @@
 <?php
-// app/Jobs/SyncCupsContratadosJob.php
 
 namespace App\Jobs;
 
@@ -8,80 +7,103 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Services\{ApiService, OfflineService, AuthService};
 use Illuminate\Support\Facades\Log;
+use App\Services\ApiService;
+use App\Services\AuthService;
+use App\Services\OfflineService;
 
 class SyncCupsContratadosJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $force;
+    public $timeout = 600;
+    public $tries = 2;
 
-    public function __construct(bool $force = false)
-    {
-        $this->force = $force;
-    }
-
-    public function handle()
+    public function handle(
+        ApiService $apiService,
+        AuthService $authService,
+        OfflineService $offlineService
+    ): void
     {
         try {
-            Log::info('🔄 Iniciando sincronización automática de CUPS contratados', [
-                'force' => $this->force
-            ]);
-            
-            $apiService = app(ApiService::class);
-            $offlineService = app(OfflineService::class);
-            $authService = app(AuthService::class);
-            
-            if (!$authService->hasValidToken() || !$apiService->isOnline()) {
-                Log::warning('⚠️ No se puede sincronizar: sin token o conexión');
+            Log::info('🚀 [JOB CUPS CONTRATADOS] Iniciando sincronización');
+
+            if (!$apiService->isOnline()) {
+                Log::info('📱 [JOB CUPS CONTRATADOS] Modo offline');
                 return;
             }
-            
-            // ✅ LIMPIAR CACHE SI ES FORZADO
-            if ($this->force) {
-                Log::info('🗑️ Limpiando cache completo (modo forzado)');
-                $offlineService->clearCupsContratados();
+
+            if (!$authService->hasValidToken()) {
+                Log::info('🔐 [JOB CUPS CONTRATADOS] Sin token válido');
+                return;
             }
+
+            // Verificar si ya se sincronizó hoy
+            $lastSync = cache()->get('cups_contratados_last_sync');
+            $today = now()->format('Y-m-d');
             
-            // ✅ OBTENER CUPS CONTRATADOS VIGENTES DESDE API
+            if ($lastSync === $today) {
+                Log::info('✅ [JOB CUPS CONTRATADOS] Ya sincronizados hoy');
+                return;
+            }
+
             $response = $apiService->get('/cups-contratados/disponibles');
             
             if (!$response['success']) {
-                Log::error('❌ Error obteniendo CUPS contratados vigentes', [
+                Log::warning('⚠️ [JOB CUPS CONTRATADOS] Error en API', [
                     'error' => $response['error'] ?? 'Error desconocido'
                 ]);
                 return;
             }
+
+            $cupsContratados = $response['data'] ?? [];
             
-            // ✅ ALMACENAR SOLO LOS CONTRATOS VIGENTES
-            $syncCount = 0;
-            $errorCount = 0;
+            if (empty($cupsContratados)) {
+                Log::info('ℹ️ [JOB CUPS CONTRATADOS] No hay datos disponibles');
+                return;
+            }
+
+            Log::info('📥 [JOB CUPS CONTRATADOS] Datos recibidos', [
+                'total' => count($cupsContratados)
+            ]);
+
+            $offlineService->clearCupsContratados();
+
+            $syncedCount = 0;
             
-            foreach ($response['data'] as $cupsContratado) {
+            foreach ($cupsContratados as $cupsContratado) {
                 try {
                     $offlineService->storeCupsContratadoOffline($cupsContratado);
-                    $syncCount++;
+                    $syncedCount++;
                 } catch (\Exception $e) {
-                    $errorCount++;
-                    Log::error('❌ Error almacenando CUPS contratado', [
-                        'cups_codigo' => $cupsContratado['cups']['codigo'] ?? 'N/A',
+                    Log::warning('⚠️ [JOB CUPS CONTRATADOS] Error guardando registro', [
+                        'uuid' => $cupsContratado['uuid'] ?? 'N/A',
                         'error' => $e->getMessage()
                     ]);
                 }
             }
-            
-            Log::info('✅ Sincronización automática completada', [
-                'contratos_sincronizados' => $syncCount,
-                'errores' => $errorCount,
-                'force' => $this->force
+
+            cache()->put('cups_contratados_last_sync', $today, now()->addDay());
+
+            Log::info('✅ [JOB CUPS CONTRATADOS] Sincronizados correctamente', [
+                'total' => count($cupsContratados),
+                'sincronizados' => $syncedCount
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error('❌ Error en sincronización automática', [
+            Log::error('❌ [JOB CUPS CONTRATADOS] Excepción', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            
+            throw $e;
         }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('❌ [JOB CUPS CONTRATADOS] Job falló', [
+            'error' => $exception->getMessage()
+        ]);
     }
 }

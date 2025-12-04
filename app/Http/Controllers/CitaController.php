@@ -31,42 +31,574 @@ class CitaController extends Controller
             $this->pacienteService = $pacienteService;
             $this->agendaService = $agendaService;
         }
+public function index(Request $request)
+{
 
-        public function index(Request $request)
-        {
-            try {
-                $filters = $request->only([
-                    'fecha', 'estado', 'paciente_documento', 'fecha_inicio', 'fecha_fin'
+     set_time_limit(300); // 5 minutos
+     ini_set('max_execution_time', 300);
+
+    try {
+        $filters = $request->only([
+            'fecha', 'estado', 'paciente_documento', 'fecha_inicio', 'fecha_fin'
+        ]);
+        
+        $page = $request->get('page', 1);
+        
+        $result = $this->citaService->index($filters, $page);
+
+        if ($request->ajax()) {
+            return response()->json($result);
+        }
+
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
+
+        Log::info('🔄 CitaController@index: Iniciando sincronizaciones silenciosas');
+
+        // ✅ SINCRONIZAR CUPS CONTRATADOS
+        Log::info('📋 Paso 1: Sincronizando CUPS contratados...');
+        $cupsContratadosStats = $this->sincronizarCupsContratadosSilencioso();
+        Log::info('📊 Resultado CUPS contratados', $cupsContratadosStats);
+        
+        // ✅ SINCRONIZAR CUPS NORMALES
+        Log::info('📋 Paso 2: Sincronizando CUPS normales...');
+        $cupsStats = $this->sincronizarCupsSilencioso();
+        Log::info('📊 Resultado CUPS normales', $cupsStats);
+
+        Log::info('✅ CitaController@index: Sincronizaciones completadas');
+
+        return view('citas.index', compact('usuario', 'isOffline', 'cupsContratadosStats', 'cupsStats'));
+        
+    } catch (\Exception $e) {
+        Log::error('Error en CitaController@index', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno del servidor'
+            ], 500);
+        }
+
+        return back()->with('error', 'Error cargando citas');
+    }
+}
+/**
+ * ✅ SINCRONIZACIÓN INTELIGENTE DE CUPS
+ * - Primera vez: Sincroniza todo
+ * - Siguientes veces: Solo sincroniza cambios nuevos
+ */
+private function sincronizarCupsSilencioso(): array
+{
+    try {
+        Log::info('🔄 [CUPS] INICIO: Sincronización inteligente de CUPS');
+        
+        if (!$this->apiService->isOnline()) {
+            Log::info('📱 [CUPS] Modo offline');
+            return [
+                'synced' => false,
+                'reason' => 'offline',
+                'message' => 'Sin conexión'
+            ];
+        }
+
+        if (!$this->authService->hasValidToken()) {
+            Log::info('🔐 [CUPS] Sin token válido');
+            return [
+                'synced' => false,
+                'reason' => 'no_token',
+                'message' => 'Sin token válido'
+            ];
+        }
+
+        // ✅ VERIFICAR SI HAY DATOS LOCALES
+        $localCount = $this->offlineService->countCups();
+        $lastSync = cache()->get('cups_last_sync');
+        $lastSyncTime = cache()->get('cups_last_sync_timestamp');
+        
+        Log::info('📊 [CUPS] Estado actual', [
+            'local_count' => $localCount,
+            'last_sync' => $lastSync,
+            'last_sync_time' => $lastSyncTime
+        ]);
+
+        // ✅ SI NO HAY DATOS LOCALES: SINCRONIZACIÓN COMPLETA
+        if ($localCount === 0) {
+            Log::info('🆕 [CUPS] Primera sincronización - Cargando todos los datos');
+            return $this->sincronizacionCompletaCups();
+        }
+
+        // ✅ SI YA HAY DATOS: SINCRONIZACIÓN INCREMENTAL
+        Log::info('🔄 [CUPS] Sincronización incremental - Solo cambios nuevos');
+        return $this->sincronizacionIncrementalCups($lastSyncTime);
+
+    } catch (\Exception $e) {
+        Log::error('❌ [CUPS] Excepción', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * 🔄 SINCRONIZACIÓN COMPLETA (primera vez)
+ */
+private function sincronizacionCompletaCups(): array
+{
+    try {
+        Log::info('🔄 [CUPS] Iniciando sincronización COMPLETA');
+
+        $this->offlineService->clearCups();
+
+        $page = 1;
+        $perPage = 100;
+        $totalSynced = 0;
+        $hasMorePages = true;
+        
+        while ($hasMorePages) {
+            Log::info("📡 [CUPS] Sincronizando página {$page}");
+            
+            $response = $this->apiService->get('/cups', [
+                'page' => $page,
+                'per_page' => $perPage
+            ]);
+            
+            if (!$response['success']) {
+                Log::warning('⚠️ [CUPS] Error en API', [
+                    'page' => $page,
+                    'error' => $response['error'] ?? 'Error desconocido'
                 ]);
-                
-                $page = $request->get('page', 1);
-                
-                $result = $this->citaService->index($filters, $page);
+                break;
+            }
 
-                if ($request->ajax()) {
-                    return response()->json($result);
+            $responseData = $response['data'] ?? [];
+            
+            if (isset($responseData['data']) && is_array($responseData['data'])) {
+                $cupsList = $responseData['data'];
+                $currentPage = $responseData['current_page'] ?? $page;
+                $lastPage = $responseData['last_page'] ?? $page;
+                $hasMorePages = $currentPage < $lastPage;
+            } else if (is_array($responseData)) {
+                $cupsList = $responseData;
+                $hasMorePages = count($cupsList) === $perPage;
+            } else {
+                break;
+            }
+            
+            if (empty($cupsList)) {
+                break;
+            }
+
+            foreach ($cupsList as $cups) {
+                if (!is_array($cups)) continue;
+
+                try {
+                    $this->offlineService->storeCupsOffline($cups);
+                    $totalSynced++;
+                } catch (\Exception $e) {
+                    Log::error('❌ [CUPS] Error guardando', [
+                        'uuid' => $cups['uuid'] ?? 'N/A',
+                        'error' => $e->getMessage()
+                    ]);
                 }
-
-                $usuario = $this->authService->usuario();
-                $isOffline = $this->authService->isOffline();
-
-                return view('citas.index', compact('usuario', 'isOffline'));
-                
-            } catch (\Exception $e) {
-                Log::error('Error en CitaController@index', [
-                    'error' => $e->getMessage()
-                ]);
-
-                if ($request->ajax()) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Error interno del servidor'
-                    ], 500);
-                }
-
-                return back()->with('error', 'Error cargando citas');
+            }
+            
+            $page++;
+            
+            if ($hasMorePages) {
+                usleep(100000); // 0.1 segundos
             }
         }
+
+        // ✅ GUARDAR MARCA DE TIEMPO
+        $now = now();
+        cache()->put('cups_last_sync', $now->format('Y-m-d'), $now->addDay());
+        cache()->put('cups_last_sync_timestamp', $now->toIso8601String(), $now->addDay());
+
+        Log::info('✅ [CUPS] Sincronización COMPLETA finalizada', [
+            'total' => $totalSynced,
+            'paginas' => $page - 1
+        ]);
+        
+        return [
+            'synced' => true,
+            'type' => 'complete',
+            'count' => $totalSynced,
+            'pages' => $page - 1,
+            'message' => "✅ Sincronizados {$totalSynced} CUPS (completo)"
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ [CUPS] Error en sincronización completa', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * 🔄 SINCRONIZACIÓN INCREMENTAL (solo cambios)
+ */
+private function sincronizacionIncrementalCups(?string $lastSyncTime): array
+{
+    try {
+        Log::info('🔄 [CUPS] Iniciando sincronización INCREMENTAL', [
+            'desde' => $lastSyncTime
+        ]);
+
+        // ✅ OBTENER SOLO REGISTROS NUEVOS O MODIFICADOS
+        $params = [
+            'per_page' => 100
+        ];
+
+        // Si la API soporta filtro por fecha
+        if ($lastSyncTime) {
+            $params['updated_since'] = $lastSyncTime;
+        }
+
+        $response = $this->apiService->get('/cups', $params);
+        
+        if (!$response['success']) {
+            Log::warning('⚠️ [CUPS] Error en API incremental', [
+                'error' => $response['error'] ?? 'Error desconocido'
+            ]);
+            
+            return [
+                'synced' => false,
+                'reason' => 'api_error',
+                'message' => $response['error'] ?? 'Error desconocido'
+            ];
+        }
+
+        $responseData = $response['data'] ?? [];
+        
+        if (isset($responseData['data']) && is_array($responseData['data'])) {
+            $cupsList = $responseData['data'];
+        } else if (is_array($responseData)) {
+            $cupsList = $responseData;
+        } else {
+            $cupsList = [];
+        }
+
+        if (empty($cupsList)) {
+            Log::info('✅ [CUPS] No hay cambios nuevos');
+            
+            return [
+                'synced' => true,
+                'type' => 'incremental',
+                'count' => 0,
+                'message' => '✅ No hay cambios nuevos'
+            ];
+        }
+
+        Log::info('📥 [CUPS] Procesando cambios incrementales', [
+            'count' => count($cupsList)
+        ]);
+
+        $syncedCount = 0;
+        $updatedCount = 0;
+        $newCount = 0;
+
+        foreach ($cupsList as $cups) {
+            if (!is_array($cups)) continue;
+
+            try {
+                $uuid = $cups['uuid'] ?? null;
+                
+                if (!$uuid) {
+                    Log::warning('⚠️ [CUPS] Registro sin UUID');
+                    continue;
+                }
+
+                // ✅ VERIFICAR SI YA EXISTE
+                $exists = $this->offlineService->cupsExists($uuid);
+                
+                // ✅ GUARDAR O ACTUALIZAR
+                $this->offlineService->storeCupsOffline($cups);
+                
+                if ($exists) {
+                    $updatedCount++;
+                } else {
+                    $newCount++;
+                }
+                
+                $syncedCount++;
+                
+            } catch (\Exception $e) {
+                Log::error('❌ [CUPS] Error guardando cambio', [
+                    'uuid' => $cups['uuid'] ?? 'N/A',
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ ACTUALIZAR MARCA DE TIEMPO
+        $now = now();
+        cache()->put('cups_last_sync', $now->format('Y-m-d'), $now->addDay());
+        cache()->put('cups_last_sync_timestamp', $now->toIso8601String(), $now->addDay());
+
+        Log::info('✅ [CUPS] Sincronización INCREMENTAL finalizada', [
+            'total_procesados' => $syncedCount,
+            'nuevos' => $newCount,
+            'actualizados' => $updatedCount
+        ]);
+        
+        return [
+            'synced' => true,
+            'type' => 'incremental',
+            'count' => $syncedCount,
+            'new' => $newCount,
+            'updated' => $updatedCount,
+            'message' => "🔄 Sincronizados {$syncedCount} cambios ({$newCount} nuevos, {$updatedCount} actualizados)"
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ [CUPS] Error en sincronización incremental', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * ✅ SINCRONIZACIÓN INTELIGENTE DE CUPS CONTRATADOS
+ */
+private function sincronizarCupsContratadosSilencioso(): array
+{
+    try {
+        Log::info('🔄 [CUPS CONTRATADOS] INICIO: Sincronización inteligente');
+        
+        if (!$this->apiService->isOnline()) {
+            return [
+                'synced' => false,
+                'reason' => 'offline',
+                'message' => 'Sin conexión'
+            ];
+        }
+
+        if (!$this->authService->hasValidToken()) {
+            return [
+                'synced' => false,
+                'reason' => 'no_token',
+                'message' => 'Sin token válido'
+            ];
+        }
+
+        // ✅ VERIFICAR SI HAY DATOS LOCALES
+        $localCount = $this->offlineService->countCupsContratados();
+        $lastSyncTime = cache()->get('cups_contratados_last_sync_timestamp');
+        
+        Log::info('📊 [CUPS CONTRATADOS] Estado actual', [
+            'local_count' => $localCount,
+            'last_sync_time' => $lastSyncTime
+        ]);
+
+        // ✅ SI NO HAY DATOS: SINCRONIZACIÓN COMPLETA
+        if ($localCount === 0) {
+            Log::info('🆕 [CUPS CONTRATADOS] Primera sincronización');
+            return $this->sincronizacionCompletaCupsContratados();
+        }
+
+        // ✅ SI YA HAY DATOS: SINCRONIZACIÓN INCREMENTAL
+        Log::info('🔄 [CUPS CONTRATADOS] Sincronización incremental');
+        return $this->sincronizacionIncrementalCupsContratados($lastSyncTime);
+
+    } catch (\Exception $e) {
+        Log::error('❌ [CUPS CONTRATADOS] Excepción', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * 🔄 SINCRONIZACIÓN COMPLETA DE CUPS CONTRATADOS
+ */
+private function sincronizacionCompletaCupsContratados(): array
+{
+    try {
+        $response = $this->apiService->get('/cups-contratados/disponibles');
+        
+        if (!$response['success']) {
+            return [
+                'synced' => false,
+                'reason' => 'api_error',
+                'message' => $response['error'] ?? 'Error desconocido'
+            ];
+        }
+
+        $cupsContratados = $response['data'] ?? [];
+        
+        if (empty($cupsContratados)) {
+            return [
+                'synced' => true,
+                'type' => 'complete',
+                'count' => 0,
+                'message' => 'No hay CUPS contratados disponibles'
+            ];
+        }
+
+        $this->offlineService->clearCupsContratados();
+
+        $syncedCount = 0;
+        
+        foreach ($cupsContratados as $cupsContratado) {
+            try {
+                $this->offlineService->storeCupsContratadoOffline($cupsContratado);
+                $syncedCount++;
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error guardando CUPS contratado', [
+                    'uuid' => $cupsContratado['uuid'] ?? 'N/A',
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        $now = now();
+        cache()->put('cups_contratados_last_sync', $now->format('Y-m-d'), $now->addDay());
+        cache()->put('cups_contratados_last_sync_timestamp', $now->toIso8601String(), $now->addDay());
+
+        Log::info('✅ [CUPS CONTRATADOS] Sincronización COMPLETA', [
+            'total' => $syncedCount
+        ]);
+
+        return [
+            'synced' => true,
+            'type' => 'complete',
+            'count' => $syncedCount,
+            'message' => "✅ Sincronizados {$syncedCount} CUPS contratados (completo)"
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronización completa CUPS contratados', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * 🔄 SINCRONIZACIÓN INCREMENTAL DE CUPS CONTRATADOS
+ */
+private function sincronizacionIncrementalCupsContratados(?string $lastSyncTime): array
+{
+    try {
+        $params = [];
+        if ($lastSyncTime) {
+            $params['updated_since'] = $lastSyncTime;
+        }
+
+        $response = $this->apiService->get('/cups-contratados/disponibles', $params);
+        
+        if (!$response['success']) {
+            return [
+                'synced' => false,
+                'reason' => 'api_error',
+                'message' => $response['error'] ?? 'Error desconocido'
+            ];
+        }
+
+        $cupsContratados = $response['data'] ?? [];
+        
+        if (empty($cupsContratados)) {
+            return [
+                'synced' => true,
+                'type' => 'incremental',
+                'count' => 0,
+                'message' => '✅ No hay cambios nuevos'
+            ];
+        }
+
+        $syncedCount = 0;
+        $newCount = 0;
+        $updatedCount = 0;
+        
+        foreach ($cupsContratados as $cupsContratado) {
+            try {
+                $uuid = $cupsContratado['uuid'] ?? null;
+                if (!$uuid) continue;
+
+                $exists = $this->offlineService->cupsContratadoExists($uuid);
+                
+                $this->offlineService->storeCupsContratadoOffline($cupsContratado);
+                
+                if ($exists) {
+                    $updatedCount++;
+                } else {
+                    $newCount++;
+                }
+                
+                $syncedCount++;
+                
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error guardando cambio CUPS contratado', [
+                    'uuid' => $cupsContratado['uuid'] ?? 'N/A',
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        $now = now();
+        cache()->put('cups_contratados_last_sync', $now->format('Y-m-d'), $now->addDay());
+        cache()->put('cups_contratados_last_sync_timestamp', $now->toIso8601String(), $now->addDay());
+
+        Log::info('✅ [CUPS CONTRATADOS] Sincronización INCREMENTAL', [
+            'total' => $syncedCount,
+            'nuevos' => $newCount,
+            'actualizados' => $updatedCount
+        ]);
+
+        return [
+            'synced' => true,
+            'type' => 'incremental',
+            'count' => $syncedCount,
+            'new' => $newCount,
+            'updated' => $updatedCount,
+            'message' => "🔄 Sincronizados {$syncedCount} cambios ({$newCount} nuevos, {$updatedCount} actualizados)"
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error sincronización incremental CUPS contratados', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'synced' => false,
+            'reason' => 'exception',
+            'message' => 'Error: ' . $e->getMessage()
+        ];
+    }
+}
+
+
 
         public function create()
         {
@@ -606,12 +1138,12 @@ public function determinarTipoConsultaPrevio(Request $request)
     }
 }
 /**
- * ✅ CORREGIDO: Determinar tipo de consulta OFFLINE CON MÁS LOGGING
+ * ✅ CORREGIDO: Determinar tipo de consulta OFFLINE CON CUPS
  */
 private function determinarTipoConsultaOffline(string $pacienteUuid, string $agendaUuid): array
 {
     try {
-        Log::info('🔍 Iniciando determinación offline', [
+        Log::info('🔍 Iniciando determinación offline CON CUPS', [
             'paciente_uuid' => $pacienteUuid,
             'agenda_uuid' => $agendaUuid
         ]);
@@ -632,19 +1164,16 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
         }
 
         Log::info('✅ PASO 1 COMPLETADO: Agenda encontrada', [
-            'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID',
-            'agenda_keys' => array_keys($agenda)
+            'agenda_uuid' => $agenda['uuid'] ?? 'NO_UUID'
         ]);
 
         // ✅ PASO 2: OBTENER PROCESO DE LA AGENDA
         Log::info('📋 PASO 2: Extrayendo proceso de la agenda');
         
-        // ✅ VERIFICAR ESTRUCTURA DE LA AGENDA
         if (!isset($agenda['proceso'])) {
             Log::error('❌ PASO 2 FALLÓ: Agenda sin campo proceso', [
                 'agenda_uuid' => $agendaUuid,
-                'agenda_keys' => array_keys($agenda),
-                'agenda_data' => $agenda
+                'agenda_keys' => array_keys($agenda)
             ]);
             
             return [
@@ -653,15 +1182,8 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
             ];
         }
 
-        Log::info('🔍 Estructura del proceso en agenda', [
-            'proceso_type' => gettype($agenda['proceso']),
-            'proceso_keys' => is_array($agenda['proceso']) ? array_keys($agenda['proceso']) : 'NO_ES_ARRAY',
-            'proceso_data' => $agenda['proceso']
-        ]);
-
         $procesoNombre = null;
         
-        // ✅ MANEJAR DIFERENTES ESTRUCTURAS DE PROCESO
         if (is_array($agenda['proceso'])) {
             $procesoNombre = $agenda['proceso']['nombre'] ?? null;
         } elseif (is_string($agenda['proceso'])) {
@@ -669,10 +1191,7 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
         }
         
         if (!$procesoNombre) {
-            Log::error('❌ PASO 2 FALLÓ: No se pudo extraer nombre del proceso', [
-                'agenda_uuid' => $agendaUuid,
-                'proceso_structure' => $agenda['proceso']
-            ]);
+            Log::error('❌ PASO 2 FALLÓ: No se pudo extraer nombre del proceso');
             
             return [
                 'success' => false,
@@ -695,10 +1214,7 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
         );
 
         if (!$validacionEspecialControl['success']) {
-            Log::warning('⚠️ PASO 3: Validación de ESPECIAL CONTROL falló', [
-                'error' => $validacionEspecialControl['error'] ?? 'Error desconocido'
-            ]);
-            
+            Log::warning('⚠️ PASO 3: Validación de ESPECIAL CONTROL falló');
             return $validacionEspecialControl;
         }
 
@@ -718,20 +1234,63 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
             'proceso' => $procesoNombre
         ]);
 
-        // ✅ CONSTRUIR RESPUESTA FINAL
+        // ✅ PASO 5: BUSCAR CUPS RECOMENDADO
+        Log::info('📋 PASO 5: Buscando CUPS recomendado');
+        
+        $cupsRecomendado = $this->buscarCupsRecomendadoOffline(
+            $tipoConsulta, 
+            $procesoNombre
+        );
+
+        if (!$cupsRecomendado) {
+            Log::warning('⚠️ PASO 5: No se encontró CUPS recomendado', [
+                'tipo_consulta' => $tipoConsulta,
+                'proceso' => $procesoNombre
+            ]);
+
+            // ✅ DEVOLVER SIN CUPS
+            return [
+                'success' => true,
+                'data' => [
+                    'tipo_consulta' => $tipoConsulta,
+                    'proceso_nombre' => $procesoNombre,
+                    'requiere_especial_control' => false,
+                    'mensaje' => $this->generarMensajeTipoConsulta($tipoConsulta, $procesoNombre),
+                    'cups_recomendado' => null
+                ],
+                'offline' => true
+            ];
+        }
+
+        Log::info('✅ PASO 5 COMPLETADO: CUPS recomendado encontrado', [
+            'cups_contratado_uuid' => $cupsRecomendado['uuid'],
+            'cups_codigo' => $cupsRecomendado['cups']['codigo'] ?? 'N/A',
+            'cups_nombre' => $cupsRecomendado['cups']['nombre'] ?? 'N/A'
+        ]);
+
+        // ✅ CONSTRUIR RESPUESTA FINAL CON CUPS
         $resultado = [
             'success' => true,
             'data' => [
                 'tipo_consulta' => $tipoConsulta,
                 'proceso_nombre' => $procesoNombre,
                 'requiere_especial_control' => false,
-                'mensaje' => $this->generarMensajeTipoConsulta($tipoConsulta, $procesoNombre)
+                'mensaje' => $this->generarMensajeTipoConsulta($tipoConsulta, $procesoNombre),
+                'cups_recomendado' => [
+                    'cups_contratado_uuid' => $cupsRecomendado['uuid'],
+                    'uuid' => $cupsRecomendado['cups']['uuid'] ?? null,
+                    'codigo' => $cupsRecomendado['cups']['codigo'] ?? 'N/A',
+                    'nombre' => $cupsRecomendado['cups']['nombre'] ?? 'N/A',
+                    'categoria' => $cupsRecomendado['categoria_cups']['nombre'] ?? 'N/A'
+                ]
             ],
             'offline' => true
         ];
 
-        Log::info('✅ DETERMINACIÓN OFFLINE COMPLETADA EXITOSAMENTE', [
-            'resultado' => $resultado
+        Log::info('✅ DETERMINACIÓN OFFLINE COMPLETADA CON CUPS', [
+            'tipo_consulta' => $tipoConsulta,
+            'tiene_cups' => true,
+            'cups_uuid' => $cupsRecomendado['uuid']
         ]);
 
         return $resultado;
@@ -741,22 +1300,200 @@ private function determinarTipoConsultaOffline(string $pacienteUuid, string $age
             'error_message' => $e->getMessage(),
             'error_file' => $e->getFile(),
             'error_line' => $e->getLine(),
-            'trace' => $e->getTraceAsString(),
-            'paciente_uuid' => $pacienteUuid ?? 'N/A',
-            'agenda_uuid' => $agendaUuid ?? 'N/A'
+            'trace' => $e->getTraceAsString()
         ]);
 
         return [
             'success' => false,
-            'error' => 'Error determinando tipo de consulta offline: ' . $e->getMessage(),
-            'debug' => [
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]
+            'error' => 'Error determinando tipo de consulta offline: ' . $e->getMessage()
         ];
     }
 }
 
+private function buscarCupsRecomendadoOffline(string $tipoConsulta, string $procesoNombre): ?array
+{
+    try {
+        Log::info('🔍 Buscando CUPS recomendado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'proceso' => $procesoNombre
+        ]);
+
+        // Obtener palabras clave
+        $palabrasClave = $this->obtenerPalabrasClaveProcesoParaCups($procesoNombre);
+        
+        Log::info('🔑 Palabras clave para búsqueda', [
+            'palabras_clave' => $palabrasClave
+        ]);
+
+        // Buscar CUPS contratado
+        Log::info('🔍 Obteniendo CUPS contratados desde offline');
+        $cupsContratados = $this->offlineService->getCupsContratadosOffline();
+        
+        if (empty($cupsContratados)) {
+            Log::warning('⚠️ No hay CUPS contratados en caché offline');
+            return null;
+        }
+
+        Log::info('📋 CUPS contratados disponibles', [
+            'total' => count($cupsContratados)
+        ]);
+
+        // ✅ NUEVO: LOGGING DETALLADO DE CADA CUPS
+        $cupsAnalizados = [];
+        $cupsDescartados = [];
+        
+        Log::info('🔍 INICIANDO ANÁLISIS DETALLADO DE CUPS', [
+            'total_a_analizar' => count($cupsContratados),
+            'tipo_consulta_buscado' => strtoupper($tipoConsulta),
+            'palabras_clave' => $palabrasClave
+        ]);
+        
+        foreach ($cupsContratados as $index => $cupsContratado) {
+            $categoriaNombre = strtoupper($cupsContratado['categoria_cups']['nombre'] ?? 'SIN_CATEGORIA');
+            $cupsNombre = strtoupper($cupsContratado['cups']['nombre'] ?? 'SIN_NOMBRE');
+            $estado = strtoupper($cupsContratado['estado'] ?? 'SIN_ESTADO');
+            $cupsUuid = $cupsContratado['uuid'] ?? 'SIN_UUID';
+            $cupsCodigo = $cupsContratado['cups']['codigo'] ?? 'SIN_CODIGO';
+            
+            $analisis = [
+                'index' => $index + 1,
+                'uuid' => $cupsUuid,
+                'codigo' => $cupsCodigo,
+                'cups_nombre' => $cupsNombre,
+                'categoria' => $categoriaNombre,
+                'estado' => $estado,
+                'categoria_coincide' => $categoriaNombre === strtoupper($tipoConsulta),
+                'estado_activo' => $estado === 'ACTIVO',
+                'palabras_encontradas' => []
+            ];
+            
+            // Verificar palabras clave
+            foreach ($palabrasClave as $palabra) {
+                if (str_contains($cupsNombre, strtoupper($palabra))) {
+                    $analisis['palabras_encontradas'][] = $palabra;
+                }
+            }
+            
+            $analisis['tiene_palabra_clave'] = !empty($analisis['palabras_encontradas']);
+            $analisis['es_candidato'] = $analisis['categoria_coincide'] && 
+                                        $analisis['estado_activo'] && 
+                                        $analisis['tiene_palabra_clave'];
+            
+            // ✅ LOG CADA CUPS ANALIZADO (solo primeros 10 para no saturar)
+            if ($index < 10) {
+                Log::debug('📋 Analizando CUPS #' . ($index + 1), $analisis);
+            }
+            
+            if ($analisis['es_candidato']) {
+                $cupsAnalizados[] = $analisis;
+                
+                // ✅ ENCONTRADO - RETORNAR INMEDIATAMENTE
+                Log::info('✅ ¡CUPS RECOMENDADO ENCONTRADO!', [
+                    'cups_contratado_uuid' => $cupsContratado['uuid'],
+                    'cups_codigo' => $cupsCodigo,
+                    'cups_nombre' => $cupsNombre,
+                    'categoria' => $categoriaNombre,
+                    'palabras_coincidentes' => $analisis['palabras_encontradas'],
+                    'analisis_completo' => $analisis
+                ]);
+                
+                return $cupsContratado;
+            } else {
+                $cupsDescartados[] = $analisis;
+            }
+        }
+
+        // ✅ NO SE ENCONTRÓ - MOSTRAR ANÁLISIS COMPLETO
+        Log::warning('⚠️ No se encontró CUPS recomendado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'palabras_clave' => $palabrasClave,
+            'total_cups_analizados' => count($cupsContratados),
+            'cups_candidatos_encontrados' => count($cupsAnalizados),
+            'cups_descartados' => count($cupsDescartados)
+        ]);
+
+        // ✅ MOSTRAR LOS PRIMEROS 5 CUPS DESCARTADOS PARA DEBUG
+        Log::warning('📋 PRIMEROS 5 CUPS DESCARTADOS (para análisis)', [
+            'cups_descartados' => array_slice($cupsDescartados, 0, 5)
+        ]);
+
+        // ✅ MOSTRAR RESUMEN DE CATEGORÍAS DISPONIBLES
+        $categorias = array_count_values(array_column($cupsDescartados, 'categoria'));
+        Log::warning('📊 CATEGORÍAS DISPONIBLES EN CUPS CONTRATADOS', [
+            'categorias_encontradas' => $categorias,
+            'categoria_buscada' => strtoupper($tipoConsulta),
+            'tiene_categoria_buscada' => isset($categorias[strtoupper($tipoConsulta)])
+        ]);
+
+        // ✅ MOSTRAR CUPS CON LA CATEGORÍA CORRECTA (si existen)
+        $cupsConCategoriaCorrecta = array_filter($cupsDescartados, function($c) use ($tipoConsulta) {
+            return $c['categoria'] === strtoupper($tipoConsulta);
+        });
+        
+        if (!empty($cupsConCategoriaCorrecta)) {
+            Log::warning('🔍 CUPS CON CATEGORÍA CORRECTA PERO DESCARTADOS', [
+                'total' => count($cupsConCategoriaCorrecta),
+                'cups' => array_slice($cupsConCategoriaCorrecta, 0, 3)
+            ]);
+        }
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ EXCEPCIÓN en buscarCupsRecomendadoOffline', [
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return null;
+    }
+}
+
+/**
+ * ✅ NUEVO MÉTODO: Obtener palabras clave para CUPS
+ */
+private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): array
+{
+    $procesoNombre = strtoupper(trim($procesoNombre));
+    
+    $mapeo = [
+        'ESPECIAL CONTROL' => [
+            'MEDICINA GENERAL',
+            'GENERAL'
+        ],
+        'NUTRICIONISTA' => [
+            'NUTRICION Y DIETETICA',
+            'NUTRICION',
+            'DIETETICA'
+        ],
+        'PSICOLOGIA' => [
+            'PSICOLOGIA',
+            'PSICOLOGO'
+        ],
+        'FISIOTERAPIA' => [
+            'FISIOTERAPIA'
+        ],
+        'NEFROLOGIA' => [
+            'NEFROLOGIA',
+            'ESPECIALISTA EN NEFROLOGIA'
+        ],
+        'INTERNISTA' => [
+            'MEDICINA INTERNA',
+            'ESPECIALISTA EN MEDICINA INTERNA'
+        ],
+        'TRABAJO SOCIAL' => [
+            'TRABAJO SOCIAL'
+        ]
+    ];
+    
+    if (isset($mapeo[$procesoNombre])) {
+        return $mapeo[$procesoNombre];
+    }
+    
+    return [$procesoNombre];
+}
 
 private function validarRequisitoEspecialControlOffline(string $pacienteUuid, string $procesoNombre): array
 {

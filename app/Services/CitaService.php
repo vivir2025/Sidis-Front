@@ -1786,14 +1786,29 @@ private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): arr
     
     return [$procesoNombre];
 }
-
 /**
- * ✅ BUSCAR CUPS CONTRATADO OFFLINE
+ * ✅ CORREGIDO: BUSCAR CUPS CONTRATADO OFFLINE
  */
-private function buscarCupsContratadoOffline(string $tipoConsulta, array $palabrasClave): ?array
+/**
+ * ✅ NUEVO MÉTODO: Buscar CUPS recomendado offline CON LOGGING DETALLADO
+ */
+private function buscarCupsRecomendadoOffline(string $tipoConsulta, string $procesoNombre): ?array
 {
     try {
-        // ✅ OBTENER CUPS CONTRATADOS DESDE OFFLINE
+        Log::info('🔍 Buscando CUPS recomendado offline', [
+            'tipo_consulta' => $tipoConsulta,
+            'proceso' => $procesoNombre
+        ]);
+
+        // Obtener palabras clave
+        $palabrasClave = $this->obtenerPalabrasClaveProcesoParaCups($procesoNombre);
+        
+        Log::info('🔑 Palabras clave para búsqueda', [
+            'palabras_clave' => $palabrasClave
+        ]);
+
+        // Buscar CUPS contratado
+        Log::info('🔍 Obteniendo CUPS contratados desde offline');
         $cupsContratados = $this->offlineService->getCupsContratadosOffline();
         
         if (empty($cupsContratados)) {
@@ -1801,63 +1816,106 @@ private function buscarCupsContratadoOffline(string $tipoConsulta, array $palabr
             return null;
         }
 
-        Log::info('🔍 Buscando CUPS contratado offline', [
-            'tipo_consulta' => $tipoConsulta,
-            'palabras_clave' => $palabrasClave,
-            'total_cups_disponibles' => count($cupsContratados)
+        Log::info('📋 CUPS contratados disponibles', [
+            'total' => count($cupsContratados)
         ]);
 
-        // ✅ FILTRAR POR CATEGORÍA Y PALABRAS CLAVE
-        foreach ($cupsContratados as $cupsContratado) {
-            $categoriaNombre = strtoupper($cupsContratado['categoria_cups']['nombre'] ?? '');
-            $cupsNombre = strtoupper($cupsContratado['cups']['nombre'] ?? '');
-            $estado = strtoupper($cupsContratado['estado'] ?? '');
+        // ✅ NUEVO: LOGGING DETALLADO DE CADA CUPS
+        $cupsAnalizados = [];
+        $cupsDescartados = [];
+        
+        foreach ($cupsContratados as $index => $cupsContratado) {
+            $categoriaNombre = strtoupper($cupsContratado['categoria_cups']['nombre'] ?? 'SIN_CATEGORIA');
+            $cupsNombre = strtoupper($cupsContratado['cups']['nombre'] ?? 'SIN_NOMBRE');
+            $estado = strtoupper($cupsContratado['estado'] ?? 'SIN_ESTADO');
+            $cupsUuid = $cupsContratado['uuid'] ?? 'SIN_UUID';
             
-            // Verificar categoría
-            if ($categoriaNombre !== strtoupper($tipoConsulta)) {
-                continue;
-            }
-            
-            // Verificar estado
-            if ($estado !== 'ACTIVO') {
-                continue;
-            }
+            $analisis = [
+                'index' => $index + 1,
+                'uuid' => $cupsUuid,
+                'cups_nombre' => $cupsNombre,
+                'categoria' => $categoriaNombre,
+                'estado' => $estado,
+                'categoria_coincide' => $categoriaNombre === strtoupper($tipoConsulta),
+                'estado_activo' => $estado === 'ACTIVO',
+                'palabras_encontradas' => []
+            ];
             
             // Verificar palabras clave
-            $coincide = false;
             foreach ($palabrasClave as $palabra) {
                 if (str_contains($cupsNombre, strtoupper($palabra))) {
-                    $coincide = true;
-                    break;
+                    $analisis['palabras_encontradas'][] = $palabra;
                 }
             }
             
-            if ($coincide) {
-                Log::info('✅ CUPS contratado encontrado offline', [
-                    'cups_uuid' => $cupsContratado['uuid'],
+            $analisis['tiene_palabra_clave'] = !empty($analisis['palabras_encontradas']);
+            $analisis['es_candidato'] = $analisis['categoria_coincide'] && 
+                                        $analisis['estado_activo'] && 
+                                        $analisis['tiene_palabra_clave'];
+            
+            if ($analisis['es_candidato']) {
+                $cupsAnalizados[] = $analisis;
+                
+                // ✅ ENCONTRADO - RETORNAR INMEDIATAMENTE
+                Log::info('✅ CUPS recomendado encontrado', [
+                    'cups_contratado_uuid' => $cupsContratado['uuid'],
+                    'cups_codigo' => $cupsContratado['cups']['codigo'] ?? 'N/A',
                     'cups_nombre' => $cupsNombre,
-                    'categoria' => $categoriaNombre
+                    'categoria' => $categoriaNombre,
+                    'palabras_coincidentes' => $analisis['palabras_encontradas']
                 ]);
                 
                 return $cupsContratado;
+            } else {
+                $cupsDescartados[] = $analisis;
             }
         }
 
-        Log::warning('⚠️ No se encontró CUPS contratado offline', [
+        // ✅ NO SE ENCONTRÓ - MOSTRAR ANÁLISIS COMPLETO
+        Log::warning('⚠️ No se encontró CUPS recomendado offline', [
             'tipo_consulta' => $tipoConsulta,
-            'palabras_clave' => $palabrasClave
+            'palabras_clave' => $palabrasClave,
+            'total_cups_analizados' => count($cupsContratados),
+            'cups_candidatos_encontrados' => count($cupsAnalizados),
+            'cups_descartados' => count($cupsDescartados)
+        ]);
+
+        // ✅ MOSTRAR LOS PRIMEROS 5 CUPS DESCARTADOS PARA DEBUG
+        Log::info('📋 Primeros 5 CUPS descartados (para análisis)', [
+            'cups_descartados' => array_slice($cupsDescartados, 0, 5)
+        ]);
+
+        // ✅ MOSTRAR RESUMEN DE CATEGORÍAS DISPONIBLES
+        $categorias = array_count_values(array_column($cupsDescartados, 'categoria'));
+        Log::info('📊 Categorías disponibles en CUPS contratados', [
+            'categorias' => $categorias,
+            'categoria_buscada' => strtoupper($tipoConsulta)
         ]);
 
         return null;
 
     } catch (\Exception $e) {
-        Log::error('❌ Error buscando CUPS contratado offline', [
-            'error' => $e->getMessage()
+        Log::error('❌ Error buscando CUPS recomendado offline', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return null;
     }
 }
 
+/**
+ * ✅ NUEVO: Remover tildes para búsqueda flexible
+ */
+private function removerTildes(string $texto): string
+{
+    $tildes = [
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+        'Ñ' => 'N', 'ñ' => 'n'
+    ];
+    
+    return strtr($texto, $tildes);
+}
 
 }

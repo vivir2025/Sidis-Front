@@ -726,23 +726,51 @@ private function createCupsContratadosTable(): void
         CREATE INDEX IF NOT EXISTS idx_cups_contratados_cups_codigo ON cups_contratados(cups_codigo)
     ');
 }
-
+/**
+ * ✅ CREAR TABLA DE CONTRATOS COMPLETA
+ */
 private function createContratosTable(): void
 {
     DB::connection('offline')->statement('
         CREATE TABLE IF NOT EXISTS contratos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             uuid TEXT UNIQUE NOT NULL,
             empresa_id INTEGER,
             empresa_uuid TEXT,
             empresa_nombre TEXT,
-            numero_contrato TEXT,
+            numero TEXT,
+            descripcion TEXT,
+            plan_beneficio TEXT,
+            poliza TEXT,
+            por_descuento TEXT,
             fecha_inicio DATE,
             fecha_fin DATE,
+            valor TEXT,
+            fecha_registro DATE,
+            tipo TEXT,
+            copago TEXT,
             estado TEXT DEFAULT "ACTIVO",
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME,
+            updated_at DATETIME,
+            deleted_at DATETIME
         )
+    ');
+    
+    // Crear índices
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_contratos_uuid ON contratos(uuid)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_contratos_empresa_id ON contratos(empresa_id)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_contratos_estado ON contratos(estado)
+    ');
+    
+    DB::connection('offline')->statement('
+        CREATE INDEX IF NOT EXISTS idx_contratos_fechas ON contratos(fecha_inicio, fecha_fin)
     ');
 }
 
@@ -4754,7 +4782,44 @@ public function storeCupsOffline(array $cupsData): void
     }
 }
 
+public function clearCups(): void
+{
+    try {
+        $cupsPath = $this->storagePath . '/cups';
+        
+        if (is_dir($cupsPath)) {
+            $files = glob($cupsPath . '/*.json');
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+            Log::info('🗑️ CUPS antiguos eliminados', ['count' => count($files)]);
+        }
+    } catch (\Exception $e) {
+        Log::error('Error limpiando CUPS', ['error' => $e->getMessage()]);
+    }
+}
 
+/**
+ * Contar CUPS almacenados
+ */
+public function countCups(): int
+{
+    try {
+        $cupsPath = $this->storagePath . '/cups';
+        
+        if (!is_dir($cupsPath)) {
+            return 0;
+        }
+        
+        $files = glob($cupsPath . '/*.json');
+        return count($files);
+    } catch (\Exception $e) {
+        Log::error('Error contando CUPS', ['error' => $e->getMessage()]);
+        return 0;
+    }
+}
 /**
  * ✅ BUSCAR CUPS OFFLINE
  */
@@ -4956,16 +5021,23 @@ public function obtenerCupsActivosOffline(): array
         return [];
     }
 }
-
 /**
- * ✅ SINCRONIZAR CUPS DESDE API
+ * ✅ SINCRONIZAR CUPS DESDE API - CORREGIDO
  */
 public function syncCupsFromApi(array $cupsList): bool
 {
     try {
         Log::info('🔄 Sincronizando CUPS offline', [
-            'count' => count($cupsList)
+            'count' => count($cupsList),
+            'tipo_datos' => gettype($cupsList),
+            'primer_elemento' => !empty($cupsList) ? gettype($cupsList[0] ?? 'vacio') : 'array_vacio'
         ]);
+
+        // ✅ VALIDAR QUE SEA UN ARRAY DE ARRAYS
+        if (empty($cupsList) || !is_array($cupsList)) {
+            Log::warning('⚠️ cupsList vacío o no es array');
+            return false;
+        }
 
         // Asegurar que la tabla existe
         if ($this->isSQLiteAvailable()) {
@@ -4973,28 +5045,69 @@ public function syncCupsFromApi(array $cupsList): bool
             
             // Limpiar datos existentes
             DB::connection('offline')->table('cups')->delete();
+            Log::info('🗑️ Tabla CUPS limpiada');
         }
 
         $syncCount = 0;
-        foreach ($cupsList as $cups) {
-            $this->storeCupsOffline($cups);
-            $syncCount++;
+        $errors = [];
+        
+        foreach ($cupsList as $index => $cups) {
+            try {
+                // ✅ VALIDAR QUE CADA ELEMENTO SEA UN ARRAY
+                if (!is_array($cups)) {
+                    Log::warning('⚠️ Elemento no es array', [
+                        'index' => $index,
+                        'tipo' => gettype($cups),
+                        'valor' => $cups
+                    ]);
+                    continue;
+                }
+
+                // ✅ VALIDAR CAMPOS REQUERIDOS
+                if (empty($cups['uuid']) || empty($cups['codigo'])) {
+                    Log::warning('⚠️ CUPS sin UUID o código', [
+                        'index' => $index,
+                        'uuid' => $cups['uuid'] ?? 'null',
+                        'codigo' => $cups['codigo'] ?? 'null'
+                    ]);
+                    continue;
+                }
+
+                $this->storeCupsOffline($cups);
+                $syncCount++;
+                
+            } catch (\Exception $e) {
+                $errors[] = [
+                    'index' => $index,
+                    'cups_uuid' => $cups['uuid'] ?? 'N/A',
+                    'error' => $e->getMessage()
+                ];
+                
+                Log::error('❌ Error guardando CUPS individual', [
+                    'index' => $index,
+                    'cups_uuid' => $cups['uuid'] ?? 'N/A',
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
 
         Log::info('✅ CUPS sincronizados offline', [
-            'synced' => $syncCount,
-            'total' => count($cupsList)
+            'total' => count($cupsList),
+            'sincronizados' => $syncCount,
+            'errores' => count($errors)
         ]);
 
-        return true;
+        return $syncCount > 0;
 
     } catch (\Exception $e) {
         Log::error('❌ Error sincronizando CUPS offline', [
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         return false;
     }
 }
+
 
 /**
  * ✅ OBTENER ESTADÍSTICAS DE CUPS
@@ -6271,20 +6384,23 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             return;
         }
 
-        // ✅ VALIDAR ESTRUCTURA DE DATOS
-        if (!isset($cupsContratadoData['cups']) || !isset($cupsContratadoData['contrato'])) {
-            Log::warning('⚠️ CUPS contratado con estructura incompleta', [
-                'uuid' => $cupsContratadoData['uuid'],
-                'has_cups' => isset($cupsContratadoData['cups']),
-                'has_contrato' => isset($cupsContratadoData['contrato'])
-            ]);
-        }
-
-        // ✅ EXTRAER INFORMACIÓN CON VALIDACIÓN
+        // ✅ EXTRAER INFORMACIÓN
         $cups = $cupsContratadoData['cups'] ?? [];
         $contrato = $cupsContratadoData['contrato'] ?? [];
+        $categoriaCups = $cupsContratadoData['categoria_cups'] ?? [];
         $empresa = $contrato['empresa'] ?? [];
 
+        // ✅ 1. GUARDAR CATEGORÍA CUPS SI NO EXISTE
+        if (!empty($categoriaCups['id'])) {
+            $this->storeCategoriasCupsOffline($categoriaCups);
+        }
+
+        // ✅ 2. GUARDAR CONTRATO SI NO EXISTE
+        if (!empty($contrato['uuid'])) {
+            $this->storeContratoOffline($contrato);
+        }
+
+        // ✅ 3. GUARDAR CUPS CONTRATADO
         $offlineData = [
             'uuid' => $cupsContratadoData['uuid'],
             'contrato_id' => $cupsContratadoData['contrato_id'] ?? null,
@@ -6304,22 +6420,6 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             'updated_at' => now()->toISOString()
         ];
 
-        // ✅ VALIDAR FECHAS ANTES DE GUARDAR
-        if ($offlineData['contrato_fecha_inicio'] && $offlineData['contrato_fecha_fin']) {
-            $fechaActual = now()->format('Y-m-d');
-            $esVigente = ($offlineData['contrato_fecha_inicio'] <= $fechaActual) && 
-                        ($offlineData['contrato_fecha_fin'] >= $fechaActual);
-            
-            Log::info($esVigente ? '✅ Guardando contrato vigente' : 'ℹ️ Guardando contrato no vigente', [
-                'cups_contratado_uuid' => $offlineData['uuid'],
-                'cups_codigo' => $offlineData['cups_codigo'],
-                'fecha_inicio' => $offlineData['contrato_fecha_inicio'],
-                'fecha_fin' => $offlineData['contrato_fecha_fin'],
-                'fecha_actual' => $fechaActual,
-                'es_vigente' => $esVigente
-            ]);
-        }
-
         // ✅ GUARDAR EN SQLite
         if ($this->isSQLiteAvailable()) {
             DB::connection('offline')->table('cups_contratados')->updateOrInsert(
@@ -6328,20 +6428,118 @@ public function storeCupsContratadoOffline(array $cupsContratadoData): void
             );
         }
 
-        // ✅ TAMBIÉN GUARDAR EN JSON
-        $this->storeData('cups_contratados/' . $cupsContratadoData['uuid'] . '.json', $offlineData);
+        // ✅ TAMBIÉN GUARDAR EN JSON CON ESTRUCTURA COMPLETA
+        $jsonData = array_merge($offlineData, [
+            'categoria_cups' => $categoriaCups,
+            'contrato' => $contrato,
+            'cups' => $cups
+        ]);
+        
+        $this->storeData('cups_contratados/' . $cupsContratadoData['uuid'] . '.json', $jsonData);
 
-        Log::debug('✅ CUPS contratado almacenado offline', [
+        Log::debug('✅ CUPS contratado almacenado offline con relaciones', [
             'uuid' => $cupsContratadoData['uuid'],
-            'cups_uuid' => $offlineData['cups_uuid'],
             'cups_codigo' => $offlineData['cups_codigo'],
-            'tarifa' => $offlineData['tarifa']
+            'categoria' => $categoriaCups['nombre'] ?? 'N/A',
+            'contrato_uuid' => $contrato['uuid'] ?? 'N/A'
         ]);
 
     } catch (\Exception $e) {
         Log::error('❌ Error almacenando CUPS contratado offline', [
             'error' => $e->getMessage(),
             'uuid' => $cupsContratadoData['uuid'] ?? 'sin-uuid',
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+}
+
+/**
+ * ✅ NUEVO: Guardar categoría CUPS
+ */
+private function storeCategoriasCupsOffline(array $categoriaData): void
+{
+    try {
+        if (empty($categoriaData['id'])) {
+            return;
+        }
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('categorias_cups')->updateOrInsert(
+                ['id' => $categoriaData['id']],
+                [
+                    'uuid' => $categoriaData['uuid'] ?? null,
+                    'nombre' => $categoriaData['nombre'] ?? 'SIN_NOMBRE',
+                    'updated_at' => now()->toISOString()
+                ]
+            );
+        }
+
+        Log::debug('✅ Categoría CUPS guardada', [
+            'id' => $categoriaData['id'],
+            'nombre' => $categoriaData['nombre'] ?? 'N/A'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error guardando categoría CUPS', [
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+/**
+ * ✅ GUARDAR CONTRATO COMPLETO
+ */
+private function storeContratoOffline(array $contratoData): void
+{
+    try {
+        if (empty($contratoData['uuid'])) {
+            Log::warning('⚠️ Intentando guardar contrato sin UUID');
+            return;
+        }
+
+        $empresa = $contratoData['empresa'] ?? [];
+
+        $offlineData = [
+            'id' => $contratoData['id'] ?? null,
+            'uuid' => $contratoData['uuid'],
+            'empresa_id' => $contratoData['empresa_id'] ?? null,
+            'empresa_uuid' => $empresa['uuid'] ?? null,
+            'empresa_nombre' => $empresa['nombre'] ?? null,
+            'numero' => $contratoData['numero'] ?? null,
+            'descripcion' => $contratoData['descripcion'] ?? null,
+            'plan_beneficio' => $contratoData['plan_beneficio'] ?? null,
+            'poliza' => $contratoData['poliza'] ?? null,
+            'por_descuento' => $contratoData['por_descuento'] ?? null,
+            'fecha_inicio' => $contratoData['fecha_inicio'] ?? null,
+            'fecha_fin' => $contratoData['fecha_fin'] ?? null,
+            'valor' => $contratoData['valor'] ?? null,
+            'fecha_registro' => $contratoData['fecha_registro'] ?? null,
+            'tipo' => $contratoData['tipo'] ?? null,
+            'copago' => $contratoData['copago'] ?? null,
+            'estado' => $contratoData['estado'] ?? 'ACTIVO',
+            'created_at' => $contratoData['created_at'] ?? null,
+            'updated_at' => $contratoData['updated_at'] ?? now()->toISOString(),
+            'deleted_at' => $contratoData['deleted_at'] ?? null
+        ];
+
+        if ($this->isSQLiteAvailable()) {
+            DB::connection('offline')->table('contratos')->updateOrInsert(
+                ['uuid' => $contratoData['uuid']],
+                $offlineData
+            );
+        }
+
+        Log::debug('✅ Contrato guardado completo', [
+            'uuid' => $contratoData['uuid'],
+            'numero' => $offlineData['numero'],
+            'empresa' => $empresa['nombre'] ?? 'N/A',
+            'fecha_inicio' => $offlineData['fecha_inicio'],
+            'fecha_fin' => $offlineData['fecha_fin']
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error guardando contrato', [
+            'error' => $e->getMessage(),
+            'uuid' => $contratoData['uuid'] ?? 'sin-uuid',
             'trace' => $e->getTraceAsString()
         ]);
     }
@@ -7761,76 +7959,140 @@ public function getHistoriasClinicasByPacienteYEspecialidad(string $pacienteUuid
     }
 }
 /**
- * ✅ OBTENER CUPS CONTRATADOS DESDE OFFLINE
+ * ✅ OBTENER CUPS CONTRATADOS CON RELACIONES COMPLETAS
  */
 public function getCupsContratadosOffline(): array
 {
     try {
-        Log::info('🔍 Obteniendo CUPS contratados desde offline');
-        
-        $cupsContratados = [];
-        
-        // ✅ BUSCAR EN SQLite PRIMERO
-        if ($this->isSQLiteAvailable()) {
-            $results = DB::connection('offline')->table('cups_contratados')
-                ->where('estado', 'ACTIVO')
-                ->where('contrato_estado', 'ACTIVO')
-                ->get();
-            
-            $cupsContratados = $results->map(function($item) {
-                $cupsContratado = (array) $item;
-                
-                // ✅ ENRIQUECER CON DATOS DE CUPS
-                if (!empty($cupsContratado['cups_uuid'])) {
-                    $cups = $this->getCupsOffline($cupsContratado['cups_uuid']);
-                    if ($cups) {
-                        $cupsContratado['cups'] = $cups;
-                    }
-                }
-                
-                // ✅ ENRIQUECER CON CATEGORÍA CUPS
-                if (!empty($cupsContratado['categoria_cups_id'])) {
-                    $categoria = $this->getCategoriaCupsOffline($cupsContratado['categoria_cups_id']);
-                    if ($categoria) {
-                        $cupsContratado['categoria_cups'] = $categoria;
-                    }
-                }
-                
-                return $cupsContratado;
-            })->toArray();
-            
-            Log::info('✅ CUPS contratados obtenidos desde SQLite', [
-                'total' => count($cupsContratados)
-            ]);
-        } else {
-            // ✅ FALLBACK A JSON
-            $cupsContratadosPath = $this->storagePath . '/cups_contratados';
-            if (is_dir($cupsContratadosPath)) {
-                $files = glob($cupsContratadosPath . '/*.json');
-                
-                foreach ($files as $file) {
-                    $data = json_decode(file_get_contents($file), true);
-                    
-                    if ($data && 
-                        ($data['estado'] ?? '') === 'ACTIVO' &&
-                        ($data['contrato_estado'] ?? '') === 'ACTIVO') {
-                        
-                        // ✅ VALIDAR VIGENCIA
-                        $fechaActual = now()->format('Y-m-d');
-                        if ($this->validarVigenciaContrato($data, $fechaActual)) {
-                            $cupsContratados[] = $data;
-                        }
-                    }
-                }
-                
-                Log::info('✅ CUPS contratados obtenidos desde JSON', [
-                    'total' => count($cupsContratados)
-                ]);
-            }
+        if (!$this->isSQLiteAvailable()) {
+            Log::warning('⚠️ SQLite no disponible para CUPS contratados');
+            return [];
         }
+
+        Log::info('🔍 Obteniendo CUPS contratados desde offline');
+
+        // ✅ OBTENER CUPS CONTRATADOS BASE
+        $cupsContratados = DB::connection('offline')
+            ->table('cups_contratados')
+            ->where('estado', 'ACTIVO')
+            ->get()
+            ->toArray();
+
+        if (empty($cupsContratados)) {
+            Log::info('ℹ️ No hay CUPS contratados en SQLite');
+            return [];
+        }
+
+        // ✅ ENRIQUECER CON RELACIONES
+        $resultado = [];
         
-        return $cupsContratados;
-        
+        foreach ($cupsContratados as $cupsContratado) {
+            $cupsContratadoArray = (array) $cupsContratado;
+            
+            // ✅ OBTENER CATEGORÍA CUPS
+            $categoriaCups = null;
+            if (!empty($cupsContratadoArray['categoria_cups_id'])) {
+                $categoriaData = DB::connection('offline')
+                    ->table('categorias_cups')
+                    ->where('id', $cupsContratadoArray['categoria_cups_id'])
+                    ->first();
+                
+                if ($categoriaData) {
+                    $categoriaCups = [
+                        'id' => $categoriaData->id,
+                        'uuid' => $categoriaData->uuid ?? null,
+                        'nombre' => $categoriaData->nombre,
+                        'created_at' => $categoriaData->created_at ?? null,
+                        'updated_at' => $categoriaData->updated_at ?? null
+                    ];
+                }
+            }
+
+            // ✅ OBTENER CONTRATO COMPLETO
+            $contrato = null;
+            if (!empty($cupsContratadoArray['contrato_uuid'])) {
+                $contratoData = DB::connection('offline')
+                    ->table('contratos')
+                    ->where('uuid', $cupsContratadoArray['contrato_uuid'])
+                    ->first();
+                
+                if ($contratoData) {
+                    $contrato = [
+                        'id' => $contratoData->id,
+                        'uuid' => $contratoData->uuid,
+                        'empresa_id' => $contratoData->empresa_id ?? null,
+                        'empresa_uuid' => $contratoData->empresa_uuid ?? null,
+                        'numero' => $contratoData->numero ?? null,
+                        'descripcion' => $contratoData->descripcion ?? null,
+                        'plan_beneficio' => $contratoData->plan_beneficio ?? null,
+                        'poliza' => $contratoData->poliza ?? null,
+                        'por_descuento' => $contratoData->por_descuento ?? null,
+                        'fecha_inicio' => $contratoData->fecha_inicio,
+                        'fecha_fin' => $contratoData->fecha_fin,
+                        'valor' => $contratoData->valor ?? null,
+                        'fecha_registro' => $contratoData->fecha_registro ?? null,
+                        'tipo' => $contratoData->tipo ?? null,
+                        'copago' => $contratoData->copago ?? null,
+                        'estado' => $contratoData->estado,
+                        'created_at' => $contratoData->created_at ?? null,
+                        'updated_at' => $contratoData->updated_at ?? null,
+                        'deleted_at' => $contratoData->deleted_at ?? null,
+                        // ✅ EMPRESA ANIDADA
+                        'empresa' => [
+                            'id' => $contratoData->empresa_id ?? null,
+                            'uuid' => $contratoData->empresa_uuid ?? null,
+                            'nombre' => $contratoData->empresa_nombre ?? null
+                        ]
+                    ];
+                }
+            }
+
+            // ✅ CONSTRUIR OBJETO CUPS
+            $cups = [
+                'id' => $cupsContratadoArray['cups_id'] ?? null,
+                'uuid' => $cupsContratadoArray['cups_uuid'] ?? null,
+                'codigo' => $cupsContratadoArray['cups_codigo'] ?? null,
+                'nombre' => $cupsContratadoArray['cups_nombre'] ?? null
+            ];
+
+            // ✅ CONSTRUIR ESTRUCTURA FINAL ANIDADA
+            $resultado[] = [
+                'uuid' => $cupsContratadoArray['uuid'],
+                'contrato_id' => $cupsContratadoArray['contrato_id'] ?? null,
+                'categoria_cups_id' => $cupsContratadoArray['categoria_cups_id'] ?? null,
+                'cups_id' => $cupsContratadoArray['cups_id'] ?? null,
+                'tarifa' => $cupsContratadoArray['tarifa'] ?? 0,
+                'estado' => $cupsContratadoArray['estado'] ?? 'ACTIVO',
+                'created_at' => $cupsContratadoArray['created_at'] ?? null,
+                'updated_at' => $cupsContratadoArray['updated_at'] ?? null,
+                
+                // ✅ OBJETOS ANIDADOS
+                'categoria_cups' => $categoriaCups ?? [
+                    'id' => null,
+                    'nombre' => 'SIN_CATEGORIA'
+                ],
+                'contrato' => $contrato ?? [
+                    'uuid' => null,
+                    'estado' => 'INACTIVO'
+                ],
+                'cups' => $cups
+            ];
+        }
+
+        Log::info('✅ CUPS contratados obtenidos con relaciones completas', [
+            'total' => count($resultado),
+            'ejemplo_estructura' => isset($resultado[0]) ? [
+                'tiene_categoria' => isset($resultado[0]['categoria_cups']),
+                'categoria_nombre' => $resultado[0]['categoria_cups']['nombre'] ?? 'N/A',
+                'tiene_contrato' => isset($resultado[0]['contrato']),
+                'contrato_numero' => $resultado[0]['contrato']['numero'] ?? 'N/A',
+                'tiene_cups' => isset($resultado[0]['cups']),
+                'cups_codigo' => $resultado[0]['cups']['codigo'] ?? 'N/A'
+            ] : null
+        ]);
+
+        return $resultado;
+
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo CUPS contratados offline', [
             'error' => $e->getMessage(),
@@ -7840,6 +8102,7 @@ public function getCupsContratadosOffline(): array
         return [];
     }
 }
+
 /**
  * ✅ OBTENER CATEGORÍA CUPS OFFLINE
  */
@@ -7949,53 +8212,83 @@ private function createCategoriasCupsTable(): void
         CREATE INDEX IF NOT EXISTS idx_categorias_cups_nombre ON categorias_cups(nombre)
     ');
 }
+
 /**
- * ✅ GUARDAR CONTRATO OFFLINE
+ * ✅ VERIFICAR SI UN CUPS EXISTE
  */
-public function storeContratoOffline(array $contratoData): void
+public function cupsExists(string $uuid): bool
 {
     try {
-        if (empty($contratoData['uuid'])) {
-            Log::warning('⚠️ Intentando guardar contrato sin UUID');
-            return;
+        if (!$this->isSQLiteAvailable()) {
+            return false;
         }
-
-        $offlineData = [
-            'uuid' => $contratoData['uuid'],
-            'empresa_id' => $contratoData['empresa_id'] ?? null,
-            'empresa_uuid' => $contratoData['empresa_uuid'] ?? null,
-            'empresa_nombre' => $contratoData['empresa']['nombre'] ?? null,
-            'numero_contrato' => $contratoData['numero_contrato'] ?? null,
-            'fecha_inicio' => $contratoData['fecha_inicio'],
-            'fecha_fin' => $contratoData['fecha_fin'],
-            'estado' => $contratoData['estado'] ?? 'ACTIVO',
-            'created_at' => $contratoData['created_at'] ?? now()->toISOString(),
-            'updated_at' => now()->toISOString()
-        ];
-
-        // ✅ GUARDAR EN SQLite
-        if ($this->isSQLiteAvailable()) {
-            DB::connection('offline')->table('contratos')->updateOrInsert(
-                ['uuid' => $contratoData['uuid']],
-                $offlineData
-            );
-        }
-
-        // ✅ GUARDAR EN JSON
-        $this->storeData('contratos/' . $contratoData['uuid'] . '.json', $offlineData);
-
-        Log::debug('✅ Contrato almacenado offline', [
-            'uuid' => $contratoData['uuid'],
-            'numero' => $offlineData['numero_contrato']
-        ]);
-
+        
+        $count = DB::connection('offline')->table('cups')
+            ->where('uuid', $uuid)
+            ->count();
+        
+        return $count > 0;
+        
     } catch (\Exception $e) {
-        Log::error('❌ Error almacenando contrato offline', [
-            'error' => $e->getMessage(),
-            'uuid' => $contratoData['uuid'] ?? 'sin-uuid'
+        Log::error('Error verificando existencia de CUPS', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
         ]);
+        return false;
     }
 }
 
+/**
+ * ✅ VERIFICAR SI UN CUPS CONTRATADO EXISTE
+ */
+public function cupsContratadoExists(string $uuid): bool
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            return false;
+        }
+        
+        $count = DB::connection('offline')->table('cups_contratados')
+            ->where('uuid', $uuid)
+            ->count();
+        
+        return $count > 0;
+        
+    } catch (\Exception $e) {
+        Log::error('Error verificando existencia de CUPS contratado', [
+            'uuid' => $uuid,
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
+}
+
+/**
+ * ✅ CONTAR CUPS CONTRATADOS
+ */
+public function countCupsContratados(): int
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            // Fallback a contar archivos JSON
+            $cupsContratadosPath = $this->storagePath . '/cups_contratados';
+            if (is_dir($cupsContratadosPath)) {
+                $files = glob($cupsContratadosPath . '/*.json');
+                return count($files);
+            }
+            return 0;
+        }
+        
+        $count = DB::connection('offline')->table('cups_contratados')->count();
+        
+        return (int) $count;
+        
+    } catch (\Exception $e) {
+        Log::error('Error contando CUPS contratados', [
+            'error' => $e->getMessage()
+        ]);
+        return 0;
+    }
+}
 
 }

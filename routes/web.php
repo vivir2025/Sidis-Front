@@ -276,6 +276,7 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
 
 });
 
+
 Route::middleware(['custom.auth', 'role:admin,administrador'])->prefix('usuarios')->name('usuarios.')->group(function () {
     Route::get('/', [UsuarioController::class, 'index'])->name('index');
     Route::get('/create', [UsuarioController::class, 'create'])->name('create');
@@ -415,7 +416,10 @@ Route::fallback(function () {
     return redirect()->route('dashboard');
 });
 
+Route::get('/sync-cups-background', [App\Http\Controllers\CitaController::class, 'syncCupsBackground'])
+    ->name('sync.cups.background');
 
+    
 Route::get('/debug-sync', function() {
     try {
         $authService = app(\App\Services\AuthService::class);
