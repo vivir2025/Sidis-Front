@@ -1452,7 +1452,7 @@ private function buscarCupsRecomendadoOffline(string $tipoConsulta, string $proc
 }
 
 /**
- * ✅ NUEVO MÉTODO: Obtener palabras clave para CUPS
+ * ✅ MÉTODO MEJORADO: Obtener palabras clave para CUPS (con normalización)
  */
 private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): array
 {
@@ -1461,22 +1461,28 @@ private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): arr
     $mapeo = [
         'ESPECIAL CONTROL' => [
             'MEDICINA GENERAL',
-            'GENERAL'
+            'GENERAL',
+            'MEDICO GENERAL'
         ],
         'NUTRICIONISTA' => [
             'NUTRICION Y DIETETICA',
             'NUTRICION',
-            'DIETETICA'
+            'DIETETICA',
+            'NUTRICI?N',      // ✅ Con caracter corrupto
+            'DIET?TICA'       // ✅ Con caracter corrupto
         ],
         'PSICOLOGIA' => [
             'PSICOLOGIA',
-            'PSICOLOGO'
+            'PSICOLOG?A',     // ✅ Con caracter corrupto
+            'PSICOLOGO',
+            'PSIC?LOGO'       // ✅ Con caracter corrupto
         ],
         'FISIOTERAPIA' => [
             'FISIOTERAPIA'
         ],
         'NEFROLOGIA' => [
             'NEFROLOGIA',
+            'NEFROLOG?A',     // ✅ Con caracter corrupto
             'ESPECIALISTA EN NEFROLOGIA'
         ],
         'INTERNISTA' => [
@@ -1485,15 +1491,54 @@ private function obtenerPalabrasClaveProcesoParaCups(string $procesoNombre): arr
         ],
         'TRABAJO SOCIAL' => [
             'TRABAJO SOCIAL'
+        ],
+        'REFORMULACION' => [
+            'REFORMULACION',
+            
         ]
     ];
     
+    // ✅ Búsqueda exacta
     if (isset($mapeo[$procesoNombre])) {
         return $mapeo[$procesoNombre];
     }
     
+    // ✅ Búsqueda por coincidencia parcial
+    foreach ($mapeo as $key => $palabras) {
+        if (str_contains($procesoNombre, $key) || str_contains($key, $procesoNombre)) {
+            return $palabras;
+        }
+    }
+    
+    // ✅ Fallback
     return [$procesoNombre];
 }
+
+/**
+ * ✅ NUEVO: Normalizar texto removiendo tildes y caracteres especiales
+ */
+private function normalizarTexto(string $texto): string
+{
+    // Convertir a mayúsculas
+    $texto = strtoupper($texto);
+    
+    // Remover tildes
+    $tildes = [
+        'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+        'á' => 'A', 'é' => 'E', 'í' => 'I', 'ó' => 'O', 'ú' => 'U',
+        'Ñ' => 'N', 'ñ' => 'N',
+        'Ü' => 'U', 'ü' => 'U'
+    ];
+    
+    $texto = strtr($texto, $tildes);
+    
+    // ✅ Remover caracteres corruptos y especiales
+    $texto = str_replace('?', '', $texto);
+    $texto = preg_replace('/[^A-Z0-9\s]/', '', $texto);
+    
+    return trim($texto);
+}
+
 
 private function validarRequisitoEspecialControlOffline(string $pacienteUuid, string $procesoNombre): array
 {
