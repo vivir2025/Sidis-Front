@@ -80,17 +80,16 @@
                     </select>
                 </div>
             </div>
+
             <div class="col-md-6">
                 <div class="mb-3">
-                    <label for="clasificacion_erc_categoria_ambulatoria_persistente" class="form-label">Categoría Ambulatoria Persistente <span class="text-danger">*</span></label>
-                    <select class="form-select" id="clasificacion_erc_categoria_ambulatoria_persistente" name="clasificacion_erc_categoria_ambulatoria_persistente" required>
-                        <option value="">Seleccione...</option>
-                        <option value="A1" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A1' ? 'selected' : '' }}>A1: Normal a levemente aumentada</option>
-                        <option value="A2" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A2' ? 'selected' : '' }}>A2: Moderadamente aumentada</option>
-                        <option value="A3" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A3' ? 'selected' : '' }}>A3: Severamente aumentada</option>
-                    </select>
+                    <label for="tasa_filtracion_glomerular_ckd_epi" class="form-label">Tasa Filtración Glomerular CKD-EPI</label>
+                    <input type="number" step="0.01" class="form-control" id="tasa_filtracion_glomerular_ckd_epi" 
+                           name="tasa_filtracion_glomerular_ckd_epi" min="0" max="200" 
+                           value="{{ $historiaPrevia['tasa_filtracion_glomerular_ckd_epi'] ?? '' }}">
                 </div>
             </div>
+           
         </div>
 
          <div class="row">
@@ -108,20 +107,8 @@
                     </select>
                 </div>
             </div>
-          
-        </div>
 
-
-        <div class="row">
-            <div class="col-md-6">
-                <div class="mb-3">
-                    <label for="tasa_filtracion_glomerular_ckd_epi" class="form-label">Tasa Filtración Glomerular CKD-EPI</label>
-                    <input type="number" step="0.01" class="form-control" id="tasa_filtracion_glomerular_ckd_epi" 
-                           name="tasa_filtracion_glomerular_ckd_epi" min="0" max="200" 
-                           value="{{ $historiaPrevia['tasa_filtracion_glomerular_ckd_epi'] ?? '' }}">
-                </div>
-            </div>
-            <div class="col-md-6">
+             <div class="col-md-6">
                 <div class="mb-3">
                     <label for="tasa_filtracion_glomerular_gockcroft_gault" class="form-label">Tasa Filtración Glomerular Cockcroft-Gault</label>
                     <input type="number" step="0.01" class="form-control" id="tasa_filtracion_glomerular_gockcroft_gault" 
@@ -129,6 +116,23 @@
                            value="{{ $historiaPrevia['tasa_filtracion_glomerular_gockcroft_gault'] ?? '' }}">
                 </div>
             </div>
+          
+        </div>
+
+
+        <div class="row">
+             <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="clasificacion_erc_categoria_ambulatoria_persistente" class="form-label">Categoría Ambulatoria Persistente <span class="text-danger">*</span></label>
+                    <select class="form-select" id="clasificacion_erc_categoria_ambulatoria_persistente" name="clasificacion_erc_categoria_ambulatoria_persistente" required>
+                        <option value="">Seleccione...</option>
+                        <option value="A1" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A1' ? 'selected' : '' }}>A1: Normal a levemente aumentada</option>
+                        <option value="A2" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A2' ? 'selected' : '' }}>A2: Moderadamente aumentada</option>
+                        <option value="A3" {{ ($historiaPrevia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '') === 'A3' ? 'selected' : '' }}>A3: Severamente aumentada</option>
+                    </select>
+                </div>
+            </div>
+           
         </div>
 
         {{-- ✅ ANTECEDENTES PERSONALES ESPECÍFICOS --}}
