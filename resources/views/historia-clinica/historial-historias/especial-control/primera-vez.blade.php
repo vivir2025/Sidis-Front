@@ -610,6 +610,10 @@
                 <div class="antecedente-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
             </div>
             <div class="antecedentes-row">
+                <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                <div class="antecedente-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
+            </div>
+            <div class="antecedentes-row">
                 <div class="antecedente-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
                 <div class="antecedente-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
             </div>

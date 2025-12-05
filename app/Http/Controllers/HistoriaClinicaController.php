@@ -601,6 +601,7 @@ private function formatearHistoriaParaFormulario(array $historia): array
             'clasificacion_dm' => $historia['clasificacion_dm'] ?? '',
             'clasificacion_rcv' => $historia['clasificacion_rcv'] ?? '',
             'clasificacion_erc_estado' => $historia['clasificacion_erc_estado'] ?? '',
+            'clasificacion_erc_estadodos' => $historia['clasificacion_erc_estadodos'] ?? '',
             'clasificacion_erc_categoria_ambulatoria_persistente' => $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '',
 
             // ✅ TASAS DE FILTRACIÓN
@@ -1124,6 +1125,7 @@ private function validateHistoriaClinica(Request $request): array
         'obs_diabetes_mellitus_personal' => 'nullable|string|max:500',
         'clasificacion_dm' => 'nullable|string|max:200',
         'clasificacion_erc_estado' => 'nullable|string|max:200',
+        'clasificacion_erc_estadodos' => 'nullable|string|max:200',
         'clasificacion_erc_categoria_ambulatoria_persistente' => 'nullable|string|max:200',
         'clasificacion_rcv' => 'nullable|string|max:200',
         'tasa_filtracion_glomerular_ckd_epi' => 'nullable|numeric|min:0|max:200',
@@ -1894,6 +1896,7 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'obs_personal_mellitus' => $validatedData['obs_diabetes_mellitus_personal'] ?? null,
         'clasificacion_dm' => $validatedData['clasificacion_dm'] ?? null,
         'clasificacion_erc_estado' => $validatedData['clasificacion_erc_estado'] ?? null,
+        'clasificacion_erc_estadodos' => $validatedData['clasificacion_erc_estadodos'] ?? null,
         'clasificacion_erc_categoria_ambulatoria_persistente' => $validatedData['clasificacion_erc_categoria_ambulatoria_persistente'] ?? null,
         'clasificacion_rcv' => $validatedData['clasificacion_rcv'] ?? null,
         'tasa_filtracion_glomerular_ckd_epi' => $validatedData['tasa_filtracion_glomerular_ckd_epi'] ?? null,
@@ -2902,6 +2905,7 @@ private function formatearHistoriaDesdeAPI(array $historiaAPI): array
             'clasificacion_dm' => $historiaAPI['clasificacion_dm'] ?? '',
             'clasificacion_rcv' => $historiaAPI['clasificacion_rcv'] ?? '',
             'clasificacion_erc_estado' => $historiaAPI['clasificacion_erc_estado'] ?? '',
+            'clasificacion_erc_estadodos' => $historiaAPI['clasificacion_erc_estadodos'] ?? '',
             'clasificacion_erc_categoria_ambulatoria_persistente' => $historiaAPI['clasificacion_erc_categoria_ambulatoria_persistente'] ?? '',
 
             // ✅ TASAS DE FILTRACIÓN

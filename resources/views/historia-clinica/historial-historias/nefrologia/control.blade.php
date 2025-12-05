@@ -606,6 +606,13 @@
                 </div>
                 @endif
 
+                @if(!empty($historia['clasificacion_erc_estadodos']))
+                <div class="examen-item">
+                    <div class="examen-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                    <div class="examen-valor">{{ $historia['clasificacion_erc_estadodos'] }}</div>
+                </div>
+                @endif
+
                 @if(!empty($historia['clasificacion_erc_categoria_ambulatoria_persistente']))
                 <div class="examen-item">
                     <div class="examen-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>

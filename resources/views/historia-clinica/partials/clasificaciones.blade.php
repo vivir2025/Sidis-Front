@@ -92,6 +92,26 @@
                 </div>
             </div>
         </div>
+
+         <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="clasificacion_erc_estadodos" class="form-label">Clasificación ERC Estadio Dos <span class="text-danger">*</span></label>
+                    <select class="form-select" id="clasificacion_erc_estadodos" name="clasificacion_erc_estadodos" required>
+                        <option value="">Seleccione...</option>
+                        <option value="ESTADIO_1" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_1' ? 'selected' : '' }}>Estadio 1</option>
+                        <option value="ESTADIO_2" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_2' ? 'selected' : '' }}>Estadio 2</option>
+                        <option value="ESTADIO_3A" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_3A' ? 'selected' : '' }}>Estadio 3A</option>
+                        <option value="ESTADIO_3B" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_3B' ? 'selected' : '' }}>Estadio 3B</option>
+                        <option value="ESTADIO_4" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_4' ? 'selected' : '' }}>Estadio 4</option>
+                        <option value="ESTADIO_5" {{ ($historiaPrevia['clasificacion_erc_estadodos'] ?? '') === 'ESTADIO_5' ? 'selected' : '' }}>Estadio 5</option>
+                    </select>
+                </div>
+            </div>
+          
+        </div>
+
+
         <div class="row">
             <div class="col-md-6">
                 <div class="mb-3">

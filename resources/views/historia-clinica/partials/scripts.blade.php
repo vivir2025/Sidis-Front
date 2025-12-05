@@ -293,6 +293,11 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
         if (historiaPrevia.clasificacion_erc_estado) {
             $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
         }
+         if (historiaPrevia.clasificacion_erc_estadodos) {
+            $('#clasificacion_erc_estadodos').val(historiaPrevia.clasificacion_erc_estadodos);
+        }
+
+
         if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
             $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
         }

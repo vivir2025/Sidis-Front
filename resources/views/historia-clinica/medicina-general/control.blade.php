@@ -1232,7 +1232,12 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
         }
         if (historiaPrevia.clasificacion_erc_estado) {
             $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
-                    }
+        }
+        if (historiaPrevia.clasificacion_erc_estadodos) {   
+            $('#clasificacion_erc_estadodos').val(historiaPrevia.clasificacion_erc_estadodos);
+        }
+
+
         if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
             $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
         }
@@ -1933,8 +1938,8 @@ $(document).ready(function() {
         // Validar campos de clasificaciones
         const camposClasificaciones = [
             'ClasificacionEstadoMetabolico', 'clasificacion_hta', 'clasificacion_dm', 
-            'clasificacion_erc_estado', 'clasificacion_erc_categoria_ambulatoria_persistente', 
-            'clasificacion_rcv'
+            'clasificacion_erc_estado',  'clasificacion_erc_categoria_ambulatoria_persistente', 
+            'clasificacion_rcv', 'clasificacion_erc_estadodos'
         ];
         
         for (let campo of camposClasificaciones) {

@@ -365,6 +365,10 @@
                     <div class="examen-label">CLASIFICACIÓN ERC ESTADIO:</div>
                     <div class="examen-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
                 </div>
+                    <div class="examen-item">
+                        <div class="examen-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                        <div class="examen-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
+                </div>
                 <div class="examen-item">
                     <div class="examen-label">CATEGORÍA ALBUMINURIA:</div>
                     <div class="examen-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
