@@ -977,6 +977,77 @@ $(document).ready(function() {
         calcularIMC();
     }
 
+        
+// ============================================
+// ✅ CÁLCULO AUTOMÁTICO DE CLASIFICACIÓN ERC
+// ============================================
+
+/**
+ * Clasificar ERC según tasa de filtración glomerular
+ * Basado en KDIGO 2012
+ */
+function clasificarERC(tfg) {
+    tfg = parseFloat(tfg);
+    
+    if (isNaN(tfg) || tfg < 0) {
+        return '';
+    }
+    
+    if (tfg >= 90) {
+        return 'ESTADIO_1'; // G1: Normal o elevado (≥ 90)
+    } else if (tfg >= 60) {
+        return 'ESTADIO_2'; // G2: Ligeramente disminuido (60-89)
+    } else if (tfg >= 45) {
+        return 'ESTADIO_3A'; // G3a: Ligera a moderadamente disminuido (45-59)
+    } else if (tfg >= 30) {
+        return 'ESTADIO_3B'; // G3b: Moderada a gravemente disminuido (30-44)
+    } else if (tfg >= 15) {
+        return 'ESTADIO_4'; // G4: Gravemente disminuido (15-29)
+    } else {
+        return 'ESTADIO_5'; // G5: Fallo renal (< 15)
+    }
+}
+
+/**
+ * Calcular clasificación ERC basada en CKD-EPI
+ */
+$('#tasa_filtracion_glomerular_ckd_epi').on('input', function() {
+    const tfg = $(this).val();
+    const clasificacion = clasificarERC(tfg);
+    
+    if (clasificacion) {
+        $('#clasificacion_erc_estado').val(clasificacion);
+        console.log('✅ Clasificación ERC (CKD-EPI) calculada:', clasificacion, 'TFG:', tfg);
+    } else {
+        $('#clasificacion_erc_estado').val('');
+    }
+});
+
+/**
+ * Calcular clasificación ERC basada en Cockcroft-Gault
+ */
+$('#tasa_filtracion_glomerular_gockcroft_gault').on('input', function() {
+    const tfg = $(this).val();
+    const clasificacion = clasificarERC(tfg);
+    
+    if (clasificacion) {
+        $('#clasificacion_erc_estadodos').val(clasificacion);
+        console.log('✅ Clasificación ERC (Cockcroft-Gault) calculada:', clasificacion, 'TFG:', tfg);
+    } else {
+        $('#clasificacion_erc_estadodos').val('');
+    }
+});
+
+// ✅ CALCULAR AL CARGAR SI YA HAY DATOS
+if ($('#tasa_filtracion_glomerular_ckd_epi').val()) {
+    $('#tasa_filtracion_glomerular_ckd_epi').trigger('input');
+}
+
+if ($('#tasa_filtracion_glomerular_gockcroft_gault').val()) {
+    $('#tasa_filtracion_glomerular_gockcroft_gault').trigger('input');
+}
+
+
     // ============================================
     // ✅ BÚSQUEDA DE DIAGNÓSTICOS PRINCIPAL
     // ============================================
