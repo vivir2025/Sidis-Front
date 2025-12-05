@@ -359,11 +359,12 @@ $(document).ready(function() {
     function mostrarError(mensaje) {
         Swal.fire({
             icon: 'error',
-            title: 'Error',l
+            title: 'Error',
             text: mensaje,
             confirmButtonColor: '#3085d6'
         });
     }
+
 });
 </script>
 @endpush
