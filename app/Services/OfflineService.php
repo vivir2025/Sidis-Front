@@ -8291,4 +8291,104 @@ public function countCupsContratados(): int
     }
 }
 
+/**
+ * ✅ OBTENER CUPS ACTIVOS DESDE OFFLINE
+ */
+public function getCupsActivosOffline(): array
+{
+    try {
+        Log::info('🔍 Obteniendo CUPS activos desde offline');
+
+        $cups = [];
+
+        // ✅ 1. INTENTAR DESDE SQLITE
+        if ($this->isSQLiteAvailable()) {
+            try {
+                $results = DB::connection('offline')
+                    ->table('cups')
+                    ->where('estado', 'ACTIVO')
+                    ->orderBy('nombre', 'asc')
+                    ->get();
+
+                if ($results->isNotEmpty()) {
+                    $cups = $results->map(function($item) {
+                        return [
+                            'id' => $item->id,
+                            'uuid' => $item->uuid,
+                            'codigo' => $item->codigo ?? null,
+                            'nombre' => $item->nombre,
+                            'descripcion' => $item->descripcion ?? null,
+                            'estado' => $item->estado ?? 'ACTIVO',
+                            'created_at' => $item->created_at ?? null,
+                            'updated_at' => $item->updated_at ?? null
+                        ];
+                    })->toArray();
+
+                    Log::info('✅ CUPS obtenidos desde SQLite', [
+                        'count' => count($cups)
+                    ]);
+
+                    return $cups;
+                }
+            } catch (\Exception $sqliteError) {
+                Log::debug('ℹ️ SQLite no disponible para CUPS, intentando JSON', [
+                    'error' => $sqliteError->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ 2. FALLBACK A JSON
+        $cupsPath = $this->getStoragePath() . '/cups';
+        
+        if (!is_dir($cupsPath)) {
+            Log::warning('⚠️ Directorio de CUPS no existe', [
+                'path' => $cupsPath
+            ]);
+            return [];
+        }
+
+        $files = glob($cupsPath . '/*.json');
+        
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            
+            if ($data && json_last_error() === JSON_ERROR_NONE) {
+                // ✅ FILTRAR SOLO ACTIVOS
+                if (($data['estado'] ?? 'ACTIVO') === 'ACTIVO') {
+                    $cups[] = [
+                        'id' => $data['id'] ?? null,
+                        'uuid' => $data['uuid'],
+                        'codigo' => $data['codigo'] ?? null,
+                        'nombre' => $data['nombre'],
+                        'descripcion' => $data['descripcion'] ?? null,
+                        'estado' => $data['estado'] ?? 'ACTIVO',
+                        'created_at' => $data['created_at'] ?? null,
+                        'updated_at' => $data['updated_at'] ?? null
+                    ];
+                }
+            }
+        }
+
+        // ✅ ORDENAR POR NOMBRE
+        usort($cups, function($a, $b) {
+            return strcmp($a['nombre'] ?? '', $b['nombre'] ?? '');
+        });
+
+        Log::info('✅ CUPS obtenidos desde JSON', [
+            'count' => count($cups)
+        ]);
+
+        return $cups;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS activos offline', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [];
+    }
+}
+
+
 }

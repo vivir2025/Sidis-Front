@@ -2737,6 +2737,76 @@ private function verificarHistoriasAnteriores(string $pacienteUuid): bool
         return false; // ✅ FALLBACK: asumir primera vez
     }
 }
+ /**
+ * ✅ OBTENER ESPECIALIDAD OFFLINE - VERSIÓN CORREGIDA
+ */
+private function obtenerEspecialidadOffline(string $citaUuid): ?string
+{
+    try {
+        Log::info('🔍 Obteniendo especialidad offline', [
+            'cita_uuid' => $citaUuid
+        ]);
+
+        // ✅ 1. OBTENER CITA DESDE OFFLINE SERVICE
+        $cita = $this->offlineService->getCitaOffline($citaUuid);
+        
+        if (!$cita) {
+            Log::warning('⚠️ Cita no encontrada offline', [
+                'cita_uuid' => $citaUuid
+            ]);
+            return null;
+        }
+
+        // ✅ 2. BUSCAR ESPECIALIDAD EN LA ESTRUCTURA DE LA CITA
+        $especialidad = $cita['agenda']['proceso']['nombre'] ?? 
+                       $cita['proceso']['nombre'] ?? 
+                       $cita['agenda']['medico']['especialidad']['nombre'] ?? 
+                       $cita['agenda']['usuario_medico']['especialidad']['nombre'] ?? 
+                       null;
+
+        if ($especialidad) {
+            Log::info('✅ Especialidad encontrada en cita offline', [
+                'especialidad' => $especialidad
+            ]);
+            return $especialidad;
+        }
+
+        // ✅ 3. SI NO ESTÁ EN LA CITA, BUSCAR EN LA AGENDA
+        $agendaUuid = $cita['agenda_uuid'] ?? $cita['agenda']['uuid'] ?? null;
+        
+        if (!$agendaUuid) {
+            Log::warning('⚠️ No se encontró agenda_uuid');
+            return null;
+        }
+
+        // ✅ 4. BUSCAR AGENDA OFFLINE
+        $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
+        
+        if ($agenda) {
+            $especialidad = $agenda['proceso']['nombre'] ?? 
+                           $agenda['usuario_medico']['especialidad']['nombre'] ?? 
+                           null;
+
+            if ($especialidad) {
+                Log::info('✅ Especialidad encontrada en agenda offline', [
+                    'especialidad' => $especialidad
+                ]);
+                return $especialidad;
+            }
+        }
+
+        Log::warning('⚠️ No se pudo determinar especialidad offline');
+        return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo especialidad offline', [
+            'error' => $e->getMessage(),
+            'cita_uuid' => $citaUuid
+        ]);
+        
+        return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
+    }
+}
 public function determinarVista(Request $request, string $citaUuid)
 {
     try {
@@ -2745,85 +2815,126 @@ public function determinarVista(Request $request, string $citaUuid)
 
         Log::info('🔍 FRONTEND: Determinando vista de historia clínica', [
             'cita_uuid' => $citaUuid,
-            'usuario' => $usuario['nombre_completo']
+            'usuario' => $usuario['nombre_completo'],
+            'is_offline' => $isOffline
         ]);
 
         // ✅ CONSULTAR AL BACKEND PARA DETERMINAR LA VISTA
         if ($this->apiService->isOnline()) {
-            $response = $this->apiService->get("/historias-clinicas/determinar-vista/{$citaUuid}");
-            
-            if ($response['success']) {
-                $data = $response['data'];
+            try {
+                $response = $this->apiService->get("/historias-clinicas/determinar-vista/{$citaUuid}");
                 
-                // ✅ VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
-                $esSoloControl = in_array($data['especialidad'], ['NEFROLOGIA', 'INTERNISTA']);
-                
-                if ($esSoloControl) {
-                    Log::info('🔒 Especialidad solo-control detectada desde API', [
+                if ($response['success']) {
+                    $data = $response['data'];
+                    
+                    // ✅ VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
+                    $esSoloControl = in_array($data['especialidad'], ['NEFROLOGIA', 'INTERNISTA']);
+                    
+                    if ($esSoloControl) {
+                        Log::info('🔒 Especialidad solo-control detectada desde API', [
+                            'especialidad' => $data['especialidad'],
+                            'tipo_consulta_original' => $data['tipo_consulta'],
+                            'tipo_consulta_forzado' => 'CONTROL'
+                        ]);
+                        
+                        // ✅ FORZAR TIPO CONTROL
+                        $data['tipo_consulta'] = 'CONTROL';
+                        $data['vista_recomendada']['tipo_consulta'] = 'CONTROL';
+                        $data['vista_recomendada']['solo_control'] = true;
+                    }
+                    
+                    Log::info('✅ Vista determinada por API', [
                         'especialidad' => $data['especialidad'],
-                        'tipo_consulta_original' => $data['tipo_consulta'],
-                        'tipo_consulta_forzado' => 'CONTROL'
+                        'tipo_consulta' => $data['tipo_consulta'],
+                        'vista_recomendada' => $data['vista_recomendada']['vista'],
+                        'tiene_historia_previa' => !empty($data['historia_previa']),
+                        'es_solo_control' => $esSoloControl
                     ]);
-                    
-                    // ✅ FORZAR TIPO CONTROL
-                    $data['tipo_consulta'] = 'CONTROL';
-                    $data['vista_recomendada']['tipo_consulta'] = 'CONTROL';
-                    $data['vista_recomendada']['solo_control'] = true;
+
+                    // ✅ FORMATEAR HISTORIA PREVIA SI EXISTE
+                    $historiaPrevia = null;
+                    if (!empty($data['historia_previa'])) {
+                        $historiaPrevia = $this->formatearHistoriaDesdeAPI($data['historia_previa']);
+                        
+                        Log::info('🔄 Historia previa formateada desde API', [
+                            'campos_formateados' => count($historiaPrevia),
+                            'tiene_medicamentos' => !empty($historiaPrevia['medicamentos']),
+                            'tiene_diagnosticos' => !empty($historiaPrevia['diagnosticos']),
+                            'tiene_test_morisky' => isset($historiaPrevia['test_morisky_olvida_tomar_medicamentos'])
+                        ]);
+                    }
+
+                    return $this->renderizarVistaEspecifica(
+                        $data['vista_recomendada'],
+                        $data['cita'],
+                        $historiaPrevia,
+                        $usuario,
+                        $isOffline
+                    );
                 }
-                
-                Log::info('✅ Vista determinada por API', [
-                    'especialidad' => $data['especialidad'],
-                    'tipo_consulta' => $data['tipo_consulta'],
-                    'vista_recomendada' => $data['vista_recomendada']['vista'],
-                    'tiene_historia_previa' => !empty($data['historia_previa']),
-                    'es_solo_control' => $esSoloControl
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error API, cayendo a modo offline', [
+                    'error' => $e->getMessage()
                 ]);
-
-                // ✅ FORMATEAR HISTORIA PREVIA SI EXISTE
-                $historiaPrevia = null;
-                if (!empty($data['historia_previa'])) {
-                    $historiaPrevia = $this->formatearHistoriaDesdeAPI($data['historia_previa']);
-                    
-                    Log::info('🔄 Historia previa formateada desde API', [
-                        'campos_formateados' => count($historiaPrevia),
-                        'tiene_medicamentos' => !empty($historiaPrevia['medicamentos']),
-                        'tiene_diagnosticos' => !empty($historiaPrevia['diagnosticos']),
-                        'tiene_test_morisky' => isset($historiaPrevia['test_morisky_olvida_tomar_medicamentos'])
-                    ]);
-                }
-
-                return $this->renderizarVistaEspecifica(
-                    $data['vista_recomendada'],
-                    $data['cita'],
-                    $historiaPrevia,
-                    $usuario,
-                    $isOffline
-                );
             }
         }
 
-        // ✅ FALLBACK OFFLINE
-        Log::warning('⚠️ API offline, usando determinación local');
+        // ✅✅✅ FALLBACK OFFLINE - VERSIÓN CORREGIDA ✅✅✅
+        Log::info('📴 Modo offline activado, determinando vista localmente');
         
+        // ✅ 1. OBTENER CITA OFFLINE
         $citaResult = $this->citaService->show($citaUuid);
         if (!$citaResult['success']) {
-            return back()->with('error', 'Cita no encontrada');
+            Log::error('❌ Cita no encontrada offline', [
+                'cita_uuid' => $citaUuid
+            ]);
+            return back()->with('error', 'Cita no encontrada offline');
         }
 
         $cita = $citaResult['data'];
-        $especialidad = $this->obtenerEspecialidadMedico($cita);
+        
+        // ✅✅✅ 2. OBTENER ESPECIALIDAD OFFLINE (MÉTODO NUEVO) 🔥🔥🔥
+        $especialidad = $this->obtenerEspecialidadOffline($citaUuid);
+        
+        if (!$especialidad) {
+            Log::warning('⚠️ No se pudo determinar especialidad offline, usando fallback', [
+                'cita_uuid' => $citaUuid
+            ]);
+            // ✅ FALLBACK: Intentar desde la cita directamente
+            $especialidad = $this->obtenerEspecialidadMedico($cita);
+            
+            if (!$especialidad) {
+                // ✅ ÚLTIMO FALLBACK: MEDICINA GENERAL
+                $especialidad = 'MEDICINA GENERAL';
+                Log::warning('⚠️ Usando especialidad por defecto', [
+                    'especialidad' => $especialidad
+                ]);
+            }
+        }
+
+        Log::info('✅ Especialidad determinada offline', [
+            'especialidad' => $especialidad,
+            'cita_uuid' => $citaUuid
+        ]);
+
+        // ✅ 3. OBTENER PACIENTE UUID
         $pacienteUuid = $cita['paciente_uuid'] ?? $cita['paciente']['uuid'] ?? null;
         
         if (!$pacienteUuid) {
+            Log::error('❌ No se pudo obtener paciente_uuid', [
+                'cita_keys' => array_keys($cita),
+                'tiene_paciente' => isset($cita['paciente'])
+            ]);
             return back()->with('error', 'No se pudo obtener información del paciente');
         }
 
-        // ✅ DETERMINAR TIPO CONSULTA (YA MANEJA SOLO-CONTROL INTERNAMENTE)
-        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad ?? 'MEDICINA GENERAL');
+        // ✅ 4. DETERMINAR TIPO CONSULTA OFFLINE
+        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad);
         
-        // ✅ VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
+        // ✅ 5. VERIFICAR SI ES ESPECIALIDAD SOLO-CONTROL
         $esSoloControl = in_array($especialidad, ['NEFROLOGIA', 'INTERNISTA']);
         
+        // ✅ 6. CONSTRUIR VISTA INFO
         $vistaInfo = [
             'vista' => $this->determinarVistaOffline($especialidad, $tipoConsulta),
             'usa_complementaria' => in_array($especialidad, [
@@ -2832,7 +2943,7 @@ public function determinarVista(Request $request, string $citaUuid)
             ]),
             'especialidad' => $especialidad,
             'tipo_consulta' => $tipoConsulta,
-            'solo_control' => $esSoloControl // ✅ NUEVO FLAG
+            'solo_control' => $esSoloControl
         ];
 
         Log::info('✅ Vista determinada offline', [
@@ -2842,26 +2953,24 @@ public function determinarVista(Request $request, string $citaUuid)
             'es_solo_control' => $esSoloControl
         ]);
 
-       // ✅ OBTENER HISTORIA PREVIA SOLO PARA CONTROL
-$historiaPrevia = null;
-if ($tipoConsulta === 'CONTROL') {
-    // ✅ PARA MEDICINA GENERAL, USAR EL MÉTODO ESPECÍFICO
-    if ($especialidad === 'MEDICINA GENERAL') {
-        $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-        Log::info('🔄 Historia previa offline para Medicina General', [
-            'tiene_historia' => !empty($historiaPrevia)
-        ]);
-    } else {
-        // ✅ PARA OTRAS ESPECIALIDADES (NEFROLOGIA, INTERNISTA, ETC)
-        $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-        Log::info('🔄 Historia previa offline para especialidad', [
-            'especialidad' => $especialidad,
-            'tiene_historia' => !empty($historiaPrevia)
-        ]);
-    }
-}
+        // ✅ 7. OBTENER HISTORIA PREVIA SOLO PARA CONTROL
+        $historiaPrevia = null;
+        if ($tipoConsulta === 'CONTROL') {
+            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+            
+            Log::info('🔄 Historia previa offline', [
+                'especialidad' => $especialidad,
+                'tiene_historia' => !empty($historiaPrevia),
+                'medicamentos_count' => !empty($historiaPrevia) ? count($historiaPrevia['medicamentos'] ?? []) : 0,
+                'diagnosticos_count' => !empty($historiaPrevia) ? count($historiaPrevia['diagnosticos'] ?? []) : 0
+            ]);
+        } else {
+            Log::info('ℹ️ PRIMERA VEZ - No se carga historia previa', [
+                'tipo_consulta' => $tipoConsulta
+            ]);
+        }
 
-
+        // ✅ 8. RENDERIZAR VISTA
         return $this->renderizarVistaEspecifica($vistaInfo, $cita, $historiaPrevia, $usuario, $isOffline);
 
     } catch (\Exception $e) {
@@ -2869,12 +2978,15 @@ if ($tipoConsulta === 'CONTROL') {
             'error' => $e->getMessage(),
             'cita_uuid' => $citaUuid,
             'line' => $e->getLine(),
-            'file' => basename($e->getFile())
+            'file' => basename($e->getFile()),
+            'trace' => $e->getTraceAsString()
         ]);
 
-        return back()->with('error', 'Error determinando el tipo de historia clínica');
+        return back()->with('error', 'Error determinando el tipo de historia clínica: ' . $e->getMessage());
     }
 }
+
+
 private function formatearHistoriaDesdeAPI(array $historiaAPI): array
 {
     try {
