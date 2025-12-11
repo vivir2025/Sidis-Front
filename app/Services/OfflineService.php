@@ -7911,53 +7911,7 @@ public function buscarHistoriasEnSQLite(string $pacienteUuid): array
         return [];
     }
 }
-/**
- * ✅ OBTENER HISTORIAS CLÍNICAS POR PACIENTE Y ESPECIALIDAD
- */
-public function getHistoriasClinicasByPacienteYEspecialidad(string $pacienteUuid, string $especialidad): array
-{
-    try {
-        $historiasPath = storage_path('app/offline/historias_clinicas');
-        
-        if (!is_dir($historiasPath)) {
-            return [];
-        }
-        
-        $historias = [];
-        $files = glob($historiasPath . '/*.json');
-        
-        foreach ($files as $file) {
-            $data = json_decode(file_get_contents($file), true);
-            
-            if (isset($data['paciente_uuid']) && $data['paciente_uuid'] === $pacienteUuid) {
-                // Verificar especialidad si está disponible en los datos
-                if (isset($data['especialidad']) && $data['especialidad'] === $especialidad) {
-                    $historias[] = $data;
-                } elseif (!isset($data['especialidad']) && $especialidad === 'MEDICINA GENERAL') {
-                    // Fallback: si no hay especialidad definida, asumir Medicina General
-                    $historias[] = $data;
-                }
-            }
-        }
-        
-        Log::info('✅ Historias offline por especialidad', [
-            'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad,
-            'count' => count($historias)
-        ]);
-        
-        return $historias;
-        
-    } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo historias por especialidad offline', [
-            'error' => $e->getMessage(),
-            'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
-        ]);
-        
-        return [];
-    }
-}
+
 /**
  * ✅ OBTENER CUPS CONTRATADOS CON RELACIONES COMPLETAS
  */
@@ -8102,7 +8056,6 @@ public function getCupsContratadosOffline(): array
         return [];
     }
 }
-
 /**
  * ✅ OBTENER CATEGORÍA CUPS OFFLINE
  */
@@ -8390,5 +8343,690 @@ public function getCupsActivosOffline(): array
     }
 }
 
+/**
+ * ✅ OBTENER CONEXIÓN PDO A SQLITE
+ */
+private function getSQLiteConnection(): ?\PDO
+{
+    try {
+        $dbPath = storage_path('app/offline/offline_data.sqlite');
+        
+        // Verificar si existe el archivo
+        if (!file_exists($dbPath)) {
+            Log::warning('⚠️ Base de datos SQLite no encontrada', [
+                'path' => $dbPath
+            ]);
+            return null;
+        }
+
+        // Crear conexión PDO
+        $pdo = new \PDO("sqlite:{$dbPath}");
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        
+        Log::debug('✅ Conexión SQLite PDO establecida');
+        
+        return $pdo;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error conectando a SQLite con PDO', [
+            'error' => $e->getMessage(),
+            'path' => $dbPath ?? 'N/A'
+        ]);
+        return null;
+    }
+}
+public function getHistoriasClinicasByPacienteYEspecialidad(
+    string $pacienteUuid, 
+    string $especialidad
+): array {
+    try {
+        $db = $this->getSQLiteConnection();
+        
+        if (!$db) {
+            return [];
+        }
+
+        // ✅ USAR LA NUEVA FUNCIÓN DE NORMALIZACIÓN
+        $especialidadNormalizada = $this->normalizarEspecialidad($especialidad);
+
+        Log::info('🔍 Buscando historias en SQLite', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad_original' => $especialidad,
+            'especialidad_normalizada' => $especialidadNormalizada
+        ]);
+
+        // ✅ BUSCAR EN SQLITE (sin normalizar en SQL, ya está normalizado)
+        $stmt = $db->prepare("
+            SELECT * FROM historias_clinicas 
+            WHERE paciente_uuid = :paciente_uuid 
+            ORDER BY created_at DESC
+        ");
+        
+        $stmt->execute(['paciente_uuid' => $pacienteUuid]);
+        $todasHistorias = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // ✅ FILTRAR POR ESPECIALIDAD EN PHP (más confiable)
+        $historias = array_filter($todasHistorias, function($historia) use ($especialidadNormalizada) {
+            $especialidadHistoria = $this->extraerEspecialidadDeHistoria($historia);
+            
+            if (!$especialidadHistoria) {
+                return false;
+            }
+            
+            return $this->normalizarEspecialidad($especialidadHistoria) === $especialidadNormalizada;
+        });
+
+        Log::info('🗄️ Historias encontradas en SQLite', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'total' => count($historias)
+        ]);
+
+        return array_values($historias); // Reindexar array
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias por especialidad (SQLite)', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
+    }
+}
+
+public function esPrimeraConsultaOffline(
+    string $pacienteUuid, 
+    string $especialidad, 
+    ?int $citaActualId = null
+): bool {
+    try {
+        Log::info('🔍 OFFLINE: Verificando si es PRIMERA CONSULTA de la especialidad', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'cita_actual_id' => $citaActualId
+        ]);
+
+        // ✅ PASO 1: Verificar que el paciente existe
+        $paciente = $this->getPacienteOffline($pacienteUuid);
+        
+        if (!$paciente) {
+            Log::warning('⚠️ Paciente no encontrado offline, asumiendo PRIMERA VEZ');
+            return true;
+        }
+
+        // ✅ PASO 2: Normalizar especialidad (NUEVA FUNCIÓN MEJORADA)
+        $especialidadNormalizada = $this->normalizarEspecialidad($especialidad);
+        
+        Log::info('🔤 Especialidad normalizada', [
+            'original' => $especialidad,
+            'normalizada' => $especialidadNormalizada
+        ]);
+
+        // ✅ PASO 3: Obtener TODAS las historias del paciente
+        $historias = $this->getTodasLasHistoriasDelPacienteOffline($pacienteUuid, $citaActualId);
+
+        Log::info('📋 Total de historias encontradas (excluyendo cita actual)', [
+            'total' => count($historias),
+            'paciente_uuid' => $pacienteUuid,
+            'cita_actual_excluida' => $citaActualId
+        ]);
+
+        if (empty($historias)) {
+            Log::info('✅ No hay historias previas → PRIMERA VEZ');
+            return true;
+        }
+
+        // ✅ PASO 4: Filtrar por especialidad (USAR NUEVA FUNCIÓN)
+        $historiasDeEspecialidad = array_filter($historias, function($historia) use ($especialidadNormalizada, $especialidad) {
+            $especialidadHistoria = $this->extraerEspecialidadDeHistoria($historia);
+            
+            if (empty($especialidadHistoria)) {
+                Log::debug('⚠️ Historia sin especialidad', [
+                    'historia_uuid' => $historia['uuid'] ?? 'N/A'
+                ]);
+                return false;
+            }
+            
+            // ✅ NORMALIZAR CON LA NUEVA FUNCIÓN
+            $especialidadHistoriaNormalizada = $this->normalizarEspecialidad($especialidadHistoria);
+            
+            $coincide = $especialidadHistoriaNormalizada === $especialidadNormalizada;
+            
+            Log::info('🔍 Comparando especialidades', [
+                'historia_uuid' => $historia['uuid'] ?? 'N/A',
+                'especialidad_historia_original' => $especialidadHistoria,
+                'especialidad_historia_normalizada' => $especialidadHistoriaNormalizada,
+                'especialidad_buscada_original' => $especialidad,
+                'especialidad_buscada_normalizada' => $especialidadNormalizada,
+                'coincide' => $coincide ? '✅ SÍ' : '❌ NO'
+            ]);
+            
+            return $coincide;
+        });
+
+        $totalHistorias = count($historiasDeEspecialidad);
+        $esPrimeraVez = $totalHistorias === 0;
+
+        Log::info('✅ Resultado: Verificación de primera consulta offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad_original' => $especialidad,
+            'especialidad_normalizada' => $especialidadNormalizada,
+            'total_historias_de_especialidad' => $totalHistorias,
+            'es_primera_vez' => $esPrimeraVez,
+            'tipo_consulta' => $esPrimeraVez ? '🆕 PRIMERA VEZ' : '🔄 CONTROL'
+        ]);
+
+        return $esPrimeraVez;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando primera consulta offline', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine()
+        ]);
+        return true;
+    }
+}
+
+/**
+ * ✅ OBTENER TODAS LAS HISTORIAS DEL PACIENTE (EXCLUYENDO CITA ACTUAL) - VERSIÓN FINAL CORREGIDA
+ */
+private function getTodasLasHistoriasDelPacienteOffline(
+    string $pacienteUuid, 
+    ?int $citaActualId = null
+): array {
+    try {
+        Log::info('🗄️ Obteniendo todas las historias del paciente (offline)', [
+            'paciente_uuid' => $pacienteUuid,
+            'cita_actual_id' => $citaActualId
+        ]);
+
+        $pdo = $this->getSQLiteConnection();
+        
+        if (!$pdo) {
+            Log::warning('⚠️ No se pudo conectar a SQLite, buscando en JSON');
+            return $this->getHistoriasDesdeJSON($pacienteUuid, $citaActualId);
+        }
+
+        // ✅ VERIFICAR ESTRUCTURA DE LA TABLA
+        $columns = $pdo->query("PRAGMA table_info(historias_clinicas)")->fetchAll(\PDO::FETCH_ASSOC);
+        $columnNames = array_column($columns, 'name');
+        
+        Log::debug('📊 Columnas disponibles en historias_clinicas', [
+            'columns' => $columnNames
+        ]);
+
+        // ✅ VERIFICAR QUÉ COLUMNAS TIENE
+        $tienePacienteUuid = in_array('paciente_uuid', $columnNames);
+        $tieneCitaId = in_array('cita_id', $columnNames);
+        $tieneCitaUuid = in_array('cita_uuid', $columnNames);
+
+        Log::info('🔍 Estructura de tabla detectada', [
+            'tiene_paciente_uuid' => $tienePacienteUuid,
+            'tiene_cita_id' => $tieneCitaId,
+            'tiene_cita_uuid' => $tieneCitaUuid
+        ]);
+
+        // ✅ CONSTRUIR QUERY SEGÚN ESTRUCTURA REAL
+        if ($tienePacienteUuid) {
+            // ✅ CASO 1: Tabla tiene paciente_uuid directamente (IDEAL)
+            $query = "
+                SELECT hc.*
+                FROM historias_clinicas hc
+                WHERE hc.paciente_uuid = :paciente_uuid
+            ";
+            $params = ['paciente_uuid' => $pacienteUuid];
+            
+            // ✅ EXCLUIR CITA ACTUAL (usando cita_uuid si existe, sino cita_id)
+            if ($citaActualId) {
+                if ($tieneCitaUuid) {
+                    $query .= " AND hc.cita_uuid != :cita_actual_uuid";
+                    $params['cita_actual_uuid'] = $citaActualId;
+                } elseif ($tieneCitaId) {
+                    $query .= " AND hc.cita_id != :cita_actual_id";
+                    $params['cita_actual_id'] = $citaActualId;
+                }
+            }
+            
+        } else {
+            // ✅ CASO 2: Necesita JOIN con tabla citas
+            if ($tieneCitaUuid) {
+                $query = "
+                    SELECT hc.*
+                    FROM historias_clinicas hc
+                    INNER JOIN citas c ON c.uuid = hc.cita_uuid
+                    WHERE c.paciente_uuid = :paciente_uuid
+                    AND c.estado IN ('ATENDIDA', 'CONFIRMADA')
+                ";
+            } elseif ($tieneCitaId) {
+                $query = "
+                    SELECT hc.*
+                    FROM historias_clinicas hc
+                    INNER JOIN citas c ON c.id = hc.cita_id
+                    WHERE c.paciente_uuid = :paciente_uuid
+                    AND c.estado IN ('ATENDIDA', 'CONFIRMADA')
+                ";
+            } else {
+                Log::error('❌ No se encontró columna de relación con citas');
+                return $this->getHistoriasDesdeJSON($pacienteUuid, $citaActualId);
+            }
+            
+            $params = ['paciente_uuid' => $pacienteUuid];
+            
+            // ✅ EXCLUIR CITA ACTUAL
+            if ($citaActualId) {
+                if ($tieneCitaUuid) {
+                    $query .= " AND hc.cita_uuid != :cita_actual_uuid";
+                    $params['cita_actual_uuid'] = $citaActualId;
+                } elseif ($tieneCitaId) {
+                    $query .= " AND hc.cita_id != :cita_actual_id";
+                    $params['cita_actual_id'] = $citaActualId;
+                }
+            }
+        }
+
+        $query .= " ORDER BY hc.id DESC";
+
+        Log::debug('🔍 Query construida', [
+            'query' => $query,
+            'params' => $params
+        ]);
+
+        $stmt = $pdo->prepare($query);
+        $stmt->execute($params);
+        $historias = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        Log::info('✅ Historias obtenidas desde SQLite', [
+            'total' => count($historias),
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ SI NO HAY HISTORIAS EN SQLITE, BUSCAR EN JSON
+        if (empty($historias)) {
+            Log::info('📁 No hay historias en SQLite, buscando en JSON');
+            return $this->getHistoriasDesdeJSON($pacienteUuid, $citaActualId);
+        }
+
+        return $historias;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias por especialidad (SQLite)', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine()
+        ]);
+        
+        // ✅ FALLBACK: Buscar en JSON
+        return $this->getHistoriasDesdeJSON($pacienteUuid, $citaActualId);
+    }
+}
+
+/**
+ * ✅ OBTENER HISTORIAS DESDE ARCHIVOS JSON (FALLBACK) - VERSIÓN CORREGIDA CON RUTA CORRECTA
+ */
+private function getHistoriasDesdeJSON(string $pacienteUuid, $citaActualId = null): array
+{
+    try {
+        // ✅ PROBAR AMBAS RUTAS (con guion bajo Y con guion medio)
+        $posiblesRutas = [
+            storage_path('app/offline/historias_clinicas'),  // ← Guion bajo
+            storage_path('app/offline/historias-clinicas'),  // ← Guion medio
+        ];
+
+        $historiasPath = null;
+        foreach ($posiblesRutas as $ruta) {
+            if (is_dir($ruta)) {
+                $historiasPath = $ruta;
+                Log::info('📁 Carpeta de historias encontrada', [
+                    'path' => $ruta
+                ]);
+                break;
+            }
+        }
+
+        if (!$historiasPath) {
+            Log::warning('📁 Ninguna carpeta de historias existe', [
+                'rutas_probadas' => $posiblesRutas
+            ]);
+            return [];
+        }
+
+        $files = glob($historiasPath . '/*.json');
+        $historias = [];
+
+        Log::info('📂 Buscando historias en archivos JSON', [
+            'total_archivos' => count($files),
+            'paciente_uuid' => $pacienteUuid,
+            'path' => $historiasPath
+        ]);
+
+        foreach ($files as $file) {
+            $historia = json_decode(file_get_contents($file), true);
+            
+            if (!$historia || json_last_error() !== JSON_ERROR_NONE) {
+                Log::warning('⚠️ Archivo JSON corrupto', [
+                    'file' => basename($file),
+                    'error' => json_last_error_msg()
+                ]);
+                continue;
+            }
+
+            // ✅ Verificar si pertenece al paciente
+            $historiaPatienteUuid = $historia['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente']['uuid'] ?? 
+                                   null;
+            
+            if ($historiaPatienteUuid !== $pacienteUuid) {
+                Log::debug('⏭️ Historia de otro paciente', [
+                    'file' => basename($file),
+                    'paciente_historia' => $historiaPatienteUuid,
+                    'paciente_buscado' => $pacienteUuid
+                ]);
+                continue;
+            }
+
+            Log::info('✅ Historia del paciente encontrada', [
+                'file' => basename($file),
+                'historia_uuid' => $historia['uuid'] ?? 'N/A',
+                'paciente_uuid' => $historiaPatienteUuid
+            ]);
+
+            // ✅ Excluir cita actual (puede ser UUID o ID)
+            if ($citaActualId) {
+                $historiaCitaId = $historia['cita_id'] ?? 
+                                 $historia['cita_uuid'] ?? 
+                                 $historia['cita']['id'] ?? 
+                                 $historia['cita']['uuid'] ?? 
+                                 null;
+                
+                // ✅ Comparar tanto UUID como ID
+                if ($historiaCitaId === $citaActualId || 
+                    (string)$historiaCitaId === (string)$citaActualId) {
+                    Log::debug('⏭️ Excluyendo cita actual del JSON', [
+                        'historia_cita_id' => $historiaCitaId,
+                        'cita_actual_id' => $citaActualId
+                    ]);
+                    continue;
+                }
+            }
+
+            $historias[] = $historia;
+        }
+
+        Log::info('✅ Historias obtenidas desde JSON', [
+            'total' => count($historias),
+            'paciente_uuid' => $pacienteUuid,
+            'path' => $historiasPath
+        ]);
+
+        return $historias;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias desde JSON', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine()
+        ]);
+        return [];
+    }
+}
+
+
+/**
+ * ✅ EXTRAER ESPECIALIDAD DE UNA HISTORIA (SIN DEPENDER DE original_data)
+ */
+private function extraerEspecialidadDeHistoria(array $historia): ?string
+{
+    try {
+        // ✅ INTENTO 1: Desde campo directo (si existe)
+        if (!empty($historia['especialidad'])) {
+            Log::debug('✅ Especialidad desde campo directo', [
+                'especialidad' => $historia['especialidad']
+            ]);
+            return $historia['especialidad'];
+        }
+
+        // ✅ INTENTO 2: Desde original_data (si existe)
+        if (!empty($historia['original_data'])) {
+            $originalData = is_string($historia['original_data']) 
+                ? json_decode($historia['original_data'], true) 
+                : $historia['original_data'];
+            
+            if ($originalData) {
+                // Desde cita.agenda.usuarioMedico.especialidad.nombre
+                if (isset($originalData['cita']['agenda']['usuarioMedico']['especialidad']['nombre'])) {
+                    Log::debug('✅ Especialidad desde original_data (usuarioMedico)', [
+                        'especialidad' => $originalData['cita']['agenda']['usuarioMedico']['especialidad']['nombre']
+                    ]);
+                    return $originalData['cita']['agenda']['usuarioMedico']['especialidad']['nombre'];
+                }
+
+                // Desde cita.agenda.proceso.nombre
+                if (isset($originalData['cita']['agenda']['proceso']['nombre'])) {
+                    Log::debug('✅ Especialidad desde original_data (proceso)', [
+                        'especialidad' => $originalData['cita']['agenda']['proceso']['nombre']
+                    ]);
+                    return $originalData['cita']['agenda']['proceso']['nombre'];
+                }
+            }
+        }
+
+        // ✅ INTENTO 3: Buscar en la CITA relacionada (desde SQLite o JSON)
+        $citaUuid = $historia['cita_uuid'] ?? null;
+        
+        if ($citaUuid) {
+            Log::debug('🔍 Buscando especialidad en cita relacionada', [
+                'cita_uuid' => $citaUuid
+            ]);
+            
+            // Buscar cita en SQLite
+            $cita = $this->getCitaOffline($citaUuid);
+            
+            if ($cita) {
+                // Buscar en agenda de la cita
+                $especialidad = $cita['agenda']['proceso']['nombre'] ?? 
+                               $cita['proceso']['nombre'] ?? 
+                               $cita['agenda']['usuario_medico']['especialidad']['nombre'] ?? 
+                               null;
+                
+                if ($especialidad) {
+                    Log::debug('✅ Especialidad desde cita relacionada', [
+                        'especialidad' => $especialidad
+                    ]);
+                    return $especialidad;
+                }
+            }
+        }
+
+        Log::warning('⚠️ No se pudo extraer especialidad de la historia', [
+            'historia_uuid' => $historia['uuid'] ?? 'N/A',
+            'tiene_especialidad_campo' => isset($historia['especialidad']),
+            'tiene_original_data' => isset($historia['original_data']),
+            'tiene_cita_uuid' => isset($historia['cita_uuid'])
+        ]);
+
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error extrayendo especialidad de historia', [
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+
+/**
+ * ✅ OBTENER ÚLTIMA HISTORIA POR ESPECIALIDAD (OFFLINE)
+ * Replica: obtenerUltimaHistoriaPorEspecialidad del backend
+ */
+public function obtenerUltimaHistoriaOffline(
+    string $pacienteUuid, 
+    string $especialidad
+): ?array {
+    try {
+        Log::info('🔍 Obteniendo última historia DE CUALQUIER ESPECIALIDAD (offline)', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad_actual' => $especialidad
+        ]);
+
+        $pdo = $this->getSQLiteConnection();
+        
+        if (!$pdo) {
+            return $this->obtenerUltimaHistoriaDesdeJSON($pacienteUuid);
+        }
+
+        // ✅ VERIFICAR ESTRUCTURA
+        $columns = $pdo->query("PRAGMA table_info(historias_clinicas)")->fetchAll(\PDO::FETCH_ASSOC);
+        $columnNames = array_column($columns, 'name');
+
+        // ✅ CONSTRUIR QUERY (ORDENAR POR ID DESC, igual que el backend)
+        if (in_array('paciente_uuid', $columnNames)) {
+            $query = "
+                SELECT hc.*, hc.original_data
+                FROM historias_clinicas hc
+                WHERE hc.paciente_uuid = :paciente_uuid
+                ORDER BY hc.id DESC
+                LIMIT 1
+            ";
+        } else {
+            $query = "
+                SELECT hc.*, hc.original_data
+                FROM historias_clinicas hc
+                INNER JOIN citas c ON c.id = hc.cita_id
+                WHERE c.paciente_uuid = :paciente_uuid
+                ORDER BY hc.id DESC
+                LIMIT 1
+            ";
+        }
+
+        $stmt = $pdo->prepare($query);
+        $stmt->execute(['paciente_uuid' => $pacienteUuid]);
+        $ultimaHistoria = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$ultimaHistoria) {
+            return $this->obtenerUltimaHistoriaDesdeJSON($pacienteUuid);
+        }
+
+        $especialidadOrigen = $this->extraerEspecialidadDeHistoria($ultimaHistoria);
+
+        Log::info('✅ Historia encontrada (puede ser de otra especialidad)', [
+            'historia_id' => $ultimaHistoria['id'],
+            'especialidad_origen' => $especialidadOrigen ?? 'DESCONOCIDA',
+            'especialidad_actual' => $especialidad
+        ]);
+
+        // ✅ PROCESAR HISTORIA
+        return $this->procesarHistoriaOfflineParaFrontend($ultimaHistoria);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo última historia offline', [
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER ÚLTIMA HISTORIA DESDE JSON (FALLBACK)
+ */
+private function obtenerUltimaHistoriaDesdeJSON(string $pacienteUuid): ?array
+{
+    try {
+        $historiasPath = storage_path('app/offline/historias-clinicas');
+        
+        if (!is_dir($historiasPath)) {
+            return null;
+        }
+
+        $files = glob($historiasPath . '/*.json');
+        $historiasDelPaciente = [];
+
+        foreach ($files as $file) {
+            $historia = json_decode(file_get_contents($file), true);
+            
+            if (!$historia) continue;
+
+            $historiaPatienteUuid = $historia['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente_uuid'] ?? 
+                                   null;
+
+            if ($historiaPatienteUuid === $pacienteUuid) {
+                $historiasDelPaciente[] = $historia;
+            }
+        }
+
+        if (empty($historiasDelPaciente)) {
+            return null;
+        }
+
+        // Ordenar por ID DESC
+        usort($historiasDelPaciente, function($a, $b) {
+            return ($b['id'] ?? 0) - ($a['id'] ?? 0);
+        });
+
+        return $historiasDelPaciente[0];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historia desde JSON', [
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ PROCESAR HISTORIA OFFLINE PARA FRONTEND
+ */
+private function procesarHistoriaOfflineParaFrontend(array $historia): array
+{
+    try {
+        $originalData = is_string($historia['original_data'] ?? '') 
+            ? json_decode($historia['original_data'], true) 
+            : ($historia['original_data'] ?? []);
+
+        return [
+            'medicamentos' => $originalData['medicamentos'] ?? [],
+            'diagnosticos' => $originalData['diagnosticos'] ?? [],
+            'remisiones' => $originalData['remisiones'] ?? [],
+            'cups' => $originalData['cups'] ?? [],
+            'clasificacion_estado_metabolico' => $historia['clasificacion_estado_metabolico'] ?? null,
+            'talla' => $historia['talla'] ?? null,
+            'historia_uuid' => $historia['uuid'],
+            'historia_id' => $historia['id'],
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error procesando historia offline', [
+            'error' => $e->getMessage()
+        ]);
+        return [];
+    }
+}
+
+/**
+ * ✅ NORMALIZAR ESPECIALIDAD (FUNCIÓN HELPER REUTILIZABLE)
+ * Elimina espacios, acentos y convierte a mayúsculas
+ */
+private function normalizarEspecialidad(string $especialidad): string
+{
+    // ✅ PASO 1: Trim y convertir a mayúsculas
+    $especialidad = strtoupper(trim($especialidad));
+    
+    // ✅ PASO 2: Reemplazar caracteres acentuados (TODAS las variantes)
+    $acentos = [
+        'Á' => 'A', 'á' => 'A', 'À' => 'A', 'à' => 'A', 'Ä' => 'A', 'ä' => 'A',
+        'É' => 'E', 'é' => 'E', 'È' => 'E', 'è' => 'E', 'Ë' => 'E', 'ë' => 'E',
+        'Í' => 'I', 'í' => 'I', 'Ì' => 'I', 'ì' => 'I', 'Ï' => 'I', 'ï' => 'I',
+        'Ó' => 'O', 'ó' => 'O', 'Ò' => 'O', 'ò' => 'O', 'Ö' => 'O', 'ö' => 'O',
+        'Ú' => 'U', 'ú' => 'U', 'Ù' => 'U', 'ù' => 'U', 'Ü' => 'U', 'ü' => 'U',
+        'Ñ' => 'N', 'ñ' => 'N'
+    ];
+    
+    $especialidad = str_replace(array_keys($acentos), array_values($acentos), $especialidad);
+    
+    // ✅ PASO 3: Eliminar espacios
+    $especialidad = str_replace(' ', '', $especialidad);
+    
+    return $especialidad;
+}
 
 }

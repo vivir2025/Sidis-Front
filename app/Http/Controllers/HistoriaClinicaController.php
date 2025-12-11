@@ -28,17 +28,11 @@ class HistoriaClinicaController extends Controller
         $this->pacienteService = $pacienteService;
         $this->citaService = $citaService;
     }
-
-   public function create(Request $request, string $citaUuid)
+public function create(Request $request, string $citaUuid)
 {
     try {
         $usuario = $this->authService->usuario();
         $isOffline = $this->authService->isOffline();
-
-        Log::info('🩺 Creando historia clínica', [
-            'cita_uuid' => $citaUuid,
-            'usuario' => $usuario['nombre_completo']
-        ]);
 
         // ✅ OBTENER DATOS DE LA CITA
         $citaResult = $this->citaService->show($citaUuid);
@@ -49,13 +43,13 @@ class HistoriaClinicaController extends Controller
 
         $cita = $citaResult['data'];
 
-        // ✅ VERIFICAR QUE LA CITA NO TENGA HISTORIA CLÍNICA
+        // ✅ VERIFICAR QUE NO TENGA HISTORIA
         if (isset($cita['historia_clinica_uuid'])) {
             return redirect()->route('historia-clinica.show', $cita['historia_clinica_uuid'])
                 ->with('info', 'Esta cita ya tiene una historia clínica asociada');
         }
 
-        // ✅ OBTENER ESPECIALIDAD Y TIPO DE CONSULTA
+        // ✅ OBTENER ESPECIALIDAD
         $especialidad = $this->obtenerEspecialidadMedico($cita);
         $pacienteUuid = $cita['paciente_uuid'] ?? $cita['paciente']['uuid'] ?? null;
         
@@ -63,11 +57,13 @@ class HistoriaClinicaController extends Controller
             return back()->with('error', 'No se pudo obtener información del paciente');
         }
 
-        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad);
+        // ✅✅✅ DETERMINAR TIPO CONSULTA (PASANDO CITA_ID PARA EXCLUIRLA) ✅✅✅
+        $citaId = $cita['id'] ?? $cita['uuid'] ?? null;
+        $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad, $citaId);
 
-        // ✅ OBTENER HISTORIA PREVIA SOLO PARA MEDICINA GENERAL Y CONTROL
+        // ✅✅✅ CARGAR HISTORIA PREVIA SOLO SI ES CONTROL ✅✅✅
         $historiaPrevia = null;
-        if ($tipoConsulta === 'CONTROL' && $especialidad === 'MEDICINA GENERAL') {
+        if ($tipoConsulta === 'CONTROL') {
             $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
             
             Log::info('🔄 Historia previa cargada para formulario', [
@@ -75,9 +71,13 @@ class HistoriaClinicaController extends Controller
                 'especialidad' => $especialidad,
                 'tipo_consulta' => $tipoConsulta
             ]);
+        } else {
+            Log::info('ℹ️ PRIMERA VEZ - No se carga historia previa', [
+                'tipo_consulta' => $tipoConsulta
+            ]);
         }
 
-        // ✅ OBTENER DATOS MAESTROS PARA SELECTS
+        // ✅ OBTENER DATOS MAESTROS
         $masterData = $this->getMasterDataForForm();
 
         return view('historia-clinica.create', compact(
@@ -85,20 +85,20 @@ class HistoriaClinicaController extends Controller
             'usuario',
             'isOffline',
             'masterData',
-            'historiaPrevia', // ✅ AGREGAR ESTA VARIABLE
+            'historiaPrevia',
             'especialidad',
             'tipoConsulta'
         ));
 
     } catch (\Exception $e) {
         Log::error('❌ Error creando historia clínica', [
-            'error' => $e->getMessage(),
-            'cita_uuid' => $citaUuid
+            'error' => $e->getMessage()
         ]);
 
         return back()->with('error', 'Error cargando formulario de historia clínica');
     }
 }
+
 
 /**
  * ✅ MOSTRAR UNA HISTORIA CLÍNICA ESPECÍFICA (VER HISTORIA YA GUARDADA)
@@ -531,51 +531,170 @@ private function obtenerHistoriaOffline(string $uuid): ?array
     }
 }
 
-
 /**
- * ✅ OBTENER ÚLTIMA HISTORIA FORMATEADA PARA EL FORMULARIO
+ * ✅✅✅ OBTENER ÚLTIMA HISTORIA PARA FORMULARIO - VERSIÓN CORREGIDA ✅✅✅
+ * (Busca en TODAS las especialidades, pero solo carga si es CONTROL)
  */
 private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, string $especialidad): ?array
 {
     try {
-        Log::info('🔍 Obteniendo última historia para formulario', [
+        Log::info('🔍 Obteniendo última historia DE CUALQUIER ESPECIALIDAD (offline)', [
             'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
+            'especialidad_actual' => $especialidad
         ]);
 
-        // ✅ INTENTAR OBTENER DESDE API PRIMERO
-        if ($this->apiService->isOnline()) {
-            $response = $this->apiService->get("/pacientes/{$pacienteUuid}/ultima-historia", [
-                'especialidad' => $especialidad
-            ]);
+        // ✅ 1. BUSCAR EN JSON OFFLINE
+        $historiasPath = storage_path('app/offline/historias-clinicas');
+        
+        if (!is_dir($historiasPath)) {
+            Log::info('ℹ️ No hay historias offline');
+            return null;
+        }
+
+        $files = glob($historiasPath . '/*.json');
+        $historiasDelPaciente = [];
+
+        // ✅ 2. FILTRAR HISTORIAS DEL PACIENTE
+        foreach ($files as $file) {
+            $historia = json_decode(file_get_contents($file), true);
             
-            if ($response['success'] && !empty($response['data'])) {
-                Log::info('✅ Historia previa obtenida desde API');
-                return $response['data'];
+            if (!$historia || json_last_error() !== JSON_ERROR_NONE) {
+                continue;
+            }
+
+            $historiaPatienteUuid = $historia['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente']['uuid'] ?? 
+                                   null;
+
+            if ($historiaPatienteUuid === $pacienteUuid) {
+                $historiasDelPaciente[] = $historia;
             }
         }
 
-        // ✅ FALLBACK A OFFLINE
-        $historiaOffline = $this->obtenerUltimaHistoriaOffline($pacienteUuid, $especialidad);
-        
-        if ($historiaOffline) {
-            Log::info('✅ Historia previa obtenida desde offline');
-            return $this->formatearHistoriaParaFormulario($historiaOffline);
+        if (empty($historiasDelPaciente)) {
+            Log::info('ℹ️ No se encontraron historias del paciente');
+            return null;
         }
 
-        Log::info('ℹ️ No se encontró historia previa');
-        return null;
+        // ✅ 3. ORDENAR POR ID DESC (COMO EL BACKEND)
+        usort($historiasDelPaciente, function($a, $b) {
+            $idA = $a['id'] ?? 0;
+            $idB = $b['id'] ?? 0;
+            return $idB - $idA; // DESC
+        });
+
+        $ultimaHistoria = $historiasDelPaciente[0];
+        
+        $especialidadOrigen = $ultimaHistoria['especialidad'] ?? 
+                             $ultimaHistoria['cita']['agenda']['proceso']['nombre'] ?? 
+                             'DESCONOCIDA';
+
+        Log::info('✅ Historia encontrada (puede ser de otra especialidad)', [
+            'historia_id' => $ultimaHistoria['id'] ?? 'N/A',
+            'historia_uuid' => $ultimaHistoria['uuid'] ?? 'N/A',
+            'especialidad_origen' => $especialidadOrigen,
+            'especialidad_actual' => $especialidad,
+            'es_misma_especialidad' => $especialidadOrigen === $especialidad
+        ]);
+
+        // ✅ 4. FORMATEAR PARA EL FORMULARIO
+        $historiaFormateada = $this->formatearHistoriaParaFormulario($ultimaHistoria);
+
+        // ✅ 5. COMPLETAR DATOS FALTANTES DE OTRAS ESPECIALIDADES
+        $historiaFormateada = $this->completarDatosFaltantesOffline($pacienteUuid, $historiaFormateada);
+
+        return $historiaFormateada;
 
     } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo historia previa para formulario', [
-            'error' => $e->getMessage(),
-            'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
+        Log::error('❌ Error obteniendo última historia offline', [
+            'error' => $e->getMessage()
         ]);
         
         return null;
     }
 }
+
+/**
+ * ✅✅✅ COMPLETAR DATOS FALTANTES OFFLINE ✅✅✅
+ */
+private function completarDatosFaltantesOffline(string $pacienteUuid, array $historiaBase): array
+{
+    try {
+        // ✅ VERIFICAR SI LOS ARRAYS YA TIENEN DATOS
+        $necesitaMedicamentos = empty($historiaBase['medicamentos']);
+        $necesitaDiagnosticos = empty($historiaBase['diagnosticos']);
+        $necesitaRemisiones = empty($historiaBase['remisiones']);
+        $necesitaCups = empty($historiaBase['cups']);
+
+        // ✅ IDENTIFICAR CAMPOS ESCALARES VACÍOS
+        $camposPorCompletar = [
+            'clasificacion_estado_metabolico' => empty($historiaBase['clasificacion_estado_metabolico']),
+            'clasificacion_hta' => empty($historiaBase['clasificacion_hta']),
+            'talla' => empty($historiaBase['talla']),
+            // ... (agregar más campos según necesites)
+        ];
+
+        // ✅ SI TODO ESTÁ LLENO, RETORNAR
+        if (!in_array(true, $camposPorCompletar) && 
+            !$necesitaMedicamentos && 
+            !$necesitaDiagnosticos && 
+            !$necesitaRemisiones && 
+            !$necesitaCups) {
+            return $historiaBase;
+        }
+
+        // ✅ BUSCAR EN HISTORIAS ANTERIORES
+        $historiasPath = storage_path('app/offline/historias-clinicas');
+        $files = glob($historiasPath . '/*.json');
+
+        foreach ($files as $file) {
+            $historia = json_decode(file_get_contents($file), true);
+            
+            if (!$historia) continue;
+
+            // ✅ VERIFICAR QUE SEA DEL MISMO PACIENTE
+            $historiaPatienteUuid = $historia['paciente_uuid'] ?? null;
+            if ($historiaPatienteUuid !== $pacienteUuid) continue;
+
+            // ✅ COMPLETAR MEDICAMENTOS SI ESTÁN VACÍOS
+            if ($necesitaMedicamentos && !empty($historia['medicamentos'])) {
+                $historiaBase['medicamentos'] = $historia['medicamentos'];
+                $necesitaMedicamentos = false;
+            }
+
+            // ✅ COMPLETAR DIAGNÓSTICOS SI ESTÁN VACÍOS
+            if ($necesitaDiagnosticos && !empty($historia['diagnosticos'])) {
+                $historiaBase['diagnosticos'] = $historia['diagnosticos'];
+                $necesitaDiagnosticos = false;
+            }
+
+            // ✅ COMPLETAR CLASIFICACIONES SI ESTÁN VACÍAS
+            if ($camposPorCompletar['clasificacion_estado_metabolico'] && 
+                !empty($historia['clasificacion_estado_metabolico'])) {
+                $historiaBase['clasificacion_estado_metabolico'] = $historia['clasificacion_estado_metabolico'];
+                $camposPorCompletar['clasificacion_estado_metabolico'] = false;
+            }
+
+            // ✅ SI YA COMPLETAMOS TODO, SALIR
+            if (!in_array(true, $camposPorCompletar) && 
+                !$necesitaMedicamentos && 
+                !$necesitaDiagnosticos) {
+                break;
+            }
+        }
+
+        return $historiaBase;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error completando datos offline', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return $historiaBase;
+    }
+}
+
 
 private function formatearHistoriaParaFormulario(array $historia): array
 {
@@ -2807,6 +2926,8 @@ private function obtenerEspecialidadOffline(string $citaUuid): ?string
         return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
     }
 }
+
+
 public function determinarVista(Request $request, string $citaUuid)
 {
     try {
@@ -3621,61 +3742,253 @@ private function determinarVistaOffline(string $especialidad, string $tipoConsul
 
     return $vistas[$especialidad][$tipoConsulta] ?? $vistas['MEDICINA GENERAL'][$tipoConsulta];
 }
-
 /**
- * ✅ DETERMINAR TIPO CONSULTA OFFLINE - VERSIÓN CORREGIDA
+ * ✅✅✅ DETERMINAR TIPO CONSULTA OFFLINE - VERSIÓN CORREGIDA CON LÓGICA DEL BACKEND ✅✅✅
  */
-private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $especialidad = null): string
+private function determinarTipoConsultaOffline(string $pacienteUuid, ?string $especialidad = null, ?string $citaActualId = null): string
 {
     try {
-        Log::info('🔍 OFFLINE: Determinando tipo de consulta', [
+        Log::info('🔍 OFFLINE: Determinando tipo de consulta (con lógica backend)', [
             'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
+            'especialidad' => $especialidad,
+            'cita_actual_id' => $citaActualId
         ]);
 
         $especialidadFinal = $especialidad ?? 'MEDICINA GENERAL';
         
-        // ✅ ESPECIALIDADES QUE SOLO TIENEN CONTROL
-        $especialidadesSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+        // ✅ USAR EL MÉTODO DEL OFFLINE SERVICE QUE REPLICA EL BACKEND
+        $esPrimeraVez = $this->offlineService->esPrimeraConsultaOffline(
+            $pacienteUuid,
+            $especialidadFinal,
+            $citaActualId
+        );
         
-        // ✅ SI ES UNA ESPECIALIDAD SOLO-CONTROL, RETORNAR CONTROL DIRECTAMENTE
-        if (in_array($especialidadFinal, $especialidadesSoloControl)) {
-            Log::info('🔒 OFFLINE: Especialidad solo-control - forzando CONTROL', [
-                'especialidad' => $especialidadFinal,
-                'tipo_consulta' => 'CONTROL'
-            ]);
-            return 'CONTROL';
-        }
-        
-        // ✅ VERIFICAR HISTORIAS ANTERIORES OFFLINE (SOLO PARA OTRAS ESPECIALIDADES)
-        $tieneHistoriasAnteriores = $this->verificarHistoriasAnterioresOffline($pacienteUuid, $especialidadFinal);
-        
-        $tipoConsulta = $tieneHistoriasAnteriores ? 'CONTROL' : 'PRIMERA VEZ';
+        $tipoConsulta = $esPrimeraVez ? 'PRIMERA VEZ' : 'CONTROL';
 
-        Log::info('✅ Tipo de consulta determinado offline', [
+        Log::info('✅ Tipo de consulta determinado offline (lógica backend)', [
             'paciente_uuid' => $pacienteUuid,
             'especialidad_final' => $especialidadFinal,
-            'tipo_consulta' => $tipoConsulta,
-            'tiene_historias_anteriores' => $tieneHistoriasAnteriores
+            'es_primera_vez' => $esPrimeraVez,
+            'tipo_consulta' => $tipoConsulta
         ]);
 
         return $tipoConsulta;
 
     } catch (\Exception $e) {
         Log::error('❌ Error en determinarTipoConsultaOffline', [
+            'error' => $e->getMessage()
+        ]);
+
+        return 'PRIMERA VEZ'; // ✅ FALLBACK SEGURO
+    }
+}
+
+/**
+ * ✅✅✅ VERIFICAR SI ES PRIMERA CONSULTA DE LA ESPECIALIDAD (OFFLINE) - VERSIÓN ULTRA CORREGIDA ✅✅✅
+ */
+private function esPrimeraConsultaDeEspecialidadOffline(
+    string $pacienteUuid, 
+    string $especialidad, 
+    ?string $citaActualId = null
+): bool {
+    try {
+        Log::info('🔍 OFFLINE: Verificando si es PRIMERA CONSULTA de la especialidad', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'cita_actual_id' => $citaActualId
+        ]);
+
+        // ✅ 1. BUSCAR HISTORIAS EN JSON
+        $historiasPath = storage_path('app/offline/historias-clinicas');
+        
+        if (!is_dir($historiasPath)) {
+            Log::info('📁 Directorio de historias no existe, creándolo', [
+                'path' => $historiasPath
+            ]);
+            
+            // ✅ CREAR DIRECTORIO SI NO EXISTE
+            if (!mkdir($historiasPath, 0755, true) && !is_dir($historiasPath)) {
+                Log::error('❌ No se pudo crear directorio de historias');
+            }
+            
+            // ✅ SI NO EXISTE, BUSCAR EN SQLITE
+            return $this->verificarPrimeraVezEnSQLite($pacienteUuid, $especialidad, $citaActualId);
+        }
+
+        $files = glob($historiasPath . '/*.json');
+        
+        Log::info('📂 Archivos de historias encontrados', [
+            'total_archivos' => count($files),
+            'path' => $historiasPath
+        ]);
+
+        if (empty($files)) {
+            Log::info('📁 No hay archivos JSON de historias, buscando en SQLite');
+            
+            // ✅ FALLBACK A SQLITE
+            return $this->verificarPrimeraVezEnSQLite($pacienteUuid, $especialidad, $citaActualId);
+        }
+
+        $historiasDeEspecialidad = [];
+
+        // ✅ 2. FILTRAR HISTORIAS DE LA MISMA ESPECIALIDAD (EXCLUYENDO CITA ACTUAL)
+        foreach ($files as $file) {
+            $historia = json_decode(file_get_contents($file), true);
+            
+            if (!$historia || json_last_error() !== JSON_ERROR_NONE) {
+                Log::warning('⚠️ Archivo JSON corrupto', [
+                    'file' => basename($file)
+                ]);
+                continue;
+            }
+
+            // ✅ VERIFICAR QUE SEA DEL MISMO PACIENTE
+            $historiaPatienteUuid = $historia['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente_uuid'] ?? 
+                                   $historia['cita']['paciente']['uuid'] ?? 
+                                   null;
+
+            if ($historiaPatienteUuid !== $pacienteUuid) {
+                continue;
+            }
+
+            // ✅ EXCLUIR LA CITA ACTUAL (SI SE PROPORCIONÓ)
+            if ($citaActualId) {
+                $historiaCitaId = $historia['cita_id'] ?? 
+                                 $historia['cita']['id'] ?? 
+                                 $historia['cita_uuid'] ?? 
+                                 null;
+
+                if ($historiaCitaId === $citaActualId) {
+                    Log::info('⏭️ Excluyendo cita actual del conteo', [
+                        'cita_id' => $citaActualId
+                    ]);
+                    continue;
+                }
+            }
+
+            // ✅ VERIFICAR ESPECIALIDAD
+            $historiaEspecialidad = $historia['especialidad'] ?? 
+                                   $historia['cita']['agenda']['proceso']['nombre'] ?? 
+                                   $historia['cita']['proceso']['nombre'] ?? 
+                                   null;
+
+            if (!$historiaEspecialidad) {
+                Log::debug('⚠️ Historia sin especialidad', [
+                    'historia_uuid' => $historia['uuid'] ?? 'N/A'
+                ]);
+                continue;
+            }
+
+            // ✅ NORMALIZAR Y COMPARAR
+            $especialidadNormalizada = $this->normalizarTexto($especialidad);
+            $historiaEspecialidadNormalizada = $this->normalizarTexto($historiaEspecialidad);
+
+            Log::debug('🔍 Comparando especialidades', [
+                'especialidad_buscada' => $especialidad,
+                'especialidad_normalizada_buscada' => $especialidadNormalizada,
+                'especialidad_historia' => $historiaEspecialidad,
+                'especialidad_historia_normalizada' => $historiaEspecialidadNormalizada,
+                'coinciden' => $especialidadNormalizada === $historiaEspecialidadNormalizada
+            ]);
+
+            if ($especialidadNormalizada === $historiaEspecialidadNormalizada) {
+                $historiasDeEspecialidad[] = $historia;
+                
+                Log::info('📋 Historia de la especialidad encontrada (JSON)', [
+                    'historia_uuid' => $historia['uuid'] ?? 'N/A',
+                    'especialidad' => $historiaEspecialidad
+                ]);
+            }
+        }
+
+        $totalHistorias = count($historiasDeEspecialidad);
+        $esPrimeraVez = $totalHistorias === 0;
+
+        // ✅ SI NO SE ENCONTRARON EN JSON, BUSCAR EN SQLITE
+        if ($esPrimeraVez) {
+            Log::info('📁 No se encontraron historias en JSON, buscando en SQLite');
+            return $this->verificarPrimeraVezEnSQLite($pacienteUuid, $especialidad, $citaActualId);
+        }
+
+        Log::info('✅ OFFLINE: Resultado verificación primera consulta (JSON)', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'total_historias_especialidad' => $totalHistorias,
+            'es_primera_vez' => $esPrimeraVez,
+            'tipo_consulta' => $esPrimeraVez ? '🆕 PRIMERA VEZ' : '🔄 CONTROL'
+        ]);
+
+        return $esPrimeraVez;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando primera consulta offline', [
             'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return true; // ✅ FALLBACK: ASUMIR PRIMERA VEZ
+    }
+}
+
+/**
+ * ✅✅✅ NUEVO MÉTODO: VERIFICAR EN SQLITE ✅✅✅
+ */
+private function verificarPrimeraVezEnSQLite(
+    string $pacienteUuid, 
+    string $especialidad, 
+    ?string $citaActualId = null
+): bool {
+    try {
+        Log::info('🗄️ Verificando primera vez en SQLite', [
             'paciente_uuid' => $pacienteUuid,
             'especialidad' => $especialidad
         ]);
 
-        // ✅ FALLBACK: Si es solo-control, retornar CONTROL incluso en error
-        if (in_array($especialidad, ['NEFROLOGIA', 'INTERNISTA'])) {
-            return 'CONTROL';
+        // ✅ BUSCAR HISTORIAS EN SQLITE
+        $historiasSQL = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad(
+            $pacienteUuid, 
+            $especialidad
+        );
+
+        if (empty($historiasSQL)) {
+            Log::info('✅ No hay historias en SQLite → PRIMERA VEZ');
+            return true;
         }
 
-        return 'PRIMERA VEZ';
+        // ✅ EXCLUIR CITA ACTUAL SI SE PROPORCIONÓ
+        if ($citaActualId) {
+            $historiasSQL = array_filter($historiasSQL, function($historia) use ($citaActualId) {
+                $historiaCitaId = $historia['cita_id'] ?? 
+                                 $historia['cita_uuid'] ?? 
+                                 null;
+                
+                return $historiaCitaId !== $citaActualId;
+            });
+        }
+
+        $totalHistorias = count($historiasSQL);
+        $esPrimeraVez = $totalHistorias === 0;
+
+        Log::info('✅ OFFLINE: Resultado verificación primera consulta (SQLite)', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'total_historias_especialidad' => $totalHistorias,
+            'es_primera_vez' => $esPrimeraVez,
+            'tipo_consulta' => $esPrimeraVez ? '🆕 PRIMERA VEZ' : '🔄 CONTROL'
+        ]);
+
+        return $esPrimeraVez;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando en SQLite', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return true; // ✅ FALLBACK: ASUMIR PRIMERA VEZ
     }
 }
+
 
 
 /**

@@ -112,41 +112,7 @@
             </div>
         </div>
 
-        {{-- ✅ FIRMA DIGITAL --}}
-        <div class="card mb-4">
-            <div class="card-header bg-dark text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-signature me-2"></i>
-                    Firmas
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-6">
-                        @if(isset($usuario['firma']))
-                            <img alt="Firma Digital" width="302px" height="70px" 
-                                 src="data:image/jpeg;base64,{{ $usuario['firma'] }}" class="img-fluid mb-2"/>
-                        @endif
-                        <div>
-                            <strong>FIRMA DIGITAL</strong><br>
-                            <strong>PROFESIONAL:</strong><br>
-                            <em>{{ $usuario['nombre_completo'] }}<br>
-                            RM: {{ $usuario['registro_profesional'] ?? 'N/A' }}</em>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div style="height: 70px; border: 1px solid #ccc; margin-bottom: 10px; display: flex; align-items: center; justify-content: center;">
-                            <span class="text-muted">Espacio para firma del paciente</span>
-                        </div>
-                        <div>
-                            <strong>FIRMA PACIENTE:</strong><br>
-                            <em>{{ $cita['paciente']['tipo_documento'] ?? '' }}-{{ $cita['paciente']['documento'] ?? '' }}<br>
-                            {{ $cita['paciente']['nombre_completo'] ?? '' }}</em>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+ 
 
         {{-- ✅ BOTONES DE ACCIÓN --}}
         <div class="card">
