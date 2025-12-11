@@ -509,4 +509,24 @@
             grid-template-columns: repeat(2, 1fr);
         }
     }
+
+    .clasificacion-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 10px;
+    }
+
+    .clasificacion-columna {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    /* Responsive: en pantallas pequeñas vuelve a 1 columna */
+    @media (max-width: 768px) {
+        .clasificacion-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>

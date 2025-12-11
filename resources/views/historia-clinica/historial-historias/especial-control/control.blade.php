@@ -183,26 +183,33 @@
         {{-- ✅ TEST MORISKY --}}
         <fieldset>
             <legend>TEST MORISKY</legend>
-            <div class="examen-item">
-                <div class="examen-label">OLVIDA ALGUNA VEZ TOMAR SUS MEDICAMENTOS:</div>
-                <div class="examen-valor">{{ strtoupper($historia['test_morisky_olvida_tomar_medicamentos'] ?? 'NO') }}</div>
-            </div>
-            <div class="examen-item">
-                <div class="examen-label">TOMAR LOS MEDICAMENTOS A LA HORA INDICADA:</div>
-                <div class="examen-valor">{{ strtoupper($historia['test_morisky_toma_medicamentos_hora_indicada'] ?? 'SI') }}</div>
-            </div>
-            <div class="examen-item">
-                <div class="examen-label">CUANDO SE ENCUENTRA BIEN ¿DEJA DE TOMAR SUS MEDICAMENTOS?:</div>
-                <div class="examen-valor">{{ strtoupper($historia['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO') }}</div>
-            </div>
-            <div class="examen-item">
-                <div class="examen-label">SI ALGUNA VEZ SE SIENTE MAL ¿DEJA DE TOMARLOS?:</div>
-                <div class="examen-valor">{{ strtoupper($historia['test_morisky_siente_mal_deja_tomarlos'] ?? 'NO') }}</div>
-            </div>
-            <div class="examen-item">
-                <div class="examen-label">VALORACIÓN POR PSICOLOGÍA:</div>
-                <div class="examen-valor">{{ strtoupper($historia['test_morisky_valoracio_psicologia'] ?? 'NO') }}</div>
-            </div>
+            <div class="clasificacion-grid">
+                <div class="clasificacion-columna">
+                    <div class="examen-item">
+                        <div class="examen-label">OLVIDA ALGUNA VEZ TOMAR SUS MEDICAMENTOS:</div>
+                        <div class="examen-valor">{{ strtoupper($historia['test_morisky_olvida_tomar_medicamentos'] ?? 'NO') }}</div>
+                    </div>
+                    <div class="examen-item">
+                        <div class="examen-label">TOMAR LOS MEDICAMENTOS A LA HORA INDICADA:</div>
+                        <div class="examen-valor">{{ strtoupper($historia['test_morisky_toma_medicamentos_hora_indicada'] ?? 'SI') }}</div>
+                    </div>
+                    <div class="examen-item">
+                        <div class="examen-label">CUANDO SE ENCUENTRA BIEN ¿DEJA DE TOMAR SUS MEDICAMENTOS?:</div>
+                        <div class="examen-valor">{{ strtoupper($historia['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO') }}</div>
+                    </div>
+                </div>
+                <div class="clasificacion-columna">
+
+                    <div class="examen-item">
+                        <div class="examen-label">SI ALGUNA VEZ SE SIENTE MAL ¿DEJA DE TOMARLOS?:</div>
+                        <div class="examen-valor">{{ strtoupper($historia['test_morisky_siente_mal_deja_tomarlos'] ?? 'NO') }}</div>
+                    </div>
+                    <div class="examen-item">
+                        <div class="examen-label">VALORACIÓN POR PSICOLOGÍA:</div>
+                        <div class="examen-valor">{{ strtoupper($historia['test_morisky_valoracio_psicologia'] ?? 'NO') }}</div>
+                    </div>
+                </div>
+            </div>    
         </fieldset>
 
         {{-- ✅ REVISIÓN POR SISTEMAS --}}
@@ -344,38 +351,80 @@
         {{-- ✅ CLASIFICACIÓN --}}
         <fieldset>
             <legend>CLASIFICACIÓN</legend>
-            <div class="examen-fisico-grid">
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
-                    <div class="examen-valor">{{ $historia['ClasificacionEstadoMetabolico'] ?? 'N/A' }}</div>
+            
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">HIPERTENSIÓN ARTERIAL:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_hipertension_arterial_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_hipertension_arterial_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN HTA:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_hta'] ?? 'N/A' }}</div>
+                    </div>
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">DIABETES MELLITUS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_diabetes_mellitus_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_diabetes_mellitus_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN DM:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_dm'] ?? 'NO DIABETICO' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
+                    </div>
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
+                    </div>
                 </div>
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN HTA:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_hta'] ?? 'N/A' }}</div>
-                </div>
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN DM:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_dm'] ?? 'N/A' }}</div>
-                </div>
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN RCV:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_rcv'] ?? 'N/A' }}</div>
-                </div>
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ERC ESTADIO:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
-                </div>
-                    <div class="examen-item">
-                        <div class="examen-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
-                        <div class="examen-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
-                </div>
-                <div class="examen-item">
-                    <div class="examen-label">CATEGORÍA ALBUMINURIA:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
+
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    
+
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN RIESGO CARDIO VASCULAR:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_rcv'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_estado_metabolico'] ?? 'N/A' }}</div>
+                    </div>
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL CKD-EPI:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_ckd_epi'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL COCKCROFT-GAULT:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_gockcroft_gault'] ?? 'N/A' }}</div>
+                    </div>
+                    
                 </div>
             </div>
         </fieldset>
-
         {{-- ✅ EDUCACIÓN --}}
         <fieldset>
             <legend>EDUCACIÓN</legend>

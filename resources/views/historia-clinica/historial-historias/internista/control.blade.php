@@ -580,59 +580,81 @@
             </div>
         </fieldset>
 
-        {{-- ✅ CLASIFICACIÓN --}}
+       {{-- ✅ CLASIFICACIÓN --}}
         <fieldset>
             <legend>CLASIFICACIÓN</legend>
             
-            <div class="examen-fisico-grid">
-                @if(!empty($historia['clasificacion_hta']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN HTA:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_hta'] }}</div>
-                </div>
-                @endif
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">HIPERTENSIÓN ARTERIAL:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_hipertension_arterial_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_hipertension_arterial_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN HTA:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_hta'] ?? 'N/A' }}</div>
+                    </div>
 
-                @if(!empty($historia['clasificacion_dm']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN DM:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_dm'] }}</div>
-                </div>
-                @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">DIABETES MELLITUS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_diabetes_mellitus_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_diabetes_mellitus_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN DM:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_dm'] ?? 'NO DIABETICO' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
+                    </div>
 
-                @if(!empty($historia['clasificacion_erc_estado']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ERC ESTADO:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_erc_estado'] }}</div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
+                    </div>
                 </div>
-                @endif
 
-                @if(!empty($historia['clasificacion_erc_estadodos']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_erc_estadodos'] }}</div>
-                </div>
-                @endif
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    
 
-                @if(!empty($historia['clasificacion_erc_categoria_ambulatoria_persistente']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] }}</div>
-                </div>
-                @endif
 
-                @if(!empty($historia['clasificacion_rcv']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN RCV:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_rcv'] }}</div>
-                </div>
-                @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN RIESGO CARDIO VASCULAR:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_rcv'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_estado_metabolico'] ?? 'N/A' }}</div>
+                    </div>
 
-                @if(!empty($historia['clasificacion_estado_metabolico']))
-                <div class="examen-item">
-                    <div class="examen-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
-                    <div class="examen-valor">{{ $historia['clasificacion_estado_metabolico'] }}</div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL CKD-EPI:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_ckd_epi'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL COCKCROFT-GAULT:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_gockcroft_gault'] ?? 'N/A' }}</div>
+                    </div>
+                    
                 </div>
-                @endif
             </div>
         </fieldset>
 

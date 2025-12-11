@@ -228,112 +228,122 @@
         <fieldset>
             <legend>ANTECEDENTES FAMILIARES</legend>
             
-            <div class="antecedentes-row">
-                <div class="antecedente-label">¿HIPERTENSIÓN ARTERIAL?:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_hipertension_arterial']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_hipertension_arterial'] }}</div>
-            </div>
-            @endif
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">¿HIPERTENSIÓN ARTERIAL?:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_hipertension_arterial']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_hipertension_arterial'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">¿DIABETES MELLITUS?</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_diabetes_mellitus']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_diabetes_mellitus'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">¿DIABETES MELLITUS?</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_diabetes_mellitus']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_diabetes_mellitus'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">¿ARTRITIS?:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['artritis'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_artritis']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_artritis'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">¿ARTRITIS?:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['artritis'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_artritis']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_artritis'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">¿ENF. CARDIOVASCULAR?:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['enfermedad_cardiovascular'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_enfermedad_cardiovascular']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_enfermedad_cardiovascular'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">¿ENF. CARDIOVASCULAR?:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['enfermedad_cardiovascular'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_enfermedad_cardiovascular']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_enfermedad_cardiovascular'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">ANTECEDENTES METABÓLICOS:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['antecedentes_metabolico'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_antecedentes_metabolico']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_antecedentes_metabolico'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">ANTECEDENTES METABÓLICOS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['antecedentes_metabolico'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_antecedentes_metabolico']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_antecedentes_metabolico'] }}</div>
+                    </div>
+                    @endif
+                </div>
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CÁNCER (MAMA, ESTÓMAGO, PRÓSTATA, COLON):</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['cancer'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_cancer']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_cancer'] }}</div>
-            </div>
-            @endif
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CÁNCER (MAMA, ESTÓMAGO, PRÓSTATA, COLON):</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['cancer'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_cancer']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_cancer'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">LEUCEMIA:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['lucemia'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_lucemia']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_lucemia'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">LEUCEMIA:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['lucemia'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_lucemia']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_lucemia'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">VIH:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['vih'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['parentesco_vih']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_vih'] }}</div>
-            </div>
-            @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">VIH:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['vih'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_vih']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_vih'] }}</div>
+                    </div>
+                    @endif
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OTROS:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['otro'] ?? 'NO') }}</div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OTROS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['otro'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['parentesco_otro']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['parentesco_otro'] }}</div>
+                    </div>
+                    @endif
+                </div>
             </div>
-            @if(!empty($historia['parentesco_otro']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">PARENTESCO Y DESCRIPCIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['parentesco_otro'] }}</div>
-            </div>
-            @endif
         </fieldset>
+
 
         {{-- ✅ ANTECEDENTES PERSONALES --}}
         <fieldset>
             <legend>ANTECEDENTES PERSONALES</legend>
             
             @php
-                $antecedentesPersonales = [
+                // COLUMNA 1 - 8 items
+                $antecedentesCol1 = [
                     ['key' => 'enfermedad_cardiovascular_personal', 'obs' => 'obs_enfermedad_cardiovascular_personal', 'label' => 'ENFERMEDAD CARDIOVASCULAR'],
                     ['key' => 'arterial_periferica_personal', 'obs' => 'obs_arterial_periferica_personal', 'label' => 'ENFERMEDAD ARTERIAL PERIFÉRICA'],
                     ['key' => 'carotidea_personal', 'obs' => 'obs_carotidea_personal', 'label' => 'ENFERMEDAD CAROTÍDEA'],
@@ -342,6 +352,10 @@
                     ['key' => 'artritis_personal', 'obs' => 'obs_artritis_personal', 'label' => 'ARTRITIS'],
                     ['key' => 'iam_personal', 'obs' => 'obs_iam_personal', 'label' => 'INFARTO AGUDO MIOCARDIO'],
                     ['key' => 'revascul_coronaria_personal', 'obs' => 'obs_revascul_coronaria_personal', 'label' => 'REVASCUL CORONARIA'],
+                ];
+
+                // COLUMNA 2 - 7 items
+                $antecedentesCol2 = [
                     ['key' => 'insuficiencia_cardiaca_personal', 'obs' => 'obs_insuficiencia_cardiaca_personal', 'label' => 'INSUFICIENCIA CARDIACA'],
                     ['key' => 'amputacion_pie_diabetico_personal', 'obs' => 'obs_amputacion_pie_diabetico_personal', 'label' => 'AMPUTACIÓN PIE DIABÉTICO'],
                     ['key' => 'enfermedad_pulmonar_personal', 'obs' => 'obs_enfermedad_pulmonar_personal', 'label' => 'ENFERMEDAD PULMONARES (TB-TB-MDR) OTRAS'],
@@ -352,42 +366,70 @@
                 ];
             @endphp
 
-            @foreach($antecedentesPersonales as $ant)
-            <div class="antecedentes-row">
-                <div class="antecedente-label">{{ $ant['label'] }}:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia[$ant['key']] ?? 'NO') }}</div>
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    @foreach($antecedentesCol1 as $ant)
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">{{ $ant['label'] }}:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia[$ant['key']] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia[$ant['obs']]))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia[$ant['obs']] }}</div>
+                    </div>
+                    @endif
+                    @endforeach
+                </div>
+
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    @foreach($antecedentesCol2 as $ant)
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">{{ $ant['label'] }}:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia[$ant['key']] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia[$ant['obs']]))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia[$ant['obs']] }}</div>
+                    </div>
+                    @endif
+                    @endforeach
+                </div>
             </div>
-            @if(!empty($historia[$ant['obs']]))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OBSERVACIÓN:</div>
-                <div class="antecedente-valor">{{ $historia[$ant['obs']] }}</div>
-            </div>
-            @endif
-            @endforeach
         </fieldset>
+
 
         {{-- ✅ TEST MORISKY --}}
         <fieldset>
             <legend>TEST MORISKY</legend>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OLVIDA ALGUNA VEZ TOMAR SUS MEDICAMENTOS:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_olvida_tomar_medicamentos'] ?? 'NO') }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">TOMAR LOS MEDICAMENTOS A LA HORA INDICADA:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_toma_medicamentos_hora_indicada'] ?? 'SI') }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CUANDO SE ENCUENTRA BIEN ¿DEJA DE TOMAR SUS MEDICAMENTOS?:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO') }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">SI ALGUNA VEZ SE SIENTE MAL ¿DEJA DE TOMARLOS?:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_siente_mal_deja_tomarlos'] ?? 'NO') }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">VALORACIÓN POR PSICOLOGÍA:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_valoracio_psicologia'] ?? 'NO') }}</div>
+            <div class="clasificacion-grid">
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OLVIDA ALGUNA VEZ TOMAR SUS MEDICAMENTOS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_olvida_tomar_medicamentos'] ?? 'NO') }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TOMAR LOS MEDICAMENTOS A LA HORA INDICADA:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_toma_medicamentos_hora_indicada'] ?? 'SI') }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CUANDO SE ENCUENTRA BIEN ¿DEJA DE TOMAR SUS MEDICAMENTOS?:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO') }}</div>
+                    </div>
+                </div>
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">SI ALGUNA VEZ SE SIENTE MAL ¿DEJA DE TOMARLOS?:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_siente_mal_deja_tomarlos'] ?? 'NO') }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">VALORACIÓN POR PSICOLOGÍA:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['test_morisky_valoracio_psicologia'] ?? 'NO') }}</div>
+                    </div>
+                </div>
             </div>
         </fieldset>
 
@@ -467,14 +509,19 @@
                 </div>
             </div>
 
-            @php
-                $examenFisico = [
+                    @php
+                // COLUMNA 1 - 6 items
+                $examenFisicoCol1 = [
                     ['key' => 'ef_cabeza', 'obs' => 'ef_obs_cabeza', 'label' => 'CABEZA'],
                     ['key' => 'ef_agudeza_visual', 'obs' => 'ef_obs_agudeza_visual', 'label' => 'AGUDEZA VISUAL'],
                     ['key' => 'ef_cuello', 'obs' => 'ef_obs_cuello', 'label' => 'CUELLO'],
                     ['key' => 'ef_torax', 'obs' => 'ef_obs_torax', 'label' => 'TORAX'],
                     ['key' => 'ef_mamas', 'obs' => 'ef_obs_mamas', 'label' => 'MAMAS'],
                     ['key' => 'ef_abdomen', 'obs' => 'ef_obs_abdomen', 'label' => 'ABDOMEN'],
+                ];
+
+                // COLUMNA 2 - 5 items
+                $examenFisicoCol2 = [
                     ['key' => 'ef_genito_urinario', 'obs' => 'ef_obs_genito_urinario', 'label' => 'GENITO URINARIO'],
                     ['key' => 'ef_extremidades', 'obs' => 'ef_obs_extremidades', 'label' => 'EXTREMIDADES'],
                     ['key' => 'ef_piel_anexos_pulsos', 'obs' => 'ef_obs_piel_anexos_pulsos', 'label' => 'PIEL Y ANEXOS PULSOS'],
@@ -483,25 +530,48 @@
                 ];
             @endphp
 
-            @foreach($examenFisico as $examen)
-            <div class="antecedentes-row">
-                <div class="antecedente-label">{{ $examen['label'] }}:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia[$examen['key']] ?? 'NORMAL') }}</div>
-            </div>
-            @if(!empty($historia[$examen['obs']]))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OBSERVACIONES:</div>
-                <div class="antecedente-valor">{{ $historia[$examen['obs']] }}</div>
-            </div>
-            @endif
-            @endforeach
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    @foreach($examenFisicoCol1 as $examen)
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">{{ $examen['label'] }}:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia[$examen['key']] ?? 'NORMAL') }}</div>
+                    </div>
+                    @if(!empty($historia[$examen['obs']]))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIONES:</div>
+                        <div class="antecedente-valor">{{ $historia[$examen['obs']] }}</div>
+                    </div>
+                    @endif
+                    @endforeach
+                </div>
 
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    @foreach($examenFisicoCol2 as $examen)
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">{{ $examen['label'] }}:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia[$examen['key']] ?? 'NORMAL') }}</div>
+                    </div>
+                    @if(!empty($historia[$examen['obs']]))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIONES:</div>
+                        <div class="antecedente-valor">{{ $historia[$examen['obs']] }}</div>
+                    </div>
+                    @endif
+                    @endforeach
+                </div>
+            </div>
+
+            {{-- HALLAZGOS POSITIVOS - Ocupa todo el ancho --}}
             @if(!empty($historia['ef_hallazco_positivo_examen_fisico']))
             <div class="observacion-box">
                 <div class="observacion-titulo">HALLAZGOS POSITIVOS AL EXAMEN FISICO:</div>
                 <div class="observacion-contenido">{{ $historia['ef_hallazco_positivo_examen_fisico'] }}</div>
             </div>
             @endif
+
         </fieldset>
 
         {{-- ✅ FACTORES DE RIESGO --}}
@@ -575,57 +645,81 @@
         {{-- ✅ CLASIFICACIÓN --}}
         <fieldset>
             <legend>CLASIFICACIÓN</legend>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">HIPERTENSIÓN ARTERIAL:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial_personal'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['obs_hipertension_arterial_personal']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OBSERVACIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['obs_hipertension_arterial_personal'] }}</div>
-            </div>
-            @endif
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN HTA:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_hta'] ?? 'N/A' }}</div>
-            </div>
+            
+            <div class="clasificacion-grid">
+                {{-- COLUMNA 1 --}}
+                <div class="clasificacion-columna">
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">HIPERTENSIÓN ARTERIAL:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['hipertension_arterial_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_hipertension_arterial_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_hipertension_arterial_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN HTA:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_hta'] ?? 'N/A' }}</div>
+                    </div>
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">DIABETES MELLITUS:</div>
-                <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus_personal'] ?? 'NO') }}</div>
-            </div>
-            @if(!empty($historia['obs_diabetes_mellitus_personal']))
-            <div class="antecedentes-row">
-                <div class="antecedente-label">OBSERVACIÓN:</div>
-                <div class="antecedente-valor">{{ $historia['obs_diabetes_mellitus_personal'] }}</div>
-            </div>
-            @endif
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN DM:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_dm'] ?? 'NO DIABETICO' }}</div>
-            </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">DIABETES MELLITUS:</div>
+                        <div class="antecedente-valor">{{ strtoupper($historia['diabetes_mellitus_personal'] ?? 'NO') }}</div>
+                    </div>
+                    @if(!empty($historia['obs_diabetes_mellitus_personal']))
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">OBSERVACIÓN:</div>
+                        <div class="antecedente-valor">{{ $historia['obs_diabetes_mellitus_personal'] }}</div>
+                    </div>
+                    @endif
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN DM:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_dm'] ?? 'NO DIABETICO' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
+                    </div>
 
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_erc_estado'] ?? 'N/A' }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN RIESGO CARDIO VASCULAR:</div>
-                <div class="antecedente-valor">{{ $historia['clasificacion_rcv'] ?? 'N/A' }}</div>
-            </div>
-            <div class="antecedentes-row">
-                <div class="antecedente-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
-                <div class="antecedente-valor">{{ $historia['ClasificacionEstadoMetabolico'] ?? 'N/A' }}</div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC ESTADIO DOS:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_estadodos'] ?? 'N/A' }}</div>
+                    </div>
+                </div>
+
+                {{-- COLUMNA 2 --}}
+                <div class="clasificacion-columna">
+                    
+
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ERC CATEGORÍA DE ALBUMINURIA PERSISTENTE:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_erc_categoria_ambulatoria_persistente'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN RIESGO CARDIO VASCULAR:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_rcv'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">CLASIFICACIÓN ESTADO METABÓLICO:</div>
+                        <div class="antecedente-valor">{{ $historia['clasificacion_estado_metabolico'] ?? 'N/A' }}</div>
+                    </div>
+
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL CKD-EPI:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_ckd_epi'] ?? 'N/A' }}</div>
+                    </div>
+                    <div class="antecedentes-row">
+                        <div class="antecedente-label">TASA FILTRACIÓN GLOMERURAL COCKCROFT-GAULT:</div>
+                        <div class="antecedente-valor">{{ $historia['tasa_filtracion_glomerular_gockcroft_gault'] ?? 'N/A' }}</div>
+                    </div>
+                    
+                </div>
             </div>
         </fieldset>
+
 
         {{-- ✅ EDUCACIÓN --}}
         <fieldset>
@@ -665,6 +759,16 @@
                 </div>
             </div>
         </fieldset>
+        {{-- ✅ OBSERVACIONES GENERALES --}}
+        @if(!empty($historia['observaciones_generales']))
+        <fieldset>
+            <legend>OBSERVACIONES GENERALES</legend>
+            <div class="observacion-contenido">
+                {{ $historia['observaciones_generales'] }}
+            </div>
+        </fieldset>
+        @endif
+        
 
         {{-- ✅ REMISIÓN --}}
         @if(!empty($historia['remisiones']) && count($historia['remisiones']) > 0)
@@ -789,15 +893,7 @@
             <strong>CAUSA EXTERNA:</strong> {{ $historia['causa_externa'] ?? 'OTRA' }}
         </div>
 
-        {{-- ✅ OBSERVACIONES GENERALES --}}
-        @if(!empty($historia['observaciones_generales']))
-        <fieldset>
-            <legend>OBSERVACIONES GENERALES</legend>
-            <div class="observacion-contenido">
-                {{ $historia['observaciones_generales'] }}
-            </div>
-        </fieldset>
-        @endif
+
 
         {{-- ✅ FINALIDAD --}}
         <div class="observacion-box">
