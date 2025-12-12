@@ -34,56 +34,205 @@ class CronogramaController extends Controller
         $this->pacienteService = $pacienteService;
     }
 
-    /**
-     * ✅ VISTA PRINCIPAL DEL CRONOGRAMA
-     */
     public function index(Request $request)
-    {
-        try {
-            $usuario = $this->authService->usuario();
-            $isOffline = $this->authService->isOffline();
-            
-            // ✅ OBTENER FECHA SELECCIONADA
-            $fechaSeleccionada = $request->get('fecha', now()->format('Y-m-d'));
-            
-            // ✅ VALIDAR FECHA
-            if (!$this->isValidDate($fechaSeleccionada)) {
-                $fechaSeleccionada = now()->format('Y-m-d');
-            }
-
-            Log::info('🏥 CronogramaController@index iniciado', [
-                'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
-                'usuario_nombre' => $usuario['nombre_completo'] ?? 'N/A',
-                'fecha_seleccionada' => $fechaSeleccionada,
-                'is_offline' => $isOffline
-            ]);
-
-            // ✅ OBTENER DATOS DEL CRONOGRAMA CON FALLBACK
-            $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaSeleccionada, $usuario);
-
-            Log::info('📊 Datos del cronograma obtenidos', [
-                'total_agendas' => count($cronogramaData['agendas'] ?? []),
-                'total_citas' => $cronogramaData['estadisticas']['total_citas'] ?? 0,
-                'offline' => $cronogramaData['offline'] ?? false,
-                'es_prueba' => $cronogramaData['es_prueba'] ?? false
-            ]);
-
-            return view('cronograma.index', compact(
-                'usuario',
-                'isOffline',
-                'fechaSeleccionada',
-                'cronogramaData'
-            ));
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error en CronogramaController@index', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return back()->with('error', 'Error cargando cronograma: ' . $e->getMessage());
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $isOffline = $this->authService->isOffline();
+        $sedeId = $usuario['sede_id'];
+        
+        // ✅ OBTENER FECHA SELECCIONADA
+        $fechaSeleccionada = $request->get('fecha', now()->format('Y-m-d'));
+        
+        // ✅ VALIDAR FECHA
+        if (!$this->isValidDate($fechaSeleccionada)) {
+            $fechaSeleccionada = now()->format('Y-m-d');
         }
+
+        Log::info('🏥 CronogramaController@index iniciado', [
+            'usuario_uuid' => $usuario['uuid'] ?? 'N/A',
+            'usuario_nombre' => $usuario['nombre_completo'] ?? 'N/A',
+            'fecha_seleccionada' => $fechaSeleccionada,
+            'is_offline' => $isOffline
+        ]);
+
+        // ✅ SINCRONIZAR HISTORIAS SI HAY CONEXIÓN
+        if (!$isOffline) {
+            try {
+                Log::info('🔄 Sincronizando historias clínicas al cargar cronograma');
+                $this->offlineService->syncHistoriasClinicas($sedeId);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error sincronizando historias (no crítico)', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ VERIFICAR SI HAY NUEVAS HISTORIAS
+        $nuevasHistorias = 0;
+        if (!$isOffline) {
+            try {
+                $checkResult = $this->offlineService->checkNuevasHistorias($sedeId);
+                $nuevasHistorias = $checkResult['nuevas'] ?? 0;
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error verificando nuevas historias', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // ✅ OBTENER DATOS DEL CRONOGRAMA CON FALLBACK
+        $cronogramaData = $this->obtenerDatosCronogramaConFallback($fechaSeleccionada, $usuario);
+
+        Log::info('📊 Datos del cronograma obtenidos', [
+            'total_agendas' => count($cronogramaData['agendas'] ?? []),
+            'total_citas' => $cronogramaData['estadisticas']['total_citas'] ?? 0,
+            'offline' => $cronogramaData['offline'] ?? false,
+            'es_prueba' => $cronogramaData['es_prueba'] ?? false,
+            'nuevas_historias' => $nuevasHistorias
+        ]);
+
+        return view('cronograma.index', compact(
+            'usuario',
+            'isOffline',
+            'fechaSeleccionada',
+            'cronogramaData',
+            'nuevasHistorias'
+        ));
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en CronogramaController@index', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return back()->with('error', 'Error cargando cronograma: ' . $e->getMessage());
     }
+}
+
+
+    /**
+ * ✅ SINCRONIZAR HISTORIAS CLÍNICAS
+ */
+public function sincronizarHistorias(Request $request)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+        $pacienteUuid = $request->get('paciente_uuid');
+
+        Log::info('🔄 Iniciando sincronización de historias desde controlador', [
+            'sede_id' => $sedeId,
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ VERIFICAR CONEXIÓN
+        if ($this->authService->isOffline()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No hay conexión a internet'
+            ], 503);
+        }
+
+        // ✅ EJECUTAR SINCRONIZACIÓN
+        $result = $this->offlineService->syncHistoriasClinicas($sedeId, $pacienteUuid);
+
+        if (!$result['success']) {
+            return response()->json([
+                'success' => false,
+                'error' => $result['error'] ?? 'Error en sincronización'
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'sincronizadas' => $result['synced'],
+                'total' => $result['total'],
+                'errores' => count($result['errors'] ?? [])
+            ],
+            'message' => "Se sincronizaron {$result['synced']} historias clínicas"
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en sincronización de historias', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Error en sincronización: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * ✅ VERIFICAR NUEVAS HISTORIAS
+ */
+public function verificarNuevasHistorias(Request $request)
+{
+    try {
+        $usuario = $this->authService->usuario();
+        $sedeId = $usuario['sede_id'];
+
+        $result = $this->offlineService->checkNuevasHistorias($sedeId);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'nuevas' => $result['nuevas'] ?? 0,
+                'ultima_sync' => $result['ultima_sync'] ?? null
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error verificando nuevas historias', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * ✅ OBTENER HISTORIAS CLÍNICAS
+ */
+public function getHistoriasClinicas(Request $request)
+{
+    try {
+        $filters = [
+            'paciente_uuid' => $request->get('paciente_uuid'),
+            'cita_uuid' => $request->get('cita_uuid'),
+            'fecha_desde' => $request->get('fecha_desde'),
+            'fecha_hasta' => $request->get('fecha_hasta')
+        ];
+
+        // ✅ FILTRAR VALORES VACÍOS
+        $filters = array_filter($filters);
+
+        $historias = $this->offlineService->getHistoriasClinicasOffline($filters);
+
+        return response()->json([
+            'success' => true,
+            'data' => $historias,
+            'total' => count($historias)
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo historias', [
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 // En app/Http/Controllers/CronogramaController.php
 
 public function sincronizarCambios(Request $request)

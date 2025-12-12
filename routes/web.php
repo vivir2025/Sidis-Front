@@ -251,6 +251,18 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
         Route::post('/sync-all', [AdminController::class, 'syncAll'])->name('sync-all');
     });
 
+        // Sincronizar historias
+    Route::post('/cronograma/sincronizar-historias', [CronogramaController::class, 'sincronizarHistorias'])
+        ->name('cronograma.sincronizar-historias');
+    
+    // Verificar nuevas historias
+    Route::get('/cronograma/verificar-nuevas-historias', [CronogramaController::class, 'verificarNuevasHistorias'])
+        ->name('cronograma.verificar-nuevas-historias');
+    
+    // Obtener historias
+    Route::get('/cronograma/historias-clinicas', [CronogramaController::class, 'getHistoriasClinicas'])
+        ->name('cronograma.historias-clinicas');
+
     
     // ✅ NUEVAS: Rutas de reportes
     Route::middleware('role:admin,supervisor')->prefix('reports')->name('reports.')->group(function () {

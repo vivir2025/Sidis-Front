@@ -205,6 +205,16 @@
 }
 </style>
 @endpush
+@if(!$isOffline && isset($nuevasHistorias) && $nuevasHistorias > 0)
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Historias Clínicas:</strong> Hay {{ $nuevasHistorias }} historias nuevas disponibles para sincronizar.
+    <button type="button" class="btn btn-sm btn-primary ms-3" onclick="sincronizarHistorias()">
+        <i class="fas fa-download me-1"></i> Sincronizar Ahora
+    </button>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+@endif
 
 @section('content')
 <div class="container-fluid">
@@ -2224,6 +2234,163 @@ window.cronogramaDebug = {
 };
 
 console.log('✅ Cronograma JavaScript con Historia Clínica cargado completamente');
+
+// ✅ SINCRONIZACIÓN AUTOMÁTICA DE HISTORIAS
+let syncInterval = null;
+
+// ✅ INICIAR SINCRONIZACIÓN AUTOMÁTICA
+function iniciarSincronizacionAutomatica() {
+    // Verificar cada 5 minutos
+    syncInterval = setInterval(verificarYSincronizarHistorias, 5 * 60 * 1000);
+    
+    // Ejecutar inmediatamente
+    verificarYSincronizarHistorias();
+}
+
+// ✅ VERIFICAR Y SINCRONIZAR HISTORIAS
+async function verificarYSincronizarHistorias() {
+    try {
+        // Verificar si hay nuevas historias
+        const response = await fetch('{{ route("cronograma.verificar-nuevas-historias") }}');
+        const result = await response.json();
+        
+        if (result.success && result.data.nuevas > 0) {
+            console.log(`📥 Hay ${result.data.nuevas} historias nuevas para sincronizar`);
+            
+            // Mostrar notificación
+            mostrarNotificacionNuevasHistorias(result.data.nuevas);
+            
+            // Sincronizar automáticamente
+            await sincronizarHistorias();
+        }
+    } catch (error) {
+        console.error('❌ Error verificando nuevas historias:', error);
+    }
+}
+
+// ✅ SINCRONIZAR HISTORIAS
+async function sincronizarHistorias(pacienteUuid = null) {
+    try {
+        const url = '{{ route("cronograma.sincronizar-historias") }}';
+        const data = {};
+        
+        if (pacienteUuid) {
+            data.paciente_uuid = pacienteUuid;
+        }
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log(`✅ ${result.data.sincronizadas} historias sincronizadas`);
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Sincronización Completa',
+                text: `Se sincronizaron ${result.data.sincronizadas} historias clínicas`,
+                timer: 3000,
+                showConfirmButton: false
+            });
+            
+            return result.data;
+        } else {
+            throw new Error(result.error || 'Error en sincronización');
+        }
+    } catch (error) {
+        console.error('❌ Error sincronizando historias:', error);
+        
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No se pudieron sincronizar las historias clínicas'
+        });
+        
+        return null;
+    }
+}
+
+// ✅ MOSTRAR NOTIFICACIÓN DE NUEVAS HISTORIAS
+function mostrarNotificacionNuevasHistorias(cantidad) {
+    const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: true,
+        confirmButtonText: 'Sincronizar',
+        timer: 10000,
+        timerProgressBar: true
+    });
+    
+    toast.fire({
+        icon: 'info',
+        title: `Hay ${cantidad} historias clínicas nuevas`,
+        text: 'Haz clic en Sincronizar para descargarlas'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            sincronizarHistorias();
+        }
+    });
+}
+
+// ✅ OBTENER HISTORIAS DE UN PACIENTE
+async function obtenerHistoriasPaciente(pacienteUuid) {
+    try {
+        const url = `{{ route("cronograma.historias-clinicas") }}?paciente_uuid=${pacienteUuid}`;
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log(`✅ ${result.total} historias encontradas para el paciente`);
+            return result.data;
+        } else {
+            throw new Error(result.error || 'Error obteniendo historias');
+        }
+    } catch (error) {
+        console.error('❌ Error obteniendo historias del paciente:', error);
+        return [];
+    }
+}
+
+// ✅ INICIALIZAR AL CARGAR LA PÁGINA
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Iniciando sistema de sincronización de historias clínicas');
+    
+    // Iniciar sincronización automática
+    iniciarSincronizacionAutomatica();
+    
+    // Agregar botón de sincronización manual
+    agregarBotonSincronizacion();
+});
+
+// ✅ AGREGAR BOTÓN DE SINCRONIZACIÓN MANUAL
+function agregarBotonSincronizacion() {
+    const headerActions = document.querySelector('.header-actions') || 
+                         document.querySelector('.d-flex.justify-content-between');
+    
+    if (headerActions) {
+        const btnSync = document.createElement('button');
+        btnSync.className = 'btn btn-outline-primary btn-sm ms-2';
+        btnSync.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Sincronizar Historias';
+        btnSync.onclick = () => sincronizarHistorias();
+        
+        headerActions.appendChild(btnSync);
+    }
+}
+
+// ✅ LIMPIAR INTERVAL AL SALIR
+window.addEventListener('beforeunload', function() {
+    if (syncInterval) {
+        clearInterval(syncInterval);
+    }
+});
 </script>
 @endpush
 
