@@ -62,20 +62,29 @@ public function create(Request $request, string $citaUuid)
         $tipoConsulta = $this->determinarTipoConsultaOffline($pacienteUuid, $especialidad, $citaId);
 
         // ✅✅✅ CARGAR HISTORIA PREVIA SOLO SI ES CONTROL ✅✅✅
-        $historiaPrevia = null;
-        if ($tipoConsulta === 'CONTROL') {
-            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-            
-            Log::info('🔄 Historia previa cargada para formulario', [
-                'tiene_historia' => !empty($historiaPrevia),
-                'especialidad' => $especialidad,
-                'tipo_consulta' => $tipoConsulta
-            ]);
-        } else {
-            Log::info('ℹ️ PRIMERA VEZ - No se carga historia previa', [
-                'tipo_consulta' => $tipoConsulta
-            ]);
-        }
+     Log::info('🔄 Cargando historia previa sin importar tipo de consulta', [
+    'paciente_uuid' => $pacienteUuid,
+    'especialidad' => $especialidad,
+    'tipo_consulta' => $tipoConsulta
+]);
+
+$historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+
+if (!empty($historiaPrevia)) {
+    Log::info('✅ Historia previa cargada exitosamente', [
+        'tipo_consulta' => $tipoConsulta,
+        'especialidad' => $especialidad,
+        'medicamentos_count' => count($historiaPrevia['medicamentos'] ?? []),
+        'diagnosticos_count' => count($historiaPrevia['diagnosticos'] ?? []),
+        'remisiones_count' => count($historiaPrevia['remisiones'] ?? []),
+        'cups_count' => count($historiaPrevia['cups'] ?? [])
+    ]);
+} else {
+    Log::info('ℹ️ No se encontró historia previa para cargar', [
+        'tipo_consulta' => $tipoConsulta,
+        'especialidad' => $especialidad
+    ]);
+}
 
         // ✅ OBTENER DATOS MAESTROS
         $masterData = $this->getMasterDataForForm();
@@ -530,90 +539,71 @@ private function obtenerHistoriaOffline(string $uuid): ?array
         return null;
     }
 }
-
 /**
  * ✅✅✅ OBTENER ÚLTIMA HISTORIA PARA FORMULARIO - VERSIÓN CORREGIDA ✅✅✅
  * (Busca en TODAS las especialidades, pero solo carga si es CONTROL)
  */
 private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, string $especialidad): ?array
 {
+    Log::info('🔥🔥🔥 [FORMULARIO] Inicio de obtenerUltimaHistoriaParaFormulario', [
+        'paciente_uuid' => $pacienteUuid,
+        'especialidad' => $especialidad,
+        'archivo' => __FILE__,
+        'linea' => __LINE__
+    ]);
+
     try {
-        Log::info('🔍 Obteniendo última historia DE CUALQUIER ESPECIALIDAD (offline)', [
-            'paciente_uuid' => $pacienteUuid,
-            'especialidad_actual' => $especialidad
-        ]);
-
-        // ✅ 1. BUSCAR EN JSON OFFLINE
-        $historiasPath = storage_path('app/offline/historias-clinicas');
+        // ✅ OBTENER TODAS LAS HISTORIAS DEL PACIENTE
+        $todasLasHistorias = $this->offlineService->obtenerTodasLasHistoriasOffline($pacienteUuid, null);
         
-        if (!is_dir($historiasPath)) {
-            Log::info('ℹ️ No hay historias offline');
+        if (empty($todasLasHistorias)) {
+            Log::info('ℹ️ [FORMULARIO] No se encontraron historias');
             return null;
         }
 
-        $files = glob($historiasPath . '/*.json');
-        $historiasDelPaciente = [];
-
-        // ✅ 2. FILTRAR HISTORIAS DEL PACIENTE
-        foreach ($files as $file) {
-            $historia = json_decode(file_get_contents($file), true);
-            
-            if (!$historia || json_last_error() !== JSON_ERROR_NONE) {
-                continue;
-            }
-
-            $historiaPatienteUuid = $historia['paciente_uuid'] ?? 
-                                   $historia['cita']['paciente_uuid'] ?? 
-                                   $historia['cita']['paciente']['uuid'] ?? 
-                                   null;
-
-            if ($historiaPatienteUuid === $pacienteUuid) {
-                $historiasDelPaciente[] = $historia;
-            }
-        }
-
-        if (empty($historiasDelPaciente)) {
-            Log::info('ℹ️ No se encontraron historias del paciente');
-            return null;
-        }
-
-        // ✅ 3. ORDENAR POR ID DESC (COMO EL BACKEND)
-        usort($historiasDelPaciente, function($a, $b) {
-            $idA = $a['id'] ?? 0;
-            $idB = $b['id'] ?? 0;
-            return $idB - $idA; // DESC
+        // ✅ ORDENAR POR FECHA DE CREACIÓN DESC
+        usort($todasLasHistorias, function($a, $b) {
+            $fechaA = $a['created_at'] ?? '1970-01-01 00:00:00';
+            $fechaB = $b['created_at'] ?? '1970-01-01 00:00:00';
+            return strtotime($fechaB) - strtotime($fechaA);
         });
 
-        $ultimaHistoria = $historiasDelPaciente[0];
-        
-        $especialidadOrigen = $ultimaHistoria['especialidad'] ?? 
-                             $ultimaHistoria['cita']['agenda']['proceso']['nombre'] ?? 
-                             'DESCONOCIDA';
+        $ultimaHistoria = $todasLasHistorias[0];
 
-        Log::info('✅ Historia encontrada (puede ser de otra especialidad)', [
-            'historia_id' => $ultimaHistoria['id'] ?? 'N/A',
-            'historia_uuid' => $ultimaHistoria['uuid'] ?? 'N/A',
-            'especialidad_origen' => $especialidadOrigen,
-            'especialidad_actual' => $especialidad,
-            'es_misma_especialidad' => $especialidadOrigen === $especialidad
+        Log::info('✅ [FORMULARIO] Última historia encontrada', [
+            'historia_uuid' => $ultimaHistoria['uuid'] ?? null,
+            'created_at' => $ultimaHistoria['created_at'] ?? null,
+            'especialidad' => $ultimaHistoria['especialidad'] ?? null,
+            'medicamentos_count' => count($ultimaHistoria['medicamentos'] ?? []),
+            'diagnosticos_count' => count($ultimaHistoria['diagnosticos'] ?? [])
         ]);
 
-        // ✅ 4. FORMATEAR PARA EL FORMULARIO
+        // ✅ FORMATEAR PARA EL FORMULARIO
         $historiaFormateada = $this->formatearHistoriaParaFormulario($ultimaHistoria);
 
-        // ✅ 5. COMPLETAR DATOS FALTANTES DE OTRAS ESPECIALIDADES
-        $historiaFormateada = $this->completarDatosFaltantesOffline($pacienteUuid, $historiaFormateada);
+        // ✅✅✅ COMPLETAR DATOS FALTANTES (NUEVO) ✅✅✅
+        $historiaFormateada = $this->offlineService->completarDatosFaltantesOffline($pacienteUuid, $historiaFormateada);
+
+        Log::info('✅ [FORMULARIO] Historia completa después de rellenar', [
+            'medicamentos_final' => count($historiaFormateada['medicamentos'] ?? []),
+            'diagnosticos_final' => count($historiaFormateada['diagnosticos'] ?? []),
+            'remisiones_final' => count($historiaFormateada['remisiones'] ?? []),
+            'cups_final' => count($historiaFormateada['cups'] ?? []),
+            'tiene_clasificaciones' => !empty($historiaFormateada['clasificacion_estado_metabolico'])
+        ]);
 
         return $historiaFormateada;
 
     } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo última historia offline', [
-            'error' => $e->getMessage()
+        Log::error('❌ [FORMULARIO] Error obteniendo historia', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine()
         ]);
         
         return null;
     }
 }
+
 
 /**
  * ✅✅✅ COMPLETAR DATOS FALTANTES OFFLINE ✅✅✅
@@ -1236,7 +1226,7 @@ private function validateHistoriaClinica(Request $request): array
         'hcEcografiaRenal' => 'nullable|string|max:1000',
         
         // ✅ CLASIFICACIÓN
-        'ClasificacionEstadoMetabolico' => 'nullable|string|max:200',
+        'clasificacion_estado_metabolico' => 'nullable|string|max:200',
         'hipertension_arterial_personal' => 'nullable|in:SI,NO',
         'obs_hipertension_arterial_personal' => 'nullable|string|max:500',
         'clasificacion_hta' => 'nullable|string|max:200',
@@ -2007,7 +1997,7 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'ecografia_renal' => $validatedData['hcEcografiaRenal'] ?? null,
         
         // ✅ CLASIFICACIÓN
-        'clasificacion_estado_metabolico' => $validatedData['ClasificacionEstadoMetabolico'] ?? null,
+        'clasificacion_estado_metabolico' => $validatedData['clasificacion_estado_metabolico'] ?? null,
         'hipertension_arterial_personal' => $validatedData['hipertension_arterial_personal'] ?? null,
         'obs_personal_hipertension_arterial' => $validatedData['obs_hipertension_arterial_personal'] ?? null,
         'clasificacion_hta' => $validatedData['clasificacion_hta'] ?? null,
@@ -2927,7 +2917,6 @@ private function obtenerEspecialidadOffline(string $citaUuid): ?string
     }
 }
 
-
 public function determinarVista(Request $request, string $citaUuid)
 {
     try {
@@ -3074,20 +3063,29 @@ public function determinarVista(Request $request, string $citaUuid)
             'es_solo_control' => $esSoloControl
         ]);
 
-        // ✅ 7. OBTENER HISTORIA PREVIA SOLO PARA CONTROL
-        $historiaPrevia = null;
-        if ($tipoConsulta === 'CONTROL') {
-            $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
-            
-            Log::info('🔄 Historia previa offline', [
+        // ✅✅✅ 7. CARGAR HISTORIA PREVIA SIEMPRE (PRIMERA VEZ Y CONTROL) ✅✅✅
+        Log::info('🔄 Cargando historia previa sin importar tipo de consulta', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'tipo_consulta' => $tipoConsulta,
+            'es_solo_control' => $esSoloControl
+        ]);
+
+        $historiaPrevia = $this->obtenerUltimaHistoriaParaFormulario($pacienteUuid, $especialidad);
+
+        if (!empty($historiaPrevia)) {
+            Log::info('✅ Historia previa cargada exitosamente (offline)', [
+                'tipo_consulta' => $tipoConsulta,
                 'especialidad' => $especialidad,
-                'tiene_historia' => !empty($historiaPrevia),
-                'medicamentos_count' => !empty($historiaPrevia) ? count($historiaPrevia['medicamentos'] ?? []) : 0,
-                'diagnosticos_count' => !empty($historiaPrevia) ? count($historiaPrevia['diagnosticos'] ?? []) : 0
+                'medicamentos_count' => count($historiaPrevia['medicamentos'] ?? []),
+                'diagnosticos_count' => count($historiaPrevia['diagnosticos'] ?? []),
+                'remisiones_count' => count($historiaPrevia['remisiones'] ?? []),
+                'cups_count' => count($historiaPrevia['cups'] ?? [])
             ]);
         } else {
-            Log::info('ℹ️ PRIMERA VEZ - No se carga historia previa', [
-                'tipo_consulta' => $tipoConsulta
+            Log::info('ℹ️ No se encontró historia previa para cargar (offline)', [
+                'tipo_consulta' => $tipoConsulta,
+                'especialidad' => $especialidad
             ]);
         }
 
@@ -3106,6 +3104,7 @@ public function determinarVista(Request $request, string $citaUuid)
         return back()->with('error', 'Error determinando el tipo de historia clínica: ' . $e->getMessage());
     }
 }
+
 
 
 private function formatearHistoriaDesdeAPI(array $historiaAPI): array
@@ -4013,35 +4012,71 @@ private function verificarHistoriasAnterioresOffline(string $pacienteUuid, strin
     }
 }
 
-    /**
-     * ✅ OBTENER ÚLTIMA HISTORIA OFFLINE
-     */
-    private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
-    {
-        try {
-            $historias = $this->offlineService->getHistoriasClinicasByPacienteYEspecialidad($pacienteUuid, $especialidad);
-            
-            if (empty($historias)) {
-                return null;
-            }
+   /**
+ * ✅ OBTENER ÚLTIMA HISTORIA OFFLINE (CUALQUIER ESPECIALIDAD)
+ */
+private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $especialidad): ?array
+{
+    Log::info('🔥🔥🔥 [CONTROLADOR CORRECTO] Inicio de obtenerUltimaHistoriaOffline', [
+        'paciente_uuid' => $pacienteUuid,
+        'especialidad' => $especialidad,
+        'archivo' => __FILE__,
+        'linea' => __LINE__
+    ]);
 
-            // Ordenar por fecha y devolver la más reciente
-            usort($historias, function($a, $b) {
-                return strtotime($b['created_at']) - strtotime($a['created_at']);
-            });
+    try {
+        // 🔥 OBTENER TODAS LAS HISTORIAS DEL PACIENTE
+        $todasLasHistorias = $this->offlineService->obtenerTodasLasHistoriasOffline($pacienteUuid, null);
+        
+        Log::info('📊 [CONTROLADOR] Historias obtenidas', [
+            'total' => count($todasLasHistorias),
+            'paciente_uuid' => $pacienteUuid
+        ]);
 
-            return $historias[0];
-
-        } catch (\Exception $e) {
-            Log::error('❌ Error obteniendo última historia offline', [
-                'error' => $e->getMessage(),
-                'paciente_uuid' => $pacienteUuid,
-                'especialidad' => $especialidad
-            ]);
-            
+        if (empty($todasLasHistorias)) {
+            Log::info('ℹ️ [CONTROLADOR] No se encontraron historias del paciente');
             return null;
         }
+
+        // 🔥 ORDENAR POR FECHA DE CREACIÓN (created_at) DESC
+        usort($todasLasHistorias, function($a, $b) {
+            $fechaA = $a['created_at'] ?? '1970-01-01 00:00:00';
+            $fechaB = $b['created_at'] ?? '1970-01-01 00:00:00';
+            
+            // Convertir a timestamp para comparar
+            $timestampA = strtotime($fechaA);
+            $timestampB = strtotime($fechaB);
+            
+            return $timestampB - $timestampA; // DESC: más reciente primero
+        });
+
+        $ultimaHistoria = $todasLasHistorias[0];
+
+        Log::info('✅ [CONTROLADOR] Última historia encontrada', [
+            'historia_uuid' => $ultimaHistoria['uuid'] ?? null,
+            'created_at' => $ultimaHistoria['created_at'] ?? null,
+            'especialidad_historia' => $ultimaHistoria['especialidad'] ?? null,
+            'tiene_medicamentos' => !empty($ultimaHistoria['medicamentos']),
+            'medicamentos_count' => count($ultimaHistoria['medicamentos'] ?? []),
+            'tiene_diagnosticos' => !empty($ultimaHistoria['diagnosticos']),
+            'diagnosticos_count' => count($ultimaHistoria['diagnosticos'] ?? [])
+        ]);
+
+        return $ultimaHistoria;
+
+    } catch (\Exception $e) {
+        Log::error('❌ [CONTROLADOR] Error obteniendo última historia offline', [
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => basename($e->getFile()),
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
+        
+        return null;
     }
+}
+
 
     /**
      * ✅ ÍNDICE DE HISTORIAS CLÍNICAS - BÚSQUEDA POR PACIENTE

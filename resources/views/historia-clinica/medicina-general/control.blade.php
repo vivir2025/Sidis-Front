@@ -1102,9 +1102,11 @@ function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
     
     console.log('✅ Evento disparado exitosamente');
 }
-
 /**
  * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL
+ */
+/**
+ * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL - CON LOGS DETALLADOS
  */
 function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
     try {
@@ -1119,6 +1121,8 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarMedicamentoConDatos(medicamento);
                 }, index * 200);
             });
+        } else {
+            console.log('ℹ️ No hay medicamentos para cargar');
         }
 
         // ✅ CARGAR REMISIONES
@@ -1129,6 +1133,8 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarRemisionConDatos(remision);
                 }, index * 200);
             });
+        } else {
+            console.log('ℹ️ No hay remisiones para cargar');
         }
 
         // ✅ CARGAR DIAGNÓSTICOS
@@ -1149,6 +1155,8 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     }, (i + 1) * 200);
                 }
             }
+        } else {
+            console.log('ℹ️ No hay diagnósticos para cargar');
         }
 
         // ✅ CARGAR CUPS
@@ -1159,89 +1167,170 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarCupsConDatos(cups);
                 }, index * 200);
             });
+        } else {
+            console.log('ℹ️ No hay CUPS para cargar');
         }
 
         // ✅ CARGAR TALLA
         if (historiaPrevia.talla) {
             $('#talla').val(historiaPrevia.talla);
             console.log('📏 Talla cargada:', historiaPrevia.talla);
+        } else {
+            console.log('ℹ️ No hay talla para cargar');
+        }
+
+        // ✅✅✅ CARGAR CLASIFICACIONES - CON LOGS ULTRA DETALLADOS ✅✅✅
+        console.log('📊 ==================== CARGANDO CLASIFICACIONES ====================');
+
+        const camposClasificacion = {
+            'clasificacion_estado_metabolico': 'clasificacion_estado_metabolico',
+            'clasificacion_hta': 'clasificacion_hta',
+            'clasificacion_dm': 'clasificacion_dm',
+            'clasificacion_rcv': 'clasificacion_rcv',
+            'clasificacion_erc_estado': 'clasificacion_erc_estado',
+            'clasificacion_erc_estadodos': 'clasificacion_erc_estadodos',
+            'clasificacion_erc_categoria_ambulatoria_persistente': 'clasificacion_erc_categoria_ambulatoria_persistente'
+        };
+
+        Object.keys(camposClasificacion).forEach(function(campoBD) {
+            const campoFormulario = camposClasificacion[campoBD];
+            const valor = historiaPrevia[campoBD];
+            
+            console.log(`🔍 Procesando campo: ${campoBD}`);
+            console.log(`   📌 Valor recibido: ${valor}`);
+            console.log(`   📌 ID del select: ${campoFormulario}`);
+            
+            const $select = $('#' + campoFormulario);
+            console.log(`   📌 Select encontrado: ${$select.length > 0 ? 'SÍ' : 'NO'}`);
+            
+            if ($select.length > 0) {
+                console.log(`   📌 Opciones disponibles:`, $select.find('option').map(function() {
+                    return $(this).val();
+                }).get());
+                
+                if (valor) {
+                    $select.val(valor);
+                    console.log(`   ✅ Valor asignado: ${$select.val()}`);
+                    
+                    if ($select.val() === valor) {
+                        console.log(`   ✅✅ ÉXITO: Select ${campoFormulario} actualizado correctamente`);
+                    } else {
+                        console.error(`   ❌ ERROR: El valor ${valor} NO existe en las opciones del select`);
+                    }
+                } else {
+                    console.log(`   ℹ️ No hay valor para cargar`);
+                }
+            } else {
+                console.error(`   ❌ ERROR: No se encontró select con ID "${campoFormulario}"`);
+                console.log(`   🔍 Buscando alternativas...`);
+                
+                // Buscar por name
+                const $selectByName = $('select[name="' + campoBD + '"]');
+                if ($selectByName.length > 0) {
+                    console.log(`   ✅ Encontrado por name: ${campoBD}`);
+                    if (valor) {
+                        $selectByName.val(valor);
+                        console.log(`   ✅ Valor asignado por name: ${$selectByName.val()}`);
+                    }
+                } else {
+                    console.error(`   ❌ Tampoco se encontró por name="${campoBD}"`);
+                }
+            }
+        });
+
+        console.log('📊 ==================== FIN CLASIFICACIONES ====================');
+
+        // ✅ CARGAR TASAS DE FILTRACIÓN
+        if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
+            console.log('📊 Cargando TFG CKD-EPI:', historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
+            $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
+        } else {
+            console.log('ℹ️ No hay TFG CKD-EPI para cargar');
+        }
+        
+        if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
+            console.log('📊 Cargando TFG Cockcroft-Gault:', historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+            $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+        } else {
+            console.log('ℹ️ No hay TFG Cockcroft-Gault para cargar');
         }
 
         // ✅ CARGAR ANTECEDENTES PERSONALES - HTA
         if (historiaPrevia.hipertension_arterial_personal) {
+            console.log('🩺 Cargando HTA Personal:', historiaPrevia.hipertension_arterial_personal);
             $('input[name="hipertension_arterial_personal"][value="' + historiaPrevia.hipertension_arterial_personal + '"]').prop('checked', true).trigger('change');
             if (historiaPrevia.obs_hipertension_arterial_personal) {
                 $('#obs_hipertension_arterial_personal').val(historiaPrevia.obs_hipertension_arterial_personal);
             }
+        } else {
+            console.log('ℹ️ No hay HTA Personal para cargar');
         }
 
         // ✅ CARGAR ANTECEDENTES PERSONALES - DM
         if (historiaPrevia.diabetes_mellitus_personal) {
+            console.log('🩺 Cargando DM Personal:', historiaPrevia.diabetes_mellitus_personal);
             $('input[name="diabetes_mellitus_personal"][value="' + historiaPrevia.diabetes_mellitus_personal + '"]').prop('checked', true).trigger('change');
             if (historiaPrevia.obs_diabetes_mellitus_personal) {
                 $('#obs_diabetes_mellitus_personal').val(historiaPrevia.obs_diabetes_mellitus_personal);
             }
-        }
-
-        // ✅ CARGAR CLASIFICACIONES
-        if (historiaPrevia.clasificacion_estado_metabolico) {
-            $('#ClasificacionEstadoMetabolico').val(historiaPrevia.clasificacion_estado_metabolico);
-        }
-        if (historiaPrevia.clasificacion_hta) {
-            $('#clasificacion_hta').val(historiaPrevia.clasificacion_hta);
-        }
-        if (historiaPrevia.clasificacion_dm) {
-            $('#clasificacion_dm').val(historiaPrevia.clasificacion_dm);
-        }
-        if (historiaPrevia.clasificacion_rcv) {
-            $('#clasificacion_rcv').val(historiaPrevia.clasificacion_rcv);
-        }
-        if (historiaPrevia.clasificacion_erc_estado) {
-            $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
-        }
-        if (historiaPrevia.clasificacion_erc_estadodos) {   
-            $('#clasificacion_erc_estadodos').val(historiaPrevia.clasificacion_erc_estadodos);
-        }
-
-
-        if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
-            $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
-        }
-
-        // ✅ CARGAR TASAS DE FILTRACIÓN
-        if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
-            $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
-        }
-        if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
-            $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+        } else {
+            console.log('ℹ️ No hay DM Personal para cargar');
         }
 
         // ✅ CARGAR TEST DE MORISKY
-        if (historiaPrevia.test_morisky_olvida_tomar_medicamentos) {
-            $('input[name="test_morisky_olvida_tomar_medicamentos"][value="' + historiaPrevia.test_morisky_olvida_tomar_medicamentos + '"]').prop('checked', true);
-        }
-        if (historiaPrevia.test_morisky_toma_medicamentos_hora_indicada) {
-            $('input[name="test_morisky_toma_medicamentos_hora_indicada"][value="' + historiaPrevia.test_morisky_toma_medicamentos_hora_indicada + '"]').prop('checked', true);
-        }
-        if (historiaPrevia.test_morisky_cuando_esta_bien_deja_tomar_medicamentos) {
-            $('input[name="test_morisky_cuando_esta_bien_deja_tomar_medicamentos"][value="' + historiaPrevia.test_morisky_cuando_esta_bien_deja_tomar_medicamentos + '"]').prop('checked', true);
-        }
-        if (historiaPrevia.test_morisky_siente_mal_deja_tomarlos) {
-            $('input[name="test_morisky_siente_mal_deja_tomarlos"][value="' + historiaPrevia.test_morisky_siente_mal_deja_tomarlos + '"]').prop('checked', true);
-        }
-        if (historiaPrevia.test_morisky_valoracio_psicologia) {
-            $('input[name="test_morisky_valoracio_psicologia"][value="' + historiaPrevia.test_morisky_valoracio_psicologia + '"]').prop('checked', true);
-        }
+        console.log('📋 Cargando Test de Morisky...');
+
+        const camposMorisky = {
+            'olvida_tomar_medicamentos': 'test_morisky_olvida_tomar_medicamentos',
+            'toma_medicamentos_hora_indicada': 'test_morisky_toma_medicamentos_hora_indicada',
+            'cuando_esta_bien_deja_tomar_medicamentos': 'test_morisky_cuando_esta_bien_deja_tomar_medicamentos',
+            'siente_mal_deja_tomarlos': 'test_morisky_siente_mal_deja_tomarlos',
+            'valoracion_psicologia': 'test_morisky_valoracio_psicologia'
+        };
+
+        Object.keys(camposMorisky).forEach(function(campoBD) {
+            const campoFormulario = camposMorisky[campoBD];
+            const valor = historiaPrevia[campoBD];
+            
+            if (valor) {
+                console.log(`✅ Cargando ${campoBD}: ${valor}`);
+                const $input = $('input[name="' + campoFormulario + '"][value="' + valor + '"]');
+                
+                if ($input.length > 0) {
+                    $input.prop('checked', true);
+                    console.log(`✅ Radio button ${campoFormulario} marcado correctamente`);
+                } else {
+                    console.warn(`⚠️ No se encontró input para ${campoFormulario} con valor ${valor}`);
+                }
+            } else {
+                console.log(`ℹ️ No hay valor para ${campoBD}`);
+            }
+        });
+
+        // ✅ CARGAR ADHERENTE
         if (historiaPrevia.adherente) {
-            $('input[name="adherente"][value="' + historiaPrevia.adherente + '"]').prop('checked', true);
+            console.log('✅ Cargando adherente:', historiaPrevia.adherente);
+            const $inputAdherente = $('input[name="adherente"][value="' + historiaPrevia.adherente + '"]');
+            
+            if ($inputAdherente.length > 0) {
+                $inputAdherente.prop('checked', true);
+                console.log('✅ Adherente marcado correctamente');
+            } else {
+                console.warn('⚠️ No se encontró input para adherente con valor', historiaPrevia.adherente);
+            }
+        } else {
+            console.log('ℹ️ No hay valor para adherente');
         }
 
         // ✅ RECALCULAR ADHERENCIA
         setTimeout(function() {
+            console.log('🔄 Recalculando adherencia Morisky...');
             calcularAdherenciaMorisky();
         }, 1000);
 
-        // ✅ CARGAR CAMPOS DE EDUCACIÓN
+        // ✅✅✅ CARGAR CAMPOS DE EDUCACIÓN - CON LOGS ULTRA DETALLADOS ✅✅✅
+        console.log('📚 ==================== CARGANDO EDUCACIÓN EN SALUD ====================');
+
         const camposEducacion = [
             'alimentacion',
             'disminucion_consumo_sal_azucar',
@@ -1254,18 +1343,46 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
         ];
 
         camposEducacion.forEach(function(campo) {
-            if (historiaPrevia[campo]) {
-                $('input[name="' + campo + '"][value="' + historiaPrevia[campo] + '"]').prop('checked', true);
-                console.log('✅ Campo educación cargado:', campo, '=', historiaPrevia[campo]);
+            const valor = historiaPrevia[campo];
+            
+            console.log(`🔍 Procesando campo: ${campo}`);
+            console.log(`   📌 Valor recibido: ${valor}`);
+            
+            const $input = $('input[name="' + campo + '"][value="' + valor + '"]');
+            console.log(`   📌 Input encontrado: ${$input.length > 0 ? 'SÍ' : 'NO'}`);
+            
+            if ($input.length > 0) {
+                console.log(`   📌 Tipo de input: ${$input.attr('type')}`);
+                $input.prop('checked', true);
+                console.log(`   ✅✅ Campo ${campo} marcado correctamente`);
+            } else {
+                console.error(`   ❌ ERROR: No se encontró input[name="${campo}"][value="${valor}"]`);
+                
+                // Buscar todos los inputs con ese name
+                const $allInputs = $('input[name="' + campo + '"]');
+                console.log(`   🔍 Inputs disponibles con name="${campo}": ${$allInputs.length}`);
+                
+                if ($allInputs.length > 0) {
+                    console.log(`   📌 Valores disponibles:`, $allInputs.map(function() {
+                        return $(this).val();
+                    }).get());
+                } else {
+                    console.error(`   ❌ No existe ningún input con name="${campo}"`);
+                }
             }
         });
+
+        console.log('📚 ==================== FIN EDUCACIÓN EN SALUD ====================');
 
         console.log('✅ Datos previos cargados exitosamente');
 
     } catch (error) {
         console.error('❌ Error cargando datos previos:', error);
+        console.error('Stack trace:', error.stack);
     }
 }
+
+
 
 // ============================================
 // ✅ DOCUMENT.READY
@@ -1277,22 +1394,47 @@ $(document).ready(function() {
         tipo_consulta: '{{ $tipo_consulta ?? "N/A" }}',
         tiene_historia_previa: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }}
     });
-
-    // ✅ CARGAR DATOS PREVIOS SOLO PARA MEDICINA GENERAL
-    @if(isset($historiaPrevia) && !empty($historiaPrevia) && ($especialidad ?? '') === 'MEDICINA GENERAL')
-        console.log('🔄 Cargando datos previos para Medicina General');
+ {{-- ✅✅✅ CARGAR DATOS PREVIOS - AQUÍ VA EL CÓDIGO ✅✅✅ --}}
+    @if(isset($historiaPrevia) && !empty($historiaPrevia) && in_array($especialidad ?? '', ['MEDICINA GENERAL', 'ESPECIAL CONTROL']))
+        console.log('🔄 Cargando datos previos');
+        console.log('📊 Especialidad actual:', '{{ $especialidad ?? "N/A" }}');
+        
         const historiaPrevia = @json($historiaPrevia);
-        console.log('📦 Datos:', historiaPrevia);
+        console.log('📦 Historia previa:', historiaPrevia);
+        console.log('💊 Medicamentos:', historiaPrevia.medicamentos ? historiaPrevia.medicamentos.length : 0);
+        console.log('🩺 Diagnósticos:', historiaPrevia.diagnosticos ? historiaPrevia.diagnosticos.length : 0);
+        console.log('📋 Remisiones:', historiaPrevia.remisiones ? historiaPrevia.remisiones.length : 0);
+        console.log('🏥 CUPS:', historiaPrevia.cups ? historiaPrevia.cups.length : 0);
+        
+        // ✅ VERIFICAR ESTRUCTURA DE DATOS
+        if (historiaPrevia.medicamentos && historiaPrevia.medicamentos.length > 0) {
+            console.log('💊 Primer medicamento:', historiaPrevia.medicamentos[0]);
+        }
+        if (historiaPrevia.diagnosticos && historiaPrevia.diagnosticos.length > 0) {
+            console.log('🩺 Primer diagnóstico:', historiaPrevia.diagnosticos[0]);
+        }
+        
+        // ✅ VERIFICAR CAMPOS ESCALARES
+        console.log('📏 Talla:', historiaPrevia.talla);
+        console.log('🩺 HTA Personal:', historiaPrevia.hipertension_arterial_personal);
+        console.log('🩺 DM Personal:', historiaPrevia.diabetes_mellitus_personal);
+        console.log('📊 Clasificación Estado Metabólico:', historiaPrevia.clasificacion_estado_metabolico);
+        console.log('📊 Clasificación HTA:', historiaPrevia.clasificacion_hta);
+        console.log('📊 Test Morisky Olvida:', historiaPrevia.test_morisky_olvida_tomar_medicamentos);
         
         setTimeout(function() {
+            console.log('⏰ Ejecutando cargarDatosPreviosMedicinaGeneral...');
             cargarDatosPreviosMedicinaGeneral(historiaPrevia);
         }, 500);
     @else
         console.log('ℹ️ No se cargan datos previos', {
             tiene_historia: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }},
-            es_medicina_general: {{ ($especialidad ?? '') === 'MEDICINA GENERAL' ? 'true' : 'false' }}
+            especialidad_actual: '{{ $especialidad ?? "N/A" }}',
+            especialidades_permitidas: ['MEDICINA GENERAL', 'ESPECIAL CONTROL']
         });
     @endif
+
+
 
     // ============================================
     // ✅ CÁLCULO AUTOMÁTICO DE IMC
@@ -1975,7 +2117,7 @@ if ($('#tasa_filtracion_glomerular_gockcroft_gault').val()) {
         
         // Validar campos de clasificaciones
         const camposClasificaciones = [
-            'ClasificacionEstadoMetabolico', 'clasificacion_hta', 'clasificacion_dm', 
+            'clasificacion_estado_metabolico', 'clasificacion_hta', 'clasificacion_dm', 
             'clasificacion_erc_estado',  'clasificacion_erc_categoria_ambulatoria_persistente', 
             'clasificacion_rcv', 'clasificacion_erc_estadodos'
         ];

@@ -710,7 +710,7 @@ function cargarDatosPrevios(historiaPrevia) {
 
           // ✅ CARGAR CLASIFICACIONES
         if (historiaPrevia.clasificacion_estado_metabolico) {
-            $('#ClasificacionEstadoMetabolico').val(historiaPrevia.clasificacion_estado_metabolico);
+            $('#clasificacion_estado_metabolico').val(historiaPrevia.clasificacion_estado_metabolico);
         }
         if (historiaPrevia.clasificacion_hta) {
             $('#clasificacion_hta').val(historiaPrevia.clasificacion_hta);

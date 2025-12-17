@@ -642,7 +642,6 @@ function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
     
     console.log('✅ Evento disparado exitosamente');
 }
-
 /**
  * ✅ CARGAR DATOS PREVIOS
  */
@@ -650,6 +649,81 @@ function cargarDatosPrevios(historiaPrevia) {
     try {
         console.log('🔄 Iniciando carga de datos previos');
         console.log('📦 Historia previa recibida:', historiaPrevia);
+
+        // ============================================
+        // ✅ CARGAR CAMPOS ESCALARES PRIMERO
+        // ============================================
+        
+        // ✅ CARGAR TALLA
+        if (historiaPrevia.talla) {
+            $('#talla').val(historiaPrevia.talla);
+            console.log('📏 Talla cargada:', historiaPrevia.talla);
+        }
+
+        // ✅ CARGAR CLASIFICACIONES
+        console.log('📊 Cargando clasificaciones...');
+        
+        if (historiaPrevia.clasificacion_estado_metabolico) {
+            $('#clasificacion_estado_metabolico').val(historiaPrevia.clasificacion_estado_metabolico);
+            console.log('   ✅ clasificacion_estado_metabolico:', historiaPrevia.clasificacion_estado_metabolico);
+        }
+        
+        if (historiaPrevia.clasificacion_hta) {
+            $('#clasificacion_hta').val(historiaPrevia.clasificacion_hta);
+            console.log('   ✅ clasificacion_hta:', historiaPrevia.clasificacion_hta);
+        }
+        
+        if (historiaPrevia.clasificacion_dm) {
+            $('#clasificacion_dm').val(historiaPrevia.clasificacion_dm);
+            console.log('   ✅ clasificacion_dm:', historiaPrevia.clasificacion_dm);
+        }
+        
+        if (historiaPrevia.clasificacion_rcv) {
+            $('#clasificacion_rcv').val(historiaPrevia.clasificacion_rcv);
+            console.log('   ✅ clasificacion_rcv:', historiaPrevia.clasificacion_rcv);
+        }
+        
+        if (historiaPrevia.clasificacion_erc_estado) {
+            $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
+            console.log('   ✅ clasificacion_erc_estado:', historiaPrevia.clasificacion_erc_estado);
+        }
+        
+        if (historiaPrevia.clasificacion_erc_estadodos) {
+            $('#clasificacion_erc_estadodos').val(historiaPrevia.clasificacion_erc_estadodos);
+            console.log('   ✅ clasificacion_erc_estadodos:', historiaPrevia.clasificacion_erc_estadodos);
+        }
+        
+        if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
+            $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
+            console.log('   ✅ clasificacion_erc_categoria_ambulatoria_persistente:', historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
+        }
+
+        // ✅ CARGAR TASAS DE FILTRACIÓN
+        console.log('🔬 Cargando tasas de filtración...');
+        
+        if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
+            $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
+            console.log('   ✅ TFG CKD-EPI:', historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
+        }
+        
+        if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
+            $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+            console.log('   ✅ TFG Cockcroft-Gault:', historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
+        }
+
+        // ============================================
+        // ✅ CARGAR ARRAYS DINÁMICOS CON TIMEOUTS
+        // ============================================
+
+        // ✅ CARGAR MEDICAMENTOS
+        if (historiaPrevia.medicamentos && historiaPrevia.medicamentos.length > 0) {
+            console.log('💊 Cargando medicamentos previos:', historiaPrevia.medicamentos.length);
+            historiaPrevia.medicamentos.forEach(function(medicamento, index) {
+                setTimeout(function() {
+                    agregarMedicamentoConDatos(medicamento);
+                }, index * 200);
+            });
+        }
 
         // ✅ CARGAR REMISIONES
         if (historiaPrevia.remisiones && historiaPrevia.remisiones.length > 0) {
@@ -681,7 +755,7 @@ function cargarDatosPrevios(historiaPrevia) {
             }
         }
 
-         // ✅ CARGAR CUPS
+        // ✅ CARGAR CUPS
         if (historiaPrevia.cups && historiaPrevia.cups.length > 0) {
             console.log('🏥 Cargando CUPS previos:', historiaPrevia.cups.length);
             historiaPrevia.cups.forEach(function(cups, index) {
@@ -691,61 +765,24 @@ function cargarDatosPrevios(historiaPrevia) {
             });
         }
 
-         // ✅ CARGAR MEDICAMENTOS
-        if (historiaPrevia.medicamentos && historiaPrevia.medicamentos.length > 0) {
-            console.log('💊 Cargando medicamentos previos:', historiaPrevia.medicamentos.length);
-            historiaPrevia.medicamentos.forEach(function(medicamento, index) {
-                setTimeout(function() {
-                    agregarMedicamentoConDatos(medicamento);
-                }, index * 200);
-            });
-        }
-
-        // ✅ CARGAR TALLA
-        if (historiaPrevia.talla) {
-            $('#talla').val(historiaPrevia.talla);
-            console.log('📏 Talla cargada:', historiaPrevia.talla);
-        }
-
-          // ✅ CARGAR CLASIFICACIONES
-        if (historiaPrevia.clasificacion_estado_metabolico) {
-            $('#ClasificacionEstadoMetabolico').val(historiaPrevia.clasificacion_estado_metabolico);
-        }
-        if (historiaPrevia.clasificacion_hta) {
-            $('#clasificacion_hta').val(historiaPrevia.clasificacion_hta);
-        }
-        if (historiaPrevia.clasificacion_dm) {
-            $('#clasificacion_dm').val(historiaPrevia.clasificacion_dm);
-        }
-        if (historiaPrevia.clasificacion_rcv) {
-            $('#clasificacion_rcv').val(historiaPrevia.clasificacion_rcv);
-        }
-        if (historiaPrevia.clasificacion_erc_estado) {
-            $('#clasificacion_erc_estado').val(historiaPrevia.clasificacion_erc_estado);
-        }
-        if (historiaPrevia.clasificacion_erc_estadodos) {   
-            $('#clasificacion_erc_estadodos').val(historiaPrevia.clasificacion_erc_estadodos);
-        }
-
-
-        if (historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente) {
-            $('#clasificacion_erc_categoria_ambulatoria_persistente').val(historiaPrevia.clasificacion_erc_categoria_ambulatoria_persistente);
-        }
-
-        // ✅ CARGAR TASAS DE FILTRACIÓN
-        if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
-            $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
-        }
-        if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
-            $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
-        }
+        // ============================================
+        // ✅ RECALCULAR ADHERENCIA MORISKY
+        // ============================================
+        setTimeout(function() {
+            console.log('🔄 Recalculando adherencia Morisky...');
+            if (typeof calcularAdherenciaMorisky === 'function') {
+                calcularAdherenciaMorisky();
+            }
+        }, 1000);
 
         console.log('✅ Datos previos cargados exitosamente');
 
     } catch (error) {
         console.error('❌ Error cargando datos previos:', error);
+        console.error('   Stack trace:', error.stack);
     }
 }
+
  // ============================================
     // ✅ AGREGAR MEDICAMENTO
     // ============================================
@@ -891,18 +928,27 @@ $(document).ready(function() {
         tiene_historia_previa: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }}
     });
 
-    // ✅ CARGAR DATOS PREVIOS
-    @if(isset($historiaPrevia) && !empty($historiaPrevia))
-        console.log('🔄 Cargando datos previos');
-        const historiaPrevia = @json($historiaPrevia);
-        console.log('📦 Datos:', historiaPrevia);
-        
-        setTimeout(function() {
-            cargarDatosPrevios(historiaPrevia);
-        }, 500);
-    @else
-        console.log('ℹ️ No se cargan datos previos');
-    @endif
+   {{-- ✅ CARGAR DATOS PREVIOS PARA NEFROLOGÍA --}}
+@if(isset($historiaPrevia) && !empty($historiaPrevia) && ($especialidad ?? '') === 'NEFROLOGIA')
+    console.log('🔄 Cargando datos previos para Nefrología');
+    console.log('📊 Especialidad actual:', '{{ $especialidad ?? "N/A" }}');
+    
+    const historiaPrevia = @json($historiaPrevia);
+    console.log('📦 Historia previa:', historiaPrevia);
+    console.log('💊 Medicamentos:', historiaPrevia.medicamentos ? historiaPrevia.medicamentos.length : 0);
+    console.log('🩺 Diagnósticos:', historiaPrevia.diagnosticos ? historiaPrevia.diagnosticos.length : 0);
+    console.log('📋 Remisiones:', historiaPrevia.remisiones ? historiaPrevia.remisiones.length : 0);
+    console.log('🏥 CUPS:', historiaPrevia.cups ? historiaPrevia.cups.length : 0);
+    
+    setTimeout(function() {
+        cargarDatosPrevios(historiaPrevia);
+    }, 500);
+@else
+    console.log('ℹ️ No se cargan datos previos para Nefrología', {
+        tiene_historia: {{ isset($historiaPrevia) && !empty($historiaPrevia) ? 'true' : 'false' }},
+        especialidad_actual: '{{ $especialidad ?? "N/A" }}'
+    });
+@endif
 
     // ============================================
     // ✅ CÁLCULO AUTOMÁTICO DE IMC
