@@ -2592,14 +2592,20 @@ async function verificarYSincronizarHistorias() {
 }
 
 // ✅ SINCRONIZAR HISTORIAS
+// ✅ SINCRONIZAR HISTORIAS (BIDIRECCIONAL: ENVIAR + RECIBIR)
 async function sincronizarHistorias(pacienteUuid = null) {
     try {
+        console.log('🔄 Iniciando sincronización bidireccional de historias');
+        
         const url = '{{ route("cronograma.sincronizar-historias") }}';
         const data = {};
         
         if (pacienteUuid) {
             data.paciente_uuid = pacienteUuid;
         }
+        
+        // ✅ MOSTRAR LOADING
+        mostrarLoading(true);
         
         const response = await fetch(url, {
             method: 'POST',
@@ -2613,15 +2619,59 @@ async function sincronizarHistorias(pacienteUuid = null) {
         const result = await response.json();
         
         if (result.success) {
-            console.log(`✅ ${result.data.sincronizadas} historias sincronizadas`);
+            const enviadas = result.data.enviadas || 0;
+            const descargadas = result.data.descargadas || 0;
+            const citasActualizadas = result.data.citas_actualizadas || 0;
+            const errores = result.data.errores || 0;
+            
+            console.log('✅ Sincronización completa:', {
+                enviadas,
+                descargadas,
+                citasActualizadas,
+                errores
+            });
+            
+            // ✅ MENSAJE PERSONALIZADO
+            let mensaje = '';
+            const partes = [];
+            
+            if (enviadas > 0) {
+                partes.push(`📤 ${enviadas} historia${enviadas > 1 ? 's' : ''} enviada${enviadas > 1 ? 's' : ''}`);
+            }
+            if (descargadas > 0) {
+                partes.push(`📥 ${descargadas} historia${descargadas > 1 ? 's' : ''} descargada${descargadas > 1 ? 's' : ''}`);
+            }
+            if (citasActualizadas > 0) {
+                partes.push(`🔄 ${citasActualizadas} cita${citasActualizadas > 1 ? 's' : ''} actualizada${citasActualizadas > 1 ? 's' : ''}`);
+            }
+            
+            if (partes.length > 0) {
+                mensaje = partes.join('<br>');
+            } else {
+                mensaje = '✅ Todo está sincronizado';
+            }
+            
+            if (errores > 0) {
+                mensaje += `<br>⚠️ ${errores} error${errores > 1 ? 'es' : ''} encontrado${errores > 1 ? 's' : ''}`;
+            }
             
             Swal.fire({
-                icon: 'success',
+                icon: partes.length > 0 ? 'success' : 'info',
                 title: 'Sincronización Completa',
-                text: `Se sincronizaron ${result.data.sincronizadas} historias clínicas`,
-                timer: 3000,
-                showConfirmButton: false
+                html: mensaje,
+                timer: partes.length > 0 ? 5000 : 3000,
+                showConfirmButton: errores > 0
             });
+            
+            // ✅ ACTUALIZAR CONTADOR DE PENDIENTES
+            actualizarContadorCambiosPendientes();
+            
+            // ✅ RECARGAR CRONOGRAMA SI HUBO CAMBIOS
+            if (citasActualizadas > 0) {
+                setTimeout(() => {
+                    actualizarCronograma();
+                }, 1000);
+            }
             
             return result.data;
         } else {
@@ -2632,11 +2682,14 @@ async function sincronizarHistorias(pacienteUuid = null) {
         
         Swal.fire({
             icon: 'error',
-            title: 'Error',
-            text: 'No se pudieron sincronizar las historias clínicas'
+            title: 'Error en Sincronización',
+            text: 'No se pudieron sincronizar las historias clínicas',
+            footer: error.message
         });
         
         return null;
+    } finally {
+        mostrarLoading(false);
     }
 }
 

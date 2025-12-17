@@ -759,12 +759,17 @@ private function formatearHistoriaParaFormulario(array $historia): array
 private function formatearMedicamentosParaFormulario(array $medicamentos): array
 {
     return array_map(function($medicamento) {
+        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
+        $medicamentoUuid = $medicamento['medicamento']['uuid'] ?? 
+                          $medicamento['medicamento_uuid'] ?? 
+                          $this->obtenerMedicamentoUuid($medicamento['medicamento_id'] ?? $medicamento['id'] ?? null);
+        
         return [
-            'medicamento_id' => $medicamento['medicamento_id'] ?? $medicamento['id'],
+            'medicamento_id' => $medicamentoUuid, // ✅ SIEMPRE UUID
             'cantidad' => $medicamento['cantidad'] ?? '',
             'dosis' => $medicamento['dosis'] ?? '',
             'medicamento' => [
-                'uuid' => $medicamento['medicamento']['uuid'] ?? $medicamento['medicamento']['id'],
+                'uuid' => $medicamentoUuid,
                 'nombre' => $medicamento['medicamento']['nombre'] ?? '',
                 'principio_activo' => $medicamento['medicamento']['principio_activo'] ?? ''
             ]
@@ -778,11 +783,16 @@ private function formatearMedicamentosParaFormulario(array $medicamentos): array
 private function formatearRemisionesParaFormulario(array $remisiones): array
 {
     return array_map(function($remision) {
+        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
+        $remisionUuid = $remision['remision']['uuid'] ?? 
+                       $remision['remision_uuid'] ?? 
+                       $this->obtenerRemisionUuid($remision['remision_id'] ?? $remision['id'] ?? null);
+        
         return [
-            'remision_id' => $remision['remision_id'] ?? $remision['id'],
+            'remision_id' => $remisionUuid, // ✅ SIEMPRE UUID
             'observacion' => $remision['observacion'] ?? '',
             'remision' => [
-                'uuid' => $remision['remision']['uuid'] ?? $remision['remision']['id'],
+                'uuid' => $remisionUuid,
                 'nombre' => $remision['remision']['nombre'] ?? '',
                 'tipo' => $remision['remision']['tipo'] ?? ''
             ]
@@ -796,12 +806,17 @@ private function formatearRemisionesParaFormulario(array $remisiones): array
 private function formatearDiagnosticosParaFormulario(array $diagnosticos): array
 {
     return array_map(function($diagnostico) {
+        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
+        $diagnosticoUuid = $diagnostico['diagnostico']['uuid'] ?? 
+                          $diagnostico['diagnostico_uuid'] ?? 
+                          $this->obtenerDiagnosticoUuid($diagnostico['diagnostico_id'] ?? $diagnostico['id'] ?? null);
+        
         return [
-            'diagnostico_id' => $diagnostico['diagnostico_id'] ?? $diagnostico['id'],
+            'diagnostico_id' => $diagnosticoUuid, // ✅ SIEMPRE UUID
             'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
             'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
             'diagnostico' => [
-                'uuid' => $diagnostico['diagnostico']['uuid'] ?? $diagnostico['diagnostico']['id'],
+                'uuid' => $diagnosticoUuid,
                 'codigo' => $diagnostico['diagnostico']['codigo'] ?? '',
                 'nombre' => $diagnostico['diagnostico']['nombre'] ?? ''
             ]
@@ -815,11 +830,16 @@ private function formatearDiagnosticosParaFormulario(array $diagnosticos): array
 private function formatearCupsParaFormulario(array $cups): array
 {
     return array_map(function($cup) {
+        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
+        $cupsUuid = $cup['cups']['uuid'] ?? 
+                   $cup['cups_uuid'] ?? 
+                   $this->obtenerCupsUuid($cup['cups_id'] ?? $cup['id'] ?? null);
+        
         return [
-            'cups_id' => $cup['cups_id'] ?? $cup['id'],
+            'cups_id' => $cupsUuid, // ✅ SIEMPRE UUID
             'observacion' => $cup['observacion'] ?? '',
             'cups' => [
-                'uuid' => $cup['cups']['uuid'] ?? $cup['cups']['id'],
+                'uuid' => $cupsUuid,
                 'codigo' => $cup['cups']['codigo'] ?? '',
                 'nombre' => $cup['cups']['nombre'] ?? ''
             ]
@@ -2211,18 +2231,21 @@ private function prepareDiagnosticos(array $validatedData): array
 {
     $diagnosticos = [];
     
-    // ✅ DIAGNÓSTICO PRINCIPAL
-    $diagnosticos[] = [
-        'diagnostico_id' => $validatedData['idDiagnostico'], // ✅ Puede ser UUID o ID
-        'tipo' => 'PRINCIPAL',
-        'tipo_diagnostico' => $validatedData['tipo_diagnostico'],
-        'observacion' => null
-    ];
+    // ✅ DIAGNÓSTICO PRINCIPAL - CONVERTIR ID A UUID
+    $diagnosticoUuid = $this->obtenerDiagnosticoUuid($validatedData['idDiagnostico']);
+    
+    if ($diagnosticoUuid) {
+        $diagnosticos[] = [
+            'diagnostico_id' => $diagnosticoUuid,
+            'tipo' => 'PRINCIPAL',
+            'tipo_diagnostico' => $validatedData['tipo_diagnostico'],
+            'observacion' => null
+        ];
+    }
     
     // ✅ DIAGNÓSTICOS ADICIONALES
     if (!empty($validatedData['diagnosticos_adicionales'])) {
         foreach ($validatedData['diagnosticos_adicionales'] as $index => $diagAdicional) {
-            // ✅ VERIFICAR UUID O ID
             $diagnosticoId = $diagAdicional['idDiagnostico'] ?? 
                             $diagAdicional['uuid'] ?? 
                             $diagAdicional['id'] ?? 
@@ -2232,12 +2255,17 @@ private function prepareDiagnosticos(array $validatedData): array
                 continue;
             }
             
-            $diagnosticos[] = [
-                'diagnostico_id' => $diagnosticoId, // ✅ Puede ser UUID o ID
-                'tipo' => 'SECUNDARIO',
-                'tipo_diagnostico' => $diagAdicional['tipo_diagnostico'],
-                'observacion' => $diagAdicional['observacion'] ?? null
-            ];
+            // ✅ CONVERTIR ID A UUID
+            $diagnosticoUuid = $this->obtenerDiagnosticoUuid($diagnosticoId);
+            
+            if ($diagnosticoUuid) {
+                $diagnosticos[] = [
+                    'diagnostico_id' => $diagnosticoUuid,
+                    'tipo' => 'SECUNDARIO',
+                    'tipo_diagnostico' => $diagAdicional['tipo_diagnostico'],
+                    'observacion' => $diagAdicional['observacion'] ?? null
+                ];
+            }
         }
     }
     
@@ -2252,7 +2280,6 @@ private function prepareMedicamentos(array $validatedData): array
     
     if (!empty($validatedData['medicamentos'])) {
         foreach ($validatedData['medicamentos'] as $index => $medicamento) {
-            // ✅ VERIFICAR UUID O ID
             $medicamentoId = $medicamento['idMedicamento'] ?? 
                             $medicamento['uuid'] ?? 
                             $medicamento['id'] ?? 
@@ -2262,11 +2289,16 @@ private function prepareMedicamentos(array $validatedData): array
                 continue;
             }
             
-            $medicamentos[] = [
-                'medicamento_id' => $medicamentoId, // ✅ Puede ser UUID o ID
-                'cantidad' => $medicamento['cantidad'] ?? '',
-                'dosis' => $medicamento['dosis'] ?? '',
-            ];
+            // ✅ CONVERTIR ID A UUID
+            $medicamentoUuid = $this->obtenerMedicamentoUuid($medicamentoId);
+            
+            if ($medicamentoUuid) {
+                $medicamentos[] = [
+                    'medicamento_id' => $medicamentoUuid,
+                    'cantidad' => $medicamento['cantidad'] ?? '',
+                    'dosis' => $medicamento['dosis'] ?? '',
+                ];
+            }
         }
     }
     
@@ -2282,7 +2314,6 @@ private function prepareRemisiones(array $validatedData): array
     
     if (!empty($validatedData['remisiones'])) {
         foreach ($validatedData['remisiones'] as $index => $remision) {
-            // ✅ VERIFICAR UUID O ID
             $remisionId = $remision['idRemision'] ?? 
                          $remision['uuid'] ?? 
                          $remision['id'] ?? 
@@ -2292,10 +2323,15 @@ private function prepareRemisiones(array $validatedData): array
                 continue;
             }
             
-            $remisiones[] = [
-                'remision_id' => $remisionId, // ✅ Puede ser UUID o ID
-                'observacion' => $remision['remObservacion'] ?? null,
-            ];
+            // ✅ CONVERTIR ID A UUID
+            $remisionUuid = $this->obtenerRemisionUuid($remisionId);
+            
+            if ($remisionUuid) {
+                $remisiones[] = [
+                    'remision_id' => $remisionUuid,
+                    'observacion' => $remision['remObservacion'] ?? null,
+                ];
+            }
         }
     }
     
@@ -2319,7 +2355,6 @@ private function prepareCups(array $validatedData): array
                 'keys' => array_keys($cup)
             ]);
             
-            // ✅ VERIFICAR UUID O ID
             $cupsId = $cup['idCups'] ?? 
                      $cup['uuid'] ?? 
                      $cup['id'] ?? 
@@ -2333,10 +2368,19 @@ private function prepareCups(array $validatedData): array
                 continue;
             }
             
-            $cups[] = [
-                'cups_id' => $cupsId, // ✅ Puede ser UUID o ID
-                'observacion' => $cup['cupObservacion'] ?? null,
-            ];
+            // ✅ CONVERTIR ID A UUID
+            $cupsUuid = $this->obtenerCupsUuid($cupsId);
+            
+            if ($cupsUuid) {
+                $cups[] = [
+                    'cups_id' => $cupsUuid,
+                    'observacion' => $cup['cupObservacion'] ?? null,
+                ];
+            } else {
+                Log::warning('⚠️ No se encontró UUID para CUPS', [
+                    'cups_id' => $cupsId
+                ]);
+            }
         }
     }
     
@@ -4393,6 +4437,134 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
                 'error' => 'Error en búsqueda',
                 'data' => []
             ], 500);
+        }
+    }
+
+    /**
+     * ✅ OBTENER UUID DE DIAGNÓSTICO DESDE ID
+     */
+    private function obtenerDiagnosticoUuid($idOUuid): ?string
+    {
+        // Si ya es UUID, retornar directamente
+        if (is_string($idOUuid) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $idOUuid)) {
+            return $idOUuid;
+        }
+        
+        try {
+            $diagnostico = $this->offlineService->getDbConnection()
+                ->table('diagnosticos')
+                ->where('id', $idOUuid)
+                ->first();
+            
+            if ($diagnostico && !empty($diagnostico->uuid)) {
+                return $diagnostico->uuid;
+            }
+            
+            Log::warning('⚠️ No se encontró UUID para diagnóstico', ['id' => $idOUuid]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo UUID de diagnóstico', [
+                'id' => $idOUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER UUID DE MEDICAMENTO DESDE ID
+     */
+    private function obtenerMedicamentoUuid($idOUuid): ?string
+    {
+        // Si ya es UUID, retornar directamente
+        if (is_string($idOUuid) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $idOUuid)) {
+            return $idOUuid;
+        }
+        
+        try {
+            $medicamento = $this->offlineService->getDbConnection()
+                ->table('medicamentos')
+                ->where('id', $idOUuid)
+                ->first();
+            
+            if ($medicamento && !empty($medicamento->uuid)) {
+                return $medicamento->uuid;
+            }
+            
+            Log::warning('⚠️ No se encontró UUID para medicamento', ['id' => $idOUuid]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo UUID de medicamento', [
+                'id' => $idOUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER UUID DE REMISIÓN DESDE ID
+     */
+    private function obtenerRemisionUuid($idOUuid): ?string
+    {
+        // Si ya es UUID, retornar directamente
+        if (is_string($idOUuid) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $idOUuid)) {
+            return $idOUuid;
+        }
+        
+        try {
+            $remision = $this->offlineService->getDbConnection()
+                ->table('remisiones')
+                ->where('id', $idOUuid)
+                ->first();
+            
+            if ($remision && !empty($remision->uuid)) {
+                return $remision->uuid;
+            }
+            
+            Log::warning('⚠️ No se encontró UUID para remisión', ['id' => $idOUuid]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo UUID de remisión', [
+                'id' => $idOUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER UUID DE CUPS DESDE ID
+     */
+    private function obtenerCupsUuid($idOUuid): ?string
+    {
+        // Si ya es UUID, retornar directamente
+        if (is_string($idOUuid) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $idOUuid)) {
+            return $idOUuid;
+        }
+        
+        try {
+            $cups = $this->offlineService->getDbConnection()
+                ->table('cups')
+                ->where('id', $idOUuid)
+                ->first();
+            
+            if ($cups && !empty($cups->uuid)) {
+                return $cups->uuid;
+            }
+            
+            Log::warning('⚠️ No se encontró UUID para CUPS', ['id' => $idOUuid]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo UUID de CUPS', [
+                'id' => $idOUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
         }
     }
 

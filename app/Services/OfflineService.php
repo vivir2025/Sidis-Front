@@ -11631,4 +11631,293 @@ public function checkNuevasHistorias(int $sedeId): array
     }
 }
 
+/**
+ * ✅✅✅ NUEVO: ENVIAR HISTORIAS PENDIENTES A LA API (OFFLINE → API) ✅✅✅
+ */
+public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = null): array
+{
+    try {
+        Log::info('📤 Iniciando envío de historias pendientes a la API', [
+            'sede_id' => $sedeId,
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ OBTENER HISTORIAS CON sync_status = 'pending'
+        $query = DB::connection('offline')->table('historias_clinicas')
+            ->where('sync_status', 'pending');
+
+        if ($pacienteUuid) {
+            $query->where('paciente_uuid', $pacienteUuid);
+        }
+
+        $historiasPendientes = $query->get();
+        
+        Log::info('📊 Historias pendientes encontradas', [
+            'total' => $historiasPendientes->count()
+        ]);
+
+        if ($historiasPendientes->count() === 0) {
+            return [
+                'success' => true,
+                'enviadas' => 0,
+                'total' => 0,
+                'errors' => []
+            ];
+        }
+
+        $enviadas = 0;
+        $errors = [];
+
+        // ✅ ENVIAR CADA HISTORIA A LA API
+        foreach ($historiasPendientes as $historia) {
+            try {
+                Log::info('📤 Enviando historia a API', [
+                    'uuid' => $historia->uuid,
+                    'paciente' => $historia->paciente_nombre
+                ]);
+
+                // ✅ CARGAR ARCHIVO JSON CON DATOS COMPLETOS
+                $jsonPath = storage_path("app/offline/historias_clinicas/{$historia->uuid}.json");
+                
+                if (!file_exists($jsonPath)) {
+                    Log::warning('⚠️ Archivo JSON no encontrado', [
+                        'uuid' => $historia->uuid,
+                        'path' => $jsonPath
+                    ]);
+                    $errors[] = [
+                        'uuid' => $historia->uuid,
+                        'error' => 'Archivo JSON no encontrado'
+                    ];
+                    continue;
+                }
+
+                $historiaData = json_decode(file_get_contents($jsonPath), true);
+                
+                if (!$historiaData) {
+                    Log::warning('⚠️ No se pudo decodificar JSON', [
+                        'uuid' => $historia->uuid
+                    ]);
+                    $errors[] = [
+                        'uuid' => $historia->uuid,
+                        'error' => 'Error decodificando JSON'
+                    ];
+                    continue;
+                }
+
+                // ✅ ENVIAR A LA API
+                $response = app(ApiService::class)->post('/historias-clinicas', $historiaData);
+
+                if (isset($response['success']) && $response['success']) {
+                    Log::info('✅ Historia enviada exitosamente', [
+                        'uuid' => $historia->uuid
+                    ]);
+
+                    // ✅ ACTUALIZAR sync_status A 'synced'
+                    DB::connection('offline')->table('historias_clinicas')
+                        ->where('uuid', $historia->uuid)
+                        ->update([
+                            'sync_status' => 'synced',
+                            'updated_at' => now()
+                        ]);
+
+                    $enviadas++;
+                } else {
+                    Log::warning('⚠️ API rechazó la historia', [
+                        'uuid' => $historia->uuid,
+                        'response' => $response
+                    ]);
+                    $errors[] = [
+                        'uuid' => $historia->uuid,
+                        'error' => $response['error'] ?? 'Error desconocido'
+                    ];
+                }
+
+            } catch (\Exception $e) {
+                Log::error('❌ Error enviando historia individual', [
+                    'uuid' => $historia->uuid ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
+                $errors[] = [
+                    'uuid' => $historia->uuid ?? 'unknown',
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+
+        Log::info('✅ Envío de historias completado', [
+            'total_pendientes' => $historiasPendientes->count(),
+            'enviadas' => $enviadas,
+            'errores' => count($errors)
+        ]);
+
+        return [
+            'success' => true,
+            'enviadas' => $enviadas,
+            'total' => $historiasPendientes->count(),
+            'errors' => $errors
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en envío de historias pendientes', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'success' => false,
+            'enviadas' => 0,
+            'total' => 0,
+            'errors' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
+/**
+ * ✅✅✅ NUEVO: ALIAS PARA DESCARGAR HISTORIAS DESDE API (API → OFFLINE) ✅✅✅
+ */
+public function descargarHistoriasDesdeAPI(int $sedeId, ?string $pacienteUuid = null): array
+{
+    try {
+        Log::info('📥 Descargando historias desde API', [
+            'sede_id' => $sedeId,
+            'paciente_uuid' => $pacienteUuid
+        ]);
+
+        // ✅ USAR EL MÉTODO EXISTENTE syncHistoriasClinicas QUE YA HACE ESTO
+        $result = $this->syncHistoriasClinicas($sedeId, $pacienteUuid, false);
+
+        return [
+            'success' => $result['success'] ?? true,
+            'descargadas' => $result['synced'] ?? 0,
+            'total' => $result['total'] ?? 0,
+            'errors' => $result['errors'] ?? []
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error descargando historias desde API', [
+            'error' => $e->getMessage()
+        ]);
+
+        return [
+            'success' => false,
+            'descargadas' => 0,
+            'total' => 0,
+            'errors' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
+/**
+ * ✅✅✅ NUEVO: SINCRONIZAR ESTADOS DE CITAS PENDIENTES (OFFLINE → API) ✅✅✅
+ */
+public function sincronizarEstadosCitas(int $sedeId): array
+{
+    try {
+        Log::info('📤 Iniciando sincronización de estados de citas', [
+            'sede_id' => $sedeId
+        ]);
+
+        // ✅ OBTENER CITAS CON CAMBIOS PENDIENTES EN LOCALSTORAGE
+        // Primero obtenemos citas que tienen sync_status diferente entre SQLite y lo que debería estar en API
+        $citasConEstadoModificado = DB::connection('offline')->table('citas')
+            ->whereIn('estado', ['ATENDIDA', 'CANCELADA', 'NO_ASISTIO'])
+            ->where('sync_status', 'pending')
+            ->get();
+
+        Log::info('📊 Citas con estados pendientes de sincronizar', [
+            'total' => $citasConEstadoModificado->count()
+        ]);
+
+        if ($citasConEstadoModificado->count() === 0) {
+            return [
+                'success' => true,
+                'actualizadas' => 0,
+                'total' => 0,
+                'errors' => []
+            ];
+        }
+
+        $actualizadas = 0;
+        $errors = [];
+
+        // ✅ SINCRONIZAR CADA ESTADO DE CITA
+        foreach ($citasConEstadoModificado as $cita) {
+            try {
+                Log::info('📤 Actualizando estado de cita en API', [
+                    'uuid' => $cita->uuid,
+                    'nuevo_estado' => $cita->estado
+                ]);
+
+                // ✅ ENVIAR CAMBIO DE ESTADO A LA API
+                $response = app(ApiService::class)->put("/citas/{$cita->uuid}/estado", [
+                    'estado' => $cita->estado
+                ]);
+
+                if (isset($response['success']) && $response['success']) {
+                    Log::info('✅ Estado de cita actualizado en API', [
+                        'uuid' => $cita->uuid,
+                        'estado' => $cita->estado
+                    ]);
+
+                    // ✅ ACTUALIZAR sync_status A 'synced'
+                    DB::connection('offline')->table('citas')
+                        ->where('uuid', $cita->uuid)
+                        ->update([
+                            'sync_status' => 'synced',
+                            'updated_at' => now()
+                        ]);
+
+                    $actualizadas++;
+                } else {
+                    Log::warning('⚠️ API rechazó el cambio de estado', [
+                        'uuid' => $cita->uuid,
+                        'estado' => $cita->estado,
+                        'response' => $response
+                    ]);
+                    $errors[] = [
+                        'uuid' => $cita->uuid,
+                        'error' => $response['error'] ?? 'Error desconocido'
+                    ];
+                }
+
+            } catch (\Exception $e) {
+                Log::error('❌ Error actualizando estado de cita individual', [
+                    'uuid' => $cita->uuid ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
+                $errors[] = [
+                    'uuid' => $cita->uuid ?? 'unknown',
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+
+        Log::info('✅ Sincronización de estados de citas completada', [
+            'total_pendientes' => $citasConEstadoModificado->count(),
+            'actualizadas' => $actualizadas,
+            'errores' => count($errors)
+        ]);
+
+        return [
+            'success' => true,
+            'actualizadas' => $actualizadas,
+            'total' => $citasConEstadoModificado->count(),
+            'errors' => $errors
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error en sincronización de estados de citas', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'success' => false,
+            'actualizadas' => 0,
+            'total' => 0,
+            'errors' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
 }

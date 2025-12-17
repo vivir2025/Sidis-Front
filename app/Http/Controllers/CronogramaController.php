@@ -121,7 +121,7 @@ public function sincronizarHistorias(Request $request)
         $sedeId = $usuario['sede_id'];
         $pacienteUuid = $request->get('paciente_uuid');
 
-        Log::info('🔄 Iniciando sincronización de historias desde controlador', [
+        Log::info('🔄🔄 Iniciando sincronización BIDIRECCIONAL de historias', [
             'sede_id' => $sedeId,
             'paciente_uuid' => $pacienteUuid
         ]);
@@ -134,29 +134,62 @@ public function sincronizarHistorias(Request $request)
             ], 503);
         }
 
-        // ✅ EJECUTAR SINCRONIZACIÓN
-        $result = $this->offlineService->syncHistoriasClinicas($sedeId, $pacienteUuid);
+        // ✅ PASO 1: ENVIAR HISTORIAS PENDIENTES (OFFLINE → API)
+        Log::info('📤 PASO 1: Enviando historias pendientes a la API');
+        $resultEnvio = $this->offlineService->enviarHistoriasPendientes($sedeId, $pacienteUuid);
+        
+        $enviadas = $resultEnvio['enviadas'] ?? 0;
+        $erroresEnvio = $resultEnvio['errors'] ?? [];
 
-        if (!$result['success']) {
-            return response()->json([
-                'success' => false,
-                'error' => $result['error'] ?? 'Error en sincronización'
-            ], 500);
-        }
+        Log::info('✅ Historias enviadas', [
+            'total_enviadas' => $enviadas,
+            'errores' => count($erroresEnvio)
+        ]);
 
+        // ✅ PASO 2: TRAER HISTORIAS NUEVAS DESDE LA API (API → OFFLINE)
+        Log::info('📥 PASO 2: Descargando historias nuevas desde la API');
+        $resultDescarga = $this->offlineService->descargarHistoriasDesdeAPI($sedeId, $pacienteUuid);
+        
+        $descargadas = $resultDescarga['descargadas'] ?? 0;
+        $erroresDescarga = $resultDescarga['errors'] ?? [];
+
+        Log::info('✅ Historias descargadas', [
+            'total_descargadas' => $descargadas,
+            'errores' => count($erroresDescarga)
+        ]);
+
+        // ✅ PASO 3: SINCRONIZAR ESTADOS DE CITAS (OFFLINE → API)
+        Log::info('📤 PASO 3: Sincronizando estados de citas pendientes');
+        $resultCitas = $this->offlineService->sincronizarEstadosCitas($sedeId);
+        
+        $citasActualizadas = $resultCitas['actualizadas'] ?? 0;
+        $erroresCitas = $resultCitas['errors'] ?? [];
+
+        Log::info('✅ Estados de citas sincronizados', [
+            'total_actualizadas' => $citasActualizadas,
+            'errores' => count($erroresCitas)
+        ]);
+
+        // ✅ RESPUESTA CONSOLIDADA
+        $totalErrores = count($erroresEnvio) + count($erroresDescarga) + count($erroresCitas);
+        
         return response()->json([
             'success' => true,
             'data' => [
-                'sincronizadas' => $result['synced'],
-                'total' => $result['total'],
-                'errores' => count($result['errors'] ?? [])
+                'enviadas' => $enviadas,
+                'descargadas' => $descargadas,
+                'citas_actualizadas' => $citasActualizadas,
+                'total_sincronizadas' => $enviadas + $descargadas + $citasActualizadas,
+                'errores' => $totalErrores,
+                'detalles_errores' => array_merge($erroresEnvio, $erroresDescarga, $erroresCitas)
             ],
-            'message' => "Se sincronizaron {$result['synced']} historias clínicas"
+            'message' => "✅ Sincronización completa: {$enviadas} enviadas, {$descargadas} descargadas, {$citasActualizadas} citas actualizadas"
         ]);
 
     } catch (\Exception $e) {
-        Log::error('❌ Error en sincronización de historias', [
-            'error' => $e->getMessage()
+        Log::error('❌ Error en sincronización bidireccional de historias', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
 
         return response()->json([
