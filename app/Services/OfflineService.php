@@ -256,7 +256,9 @@ public function ensureDatabaseExists(): void
             usuario_id INTEGER,
             brigada_id TEXT NULL,
             brigada_uuid TEXT NULL,
-            usuario_medico_id TEXT NULL,  
+            usuario_medico_id TEXT NULL,
+            usuario_medico_uuid TEXT NULL,
+            medico_uuid TEXT NULL,
             cupos_disponibles INTEGER DEFAULT 0,
             sync_status TEXT DEFAULT "synced",
             error_message TEXT NULL,
@@ -268,6 +270,19 @@ public function ensureDatabaseExists(): void
             deleted_at DATETIME NULL
         )
     ');
+    
+    // ✅ AGREGAR COLUMNAS SI NO EXISTEN (para bases de datos existentes)
+    try {
+        DB::connection('offline')->statement('ALTER TABLE agendas ADD COLUMN usuario_medico_uuid TEXT NULL');
+    } catch (\Exception $e) {
+        // Columna ya existe
+    }
+    
+    try {
+        DB::connection('offline')->statement('ALTER TABLE agendas ADD COLUMN medico_uuid TEXT NULL');
+    } catch (\Exception $e) {
+        // Columna ya existe
+    }
 }
 
 
@@ -2398,24 +2413,47 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         }
 
         // ✅ NORMALIZAR USUARIO MÉDICO - BUSCAR EN MÚLTIPLES CAMPOS
-        $usuarioMedicoValue = null;
+        $usuarioMedicoUuid = null;
+        $usuarioMedicoId = null;
         
-        if (!empty($agendaData['usuario_medico_uuid'])) {
-            $usuarioMedicoValue = $agendaData['usuario_medico_uuid'];
-            Log::info('🔍 Usuario médico encontrado en usuario_medico_uuid', [
-                'value' => $usuarioMedicoValue
-            ]);
-        } elseif (!empty($agendaData['usuario_medico_id'])) {
-            $usuarioMedicoValue = $agendaData['usuario_medico_id'];
-            Log::info('🔍 Usuario médico encontrado en usuario_medico_id', [
-                'value' => $usuarioMedicoValue
-            ]);
-        } elseif (!empty($agendaData['medico_uuid'])) {
-            $usuarioMedicoValue = $agendaData['medico_uuid'];
-            Log::info('🔍 Usuario médico encontrado en medico_uuid', [
-                'value' => $usuarioMedicoValue
+        // 1. Intentar extraer del objeto usuario_medico si existe
+        if (!empty($agendaData['usuario_medico']) && is_array($agendaData['usuario_medico'])) {
+            $usuarioMedicoUuid = $agendaData['usuario_medico']['uuid'] ?? null;
+            $usuarioMedicoId = $agendaData['usuario_medico']['id'] ?? null;
+            Log::info('🔍 Usuario médico encontrado en objeto usuario_medico', [
+                'uuid' => $usuarioMedicoUuid,
+                'id' => $usuarioMedicoId
             ]);
         }
+        
+        // 2. Si no, intentar del campo directo usuario_medico_uuid
+        if (empty($usuarioMedicoUuid) && !empty($agendaData['usuario_medico_uuid'])) {
+            $usuarioMedicoUuid = $agendaData['usuario_medico_uuid'];
+            Log::info('🔍 Usuario médico encontrado en usuario_medico_uuid', [
+                'value' => $usuarioMedicoUuid
+            ]);
+        }
+        
+        // 3. Si tampoco, intentar medico_uuid
+        if (empty($usuarioMedicoUuid) && !empty($agendaData['medico_uuid'])) {
+            $usuarioMedicoUuid = $agendaData['medico_uuid'];
+            Log::info('🔍 Usuario médico encontrado en medico_uuid', [
+                'value' => $usuarioMedicoUuid
+            ]);
+        }
+        
+        // 4. Guardar el ID si no tenemos UUID
+        if (empty($usuarioMedicoId) && !empty($agendaData['usuario_medico_id'])) {
+            $usuarioMedicoId = $agendaData['usuario_medico_id'];
+            Log::info('🔍 Usuario médico ID encontrado', [
+                'value' => $usuarioMedicoId
+            ]);
+        }
+        
+        Log::info('✅ Usuario médico final', [
+            'uuid' => $usuarioMedicoUuid,
+            'id' => $usuarioMedicoId
+        ]);
 
         // ✅ CONVERTIR proceso_id A INTEGER Y EXTRAER UUID
         $procesoId = null;
@@ -2480,7 +2518,9 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'proceso_id' => $procesoId,
             'proceso_uuid' => $procesoUuid,
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
-            'usuario_medico_id' => $usuarioMedicoValue,
+            'usuario_medico_id' => $usuarioMedicoId,
+            'usuario_medico_uuid' => $usuarioMedicoUuid, // ✅ AGREGAR UUID
+            'medico_uuid' => $usuarioMedicoUuid, // ✅ TAMBIÉN COMO medico_uuid
             'brigada_id' => $brigadaId,
             'brigada_uuid' => $brigadaUuid,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
@@ -2743,10 +2783,56 @@ public function getAgendasOffline(int $sedeId, array $filters = []): array
                 $query->where('modalidad', $filters['modalidad']);
             }
 
-            $agendas = $query->orderBy('fecha', 'desc')
+            $agendasRaw = $query->orderBy('fecha', 'desc')
                 ->orderBy('hora_inicio', 'asc')
-                ->get()
-                ->toArray();
+                ->get();
+            
+            // ✅ ENRIQUECER CADA AGENDA CON PROCESO DESDE ORIGINAL_DATA
+            foreach ($agendasRaw as $agenda) {
+                $agendaArray = (array) $agenda;
+                
+                // ✅ SI TIENE original_data, EXTRAER PROCESO DE AHÍ (MÁS SIMPLE)
+                if (isset($agendaArray['original_data']) && is_string($agendaArray['original_data'])) {
+                    $originalData = json_decode($agendaArray['original_data'], true);
+                    
+                    if ($originalData && isset($originalData['proceso'])) {
+                        $agendaArray['proceso'] = $originalData['proceso'];
+                        $agendaArray['proceso_nombre'] = $originalData['proceso']['nombre'] ?? null;
+                        
+                        Log::info('✅ Proceso extraído de original_data', [
+                            'agenda_uuid' => $agendaArray['uuid'],
+                            'proceso_nombre' => $agendaArray['proceso_nombre']
+                        ]);
+                    }
+                }
+                
+                // ✅ FALLBACK: Buscar en tabla procesos solo si no se encontró en original_data
+                if (!isset($agendaArray['proceso'])) {
+                    if (!empty($agendaArray['proceso_uuid'])) {
+                        $proceso = $this->getProcesoByUuid($agendaArray['proceso_uuid']);
+                        if ($proceso) {
+                            $agendaArray['proceso'] = $proceso;
+                            $agendaArray['proceso_nombre'] = $proceso['nombre'] ?? null;
+                        }
+                    } elseif (!empty($agendaArray['proceso_id'])) {
+                        $proceso = $this->getProcesoById($agendaArray['proceso_id']);
+                        if ($proceso) {
+                            $agendaArray['proceso'] = $proceso;
+                            $agendaArray['proceso_nombre'] = $proceso['nombre'] ?? null;
+                        }
+                    }
+                }
+                
+                // Enriquecer con brigada desde original_data
+                if (isset($agendaArray['original_data']) && is_string($agendaArray['original_data'])) {
+                    $originalData = json_decode($agendaArray['original_data'], true);
+                    if ($originalData && isset($originalData['brigada'])) {
+                        $agendaArray['brigada'] = $originalData['brigada'];
+                    }
+                }
+                
+                $agendas[] = $agendaArray;
+            }
         } else {
             // Fallback a JSON
             $agendasPath = $this->getStoragePath() . '/agendas';
@@ -2755,6 +2841,7 @@ public function getAgendasOffline(int $sedeId, array $filters = []): array
                 foreach ($files as $file) {
                     $data = json_decode(file_get_contents($file), true);
                     if ($data && $data['sede_id'] == $sedeId && !$data['deleted_at']) {
+                        // Ya viene enriquecido del JSON
                         $agendas[] = $data;
                     }
                 }
@@ -6602,6 +6689,85 @@ public function syncCupsContratadosFromApi(): bool
         return false;
     }
 }
+
+/**
+ * ✅ REPARAR AGENDAS EXISTENTES - EXTRAER UUID DEL ORIGINAL_DATA
+ */
+public function repararUUIDsAgendas()
+{
+    try {
+        Log::info('🔧 Iniciando reparación de UUIDs en agendas');
+        
+        // Obtener todas las agendas que tienen original_data pero no tienen usuario_medico_uuid
+        $agendasSinUUID = DB::connection('offline')
+            ->table('agendas')
+            ->whereNull('usuario_medico_uuid')
+            ->whereNotNull('original_data')
+            ->get();
+        
+        Log::info('📊 Agendas a reparar', ['total' => $agendasSinUUID->count()]);
+        
+        $reparadas = 0;
+        $errores = 0;
+        
+        foreach ($agendasSinUUID as $agenda) {
+            try {
+                // Decodificar los datos originales
+                $originalData = json_decode($agenda->original_data, true);
+                
+                if ($originalData && isset($originalData['usuario_medico']) && is_array($originalData['usuario_medico'])) {
+                    $usuarioMedicoUuid = $originalData['usuario_medico']['uuid'] ?? null;
+                    
+                    if ($usuarioMedicoUuid) {
+                        // Actualizar la agenda con el UUID correcto
+                        DB::connection('offline')
+                            ->table('agendas')
+                            ->where('uuid', $agenda->uuid)
+                            ->update([
+                                'usuario_medico_uuid' => $usuarioMedicoUuid,
+                                'medico_uuid' => $usuarioMedicoUuid,
+                                'updated_at' => now()
+                            ]);
+                        
+                        $reparadas++;
+                        
+                        Log::info('✅ Agenda reparada', [
+                            'agenda_uuid' => $agenda->uuid,
+                            'medico_uuid' => $usuarioMedicoUuid
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                $errores++;
+                Log::error('❌ Error reparando agenda', [
+                    'agenda_uuid' => $agenda->uuid,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        Log::info('🏁 Reparación completada', [
+            'reparadas' => $reparadas,
+            'errores' => $errores,
+            'total' => $agendasSinUUID->count()
+        ]);
+        
+        return [
+            'success' => true,
+            'reparadas' => $reparadas,
+            'errores' => $errores,
+            'total' => $agendasSinUUID->count()
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error en reparación de UUIDs', ['error' => $e->getMessage()]);
+        return [
+            'success' => false,
+            'error' => $e->getMessage()
+        ];
+    }
+}
+
 // app/Services/OfflineService.php - MÉTODO CORREGIDO
 /**
  * ✅ OBTENER AGENDAS DEL DÍA - VERSIÓN CORREGIDA SIN DEPENDENCIA
@@ -6656,6 +6822,17 @@ public function getAgendasDelDia($usuarioUuid, $fecha)
                     ] : 'N/A'
                 ]);
 
+                // ✅ REPARAR UUIDs NULL AUTOMÁTICAMENTE
+                if ($muestra->first() && empty($muestra->first()->usuario_medico_uuid)) {
+                    Log::warning('⚠️ UUIDs vacíos detectados, ejecutando reparación automática');
+                    try {
+                        $this->repararUUIDsAgendas();
+                        Log::info('✅ Reparación automática completada');
+                    } catch (\Exception $e) {
+                        Log::error('❌ Error en reparación automática', ['error' => $e->getMessage()]);
+                    }
+                }
+
                 // ✅ ESTRATEGIA MÚLTIPLE DE BÚSQUEDA
                 $results = collect();
 
@@ -6696,7 +6873,7 @@ public function getAgendasDelDia($usuarioUuid, $fecha)
                     ]);
                 }
 
-                // ESTRATEGIA 3: Solo por fecha (si hay pocas agendas ese día)
+                // ESTRATEGIA 3: Solo por fecha (SIEMPRE usar como fallback)
                 if (!$results->count()) {
                     $agendasDelDia = DB::connection('offline')
                         ->table('agendas')
@@ -6713,10 +6890,12 @@ public function getAgendasDelDia($usuarioUuid, $fecha)
                         'fecha' => $fechaLimpia
                     ]);
 
-                    // Si hay pocas agendas ese día, usar todas (probablemente son del usuario)
-                    if ($agendasDelDia->count() <= 5) {
+                    // ✅ USAR TODAS LAS AGENDAS DEL DÍA (sin límite de 5)
+                    if ($agendasDelDia->count() > 0) {
                         $results = $agendasDelDia;
-                        Log::info('✅ Usando todas las agendas del día (pocas encontradas)');
+                        Log::info('✅ Usando todas las agendas del día como fallback', [
+                            'total' => $agendasDelDia->count()
+                        ]);
                     }
                 }
 

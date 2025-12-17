@@ -218,6 +218,18 @@
 
 @section('content')
 <div class="container-fluid">
+    <!-- ✅ ALERTA DE MODO OFFLINE PERMANENTE -->
+    <div id="offline-banner" class="alert alert-warning alert-dismissible fade {{ $isOffline ? 'show' : 'd-none' }} mb-3" role="alert" style="position: sticky; top: 0; z-index: 1040;">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-wifi-slash me-2 fa-lg"></i>
+            <div class="flex-grow-1">
+                <strong>📱 Modo Offline Activo</strong>
+                <p class="mb-0 small">Los cambios se guardarán localmente y se sincronizarán automáticamente cuando recuperes la conexión.</p>
+            </div>
+            <span id="offline-pending-count" class="badge bg-danger ms-2" style="display: none;">0</span>
+        </div>
+    </div>
+    
     <!-- ✅ HEADER DEL CRONOGRAMA -->
     <div class="row mb-4">
         <div class="col-12">
@@ -836,41 +848,72 @@
 
 @push('scripts')
 <script>
-// ✅ INTERCEPTAR TODAS LAS LLAMADAS FETCH PARA DEBUG
-const originalFetch = window.fetch;
-window.fetch = function(...args) {
-    console.log('🌐 FETCH INTERCEPTADO:', args[0], args[1]);
-    if (args[0].includes('/estado')) {
-        console.log('🚨 LLAMADA A ESTADO DETECTADA:', {
-            url: args[0],
-            options: args[1]
-        });
-    }
-    return originalFetch.apply(this, args);
-};
-
 // ✅ VARIABLES GLOBALES
 let fechaActual = '{{ $fechaSeleccionada }}';
 let cronogramaData = @json($cronogramaData ?? []);
 let isOffline = {{ $isOffline ? 'true' : 'false' }};
 
-console.log('🏥 Cronograma iniciado', {
-    fecha: fechaActual,
-    agendas: cronogramaData.agendas?.length || 0,
-    offline: isOffline
-});
+// ✅ VALIDAR DISPONIBILIDAD DE LOCALSTORAGE
+function validarLocalStorage() {
+    try {
+        const test = '__localStorage_test__';
+        localStorage.setItem(test, test);
+        localStorage.removeItem(test);
+        return true;
+    } catch (e) {
+        console.error('❌ localStorage NO disponible:', e);
+        return false;
+    }
+}
 
-// ✅ INICIALIZACIÓN INTELIGENTE
+const localStorageDisponible = validarLocalStorage();
+
+// ✅ SI NO HAY AGENDAS Y ESTAMOS OFFLINE, INTENTAR CARGAR
+if ((!cronogramaData.agendas || cronogramaData.agendas.length === 0) && !navigator.onLine) {
+    setTimeout(cargarAgendasOfflineDirecto, 1000);
+}
+
+// ✅ CARGAR AGENDAS OFFLINE DIRECTAMENTE DESDE BACKEND
+async function cargarAgendasOfflineDirecto() {
+    try {
+        const url = `/cronograma/mis-agendas/${fechaActual}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Error en la respuesta: ' + response.status);
+        }
+        
+        const data = await response.json();
+        
+        if (data.agendas && data.agendas.length > 0) {
+            cronogramaData = data;
+            mostrarAlerta('success', `${data.agendas.length} agendas encontradas offline`);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            mostrarAlerta('warning', 'No hay agendas disponibles offline');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error cargando agendas offline:', error);
+    }
+}
+
+// ✅ INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
+    actualizarContadorCambiosPendientes();
     initEventListeners();
 
     if (!isOffline) {
         setInterval(actualizarCronogramaAuto, 5 * 60 * 1000);
-        
-        // ✅ SINCRONIZACIÓN INTELIGENTE: Solo si hay cambios pendientes
         setTimeout(() => {
             verificarYSincronizarCambiosPendientes();
-        }, 3000); // Esperar 3 segundos para que cargue todo
+        }, 3000);
     }
 
     initDetectorConectividad();
@@ -990,29 +1033,11 @@ function initEventListeners() {
     });
 }
 
-// ✅ DEBUG: Verificar event listeners
-console.log('🔍 DEBUG: Event listeners registrados:', {
-    totalListeners: document.querySelectorAll('*').length,
-    botonesEstado: document.querySelectorAll('.btn-estado-cita').length,
-    botonesHistoria: document.querySelectorAll('.btn-historia-clinica').length
-});
-
-// ✅ Verificar si hay múltiples event listeners
-document.querySelectorAll('.btn-estado-cita').forEach((btn, index) => {
-    console.log(`🔍 Botón ${index}:`, {
-        uuid: btn.dataset.citaUuid,
-        estado: btn.dataset.estado,
-        element: btn.outerHTML.substring(0, 100) + '...'
-    });
-});
-
 // ✅ CAMBIAR FECHA
 function cambiarFecha(fecha) {
     if (fecha === fechaActual) return;
     
-    console.log('🔄 Cambiando a fecha:', fecha);
     mostrarLoading(true);
-    
     window.location.href = `/cronograma?fecha=${fecha}`;
 }
 
@@ -1442,12 +1467,23 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
     
     mostrarLoading(true);
     
-    // ✅ MODO OFFLINE
-    if (isOffline || !navigator.onLine) {
-        console.log('📱 Modo offline: Guardando cambio localmente');
-        guardarCambioEstadoOffline(citaUuid, nuevoEstado);
-        actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
-        mostrarAlerta('warning', `Estado cambiado a ${nuevoEstado.toLowerCase()} (se sincronizará cuando tengas conexión)`);
+    // ✅ MODO OFFLINE - VERIFICACIÓN MEJORADA
+    const estamosOffline = isOffline || !navigator.onLine;
+    console.log('🔍 Verificación de conectividad:', {
+        isOffline: isOffline,
+        navigatorOnline: navigator.onLine,
+        resultado: estamosOffline ? 'OFFLINE' : 'ONLINE'
+    });
+    
+    if (estamosOffline) {
+        console.log('📱 MODO OFFLINE DETECTADO: Guardando cambio localmente');
+        const guardado = guardarCambioEstadoOffline(citaUuid, nuevoEstado);
+        
+        if (guardado) {
+            actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
+            mostrarAlerta('warning', `✓ Estado cambiado a ${nuevoEstado} (se sincronizará automáticamente)`);
+        }
+        
         mostrarLoading(false);
         return;
     }
@@ -1520,7 +1556,17 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
 // ✅ GUARDAR CAMBIO OFFLINE MEJORADO
 function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
     try {
+        // ✅ VALIDAR LOCALSTORAGE
+        if (!localStorageDisponible) {
+            console.error('❌ localStorage no disponible, no se puede guardar offline');
+            mostrarAlerta('error', 'No se puede guardar cambios offline (localStorage no disponible)');
+            return false;
+        }
+        
+        console.log('💾 Guardando cambio offline:', { citaUuid, nuevoEstado });
+        
         const cambiosExistentes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        console.log('📦 Cambios existentes:', cambiosExistentes.length);
         
         // ✅ REMOVER CAMBIOS ANTERIORES DE LA MISMA CITA (evitar duplicados)
         const cambiosFiltrados = cambiosExistentes.filter(c => c.cita_uuid !== citaUuid);
@@ -1536,7 +1582,10 @@ function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
         cambiosFiltrados.push(nuevoCambio);
         localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosFiltrados));
         
-        console.log(`💾 Cambio offline guardado: ${citaUuid} -> ${nuevoEstado}`);
+        // ✅ VERIFICAR QUE SE GUARDÓ
+        const verificacion = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        console.log(`✅ Cambio offline guardado correctamente: ${citaUuid} -> ${nuevoEstado}`);
+        console.log('📦 Total cambios pendientes:', verificacion.length);
         
         // ✅ ACTUALIZAR INTERFAZ INMEDIATAMENTE
         actualizarCitaEnInterfaz(citaUuid, nuevoEstado, null);
@@ -1544,10 +1593,14 @@ function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
         // ✅ APLICAR INDICADORES VISUALES
         aplicarIndicadoresCambiosPendientes([nuevoCambio]);
         
+        // ✅ ACTUALIZAR CONTADOR EN UI
+        actualizarContadorCambiosPendientes();
+        
         return true;
         
     } catch (error) {
         console.error('❌ Error guardando cambio offline:', error);
+        mostrarAlerta('error', 'Error guardando cambio offline: ' + error.message);
         return false;
     }
 }
@@ -1555,53 +1608,116 @@ function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
 // ✅ NUEVA FUNCIÓN: SINCRONIZAR CAMBIOS PENDIENTES
 function sincronizarCambiosPendientes() {
     try {
-        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
-        
-        if (cambiosNoSincronizados.length === 0) {
-            console.log('✅ No hay cambios pendientes para sincronizar');
+        if (!localStorageDisponible) {
+            console.log('⚠️ localStorage no disponible, no hay cambios para sincronizar');
             return;
         }
         
-        console.log('🔄 Sincronizando cambios pendientes:', cambiosNoSincronizados.length);
+        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
         
-        cambiosNoSincronizados.forEach(cambio => {
-            // ✅ USAR LA MISMA RUTA QUE FUNCIONA
-            fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    estado: cambio.nuevo_estado
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // ✅ MARCAR COMO SINCRONIZADO
-                    cambio.sincronizado = true;
-                    cambio.fecha_sincronizacion = new Date().toISOString();
+        console.log('🔄 ============ INICIANDO SINCRONIZACIÓN ============');
+        console.log(`📊 Total cambios en localStorage: ${cambiosPendientes.length}`);
+        console.log(`📊 Cambios sin sincronizar: ${cambiosNoSincronizados.length}`);
+        
+        if (cambiosNoSincronizados.length === 0) {
+            console.log('✅ No hay cambios pendientes para sincronizar');
+            // Limpiar cambios ya sincronizados
+            localStorage.setItem('cambios_estados_pendientes', JSON.stringify([]));
+            actualizarContadorCambiosPendientes();
+            return;
+        }
+        
+        console.log('🔄 Sincronizando cambios pendientes:', cambiosNoSincronizados);
+        
+        let exitosos = 0;
+        let fallidos = 0;
+        const totalCambios = cambiosNoSincronizados.length;
+        
+        // ✅ SINCRONIZAR CADA CAMBIO SECUENCIALMENTE
+        const sincronizarCambio = (cambio, index) => {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    console.log(`🔄 [${index + 1}/${totalCambios}] Sincronizando: ${cambio.cita_uuid} -> ${cambio.nuevo_estado}`);
                     
-                    console.log('✅ Cambio sincronizado:', cambio.cita_uuid);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error sincronizando cambio:', error);
+                    fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({
+                            estado: cambio.nuevo_estado
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // ✅ MARCAR COMO SINCRONIZADO
+                            cambio.sincronizado = true;
+                            cambio.fecha_sincronizacion = new Date().toISOString();
+                            exitosos++;
+                            
+                            console.log(`✅ [${index + 1}/${totalCambios}] Sincronizado: ${cambio.cita_uuid}`);
+                            
+                            // Actualizar interfaz
+                            actualizarCitaEnInterfaz(cambio.cita_uuid, cambio.nuevo_estado, data);
+                        } else {
+                            fallidos++;
+                            cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
+                            console.error(`❌ [${index + 1}/${totalCambios}] Error: ${data.error}`);
+                        }
+                        resolve();
+                    })
+                    .catch(error => {
+                        fallidos++;
+                        cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
+                        console.error(`❌ [${index + 1}/${totalCambios}] Error de red:`, error);
+                        resolve();
+                    });
+                }, index * 500); // ✅ DELAY DE 500ms ENTRE PETICIONES
             });
-        });
+        };
         
-        // ✅ ACTUALIZAR LOCALSTORAGE
-        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
-        
-        // ✅ MOSTRAR NOTIFICACIÓN
-        mostrarAlerta('success', `${cambiosNoSincronizados.length} cambios sincronizados con el servidor`);
+        // Sincronizar todos los cambios
+        Promise.all(cambiosNoSincronizados.map((cambio, index) => sincronizarCambio(cambio, index)))
+            .then(() => {
+                console.log('🏁 ============ SINCRONIZACIÓN COMPLETADA ============');
+                console.log(`✅ Exitosos: ${exitosos}`);
+                console.log(`❌ Fallidos: ${fallidos}`);
+                
+                // ✅ ACTUALIZAR LOCALSTORAGE
+                localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
+                
+                // ✅ LIMPIAR CAMBIOS SINCRONIZADOS
+                const cambiosRestantes = cambiosPendientes.filter(c => !c.sincronizado);
+                localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosRestantes));
+                
+                // Actualizar contador
+                actualizarContadorCambiosPendientes();
+                
+                // ✅ MOSTRAR NOTIFICACIÓN
+                if (exitosos > 0) {
+                    mostrarAlerta('success', `✓ ${exitosos} cambio(s) sincronizado(s) correctamente`);
+                }
+                
+                if (fallidos > 0) {
+                    mostrarAlerta('warning', `⚠ ${fallidos} cambio(s) no se pudieron sincronizar (se intentará después)`);
+                }
+                
+                // Actualizar cronograma después de sincronizar
+                if (exitosos > 0) {
+                    setTimeout(() => {
+                        actualizarCronograma();
+                    }, 1000);
+                }
+            });
         
     } catch (error) {
-        console.error('❌ Error en sincronización:', error);
+        console.error('❌ Error crítico en sincronización:', error);
+        mostrarAlerta('error', 'Error en sincronización: ' + error.message);
     }
 }
 
@@ -1685,26 +1801,95 @@ window.addEventListener('historiaClinicaGuardada', function(event) {
     }, 1000);
 });
 
+// ✅ ACTUALIZAR CONTADOR DE CAMBIOS PENDIENTES
+function actualizarContadorCambiosPendientes() {
+    try {
+        if (!localStorageDisponible) return 0;
+        
+        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const pendientes = cambiosPendientes.filter(c => !c.sincronizado);
+        
+        console.log(`📊 Cambios pendientes: ${pendientes.length}`);
+        
+        // Actualizar badge en el header si existe
+        const badgeConexion = document.getElementById('badge-conexion');
+        if (badgeConexion && pendientes.length > 0) {
+            badgeConexion.innerHTML = `
+                <i class="fas fa-wifi me-1"></i>
+                ${isOffline ? 'Offline' : 'Online'}
+                ${pendientes.length > 0 ? `<span class="badge bg-danger ms-1">${pendientes.length}</span>` : ''}
+            `;
+        }
+        
+        // ✅ ACTUALIZAR BANNER DE OFFLINE
+        const offlineBanner = document.getElementById('offline-banner');
+        const offlineCount = document.getElementById('offline-pending-count');
+        
+        if (pendientes.length > 0) {
+            if (offlineCount) {
+                offlineCount.textContent = `${pendientes.length} pendiente(s)`;
+                offlineCount.style.display = 'inline-block';
+            }
+        } else {
+            if (offlineCount) {
+                offlineCount.style.display = 'none';
+            }
+        }
+        
+        return pendientes.length;
+    } catch (error) {
+        console.error('❌ Error actualizando contador:', error);
+        return 0;
+    }
+}
+
 // ✅ DETECTOR DE CONECTIVIDAD MEJORADO
 function initDetectorConectividad() {
    window.addEventListener('online', function() {
-    console.log('🌐 Conexión restaurada');
+    console.log('🟢 ============ CONEXIÓN RESTAURADA ============');
     isOffline = false;
     actualizarBadgeConexion(true);
-    mostrarAlerta('success', 'Conexión restaurada. Sincronizando datos...');
-
-    // ✅ SINCRONIZAR CAMBIOS PENDIENTES DE FORMA INTELIGENTE
-    setTimeout(() => {
-        verificarYSincronizarCambiosPendientes();
-        actualizarCronograma();
-    }, 1000);
+    
+    // ✅ OCULTAR BANNER OFFLINE
+    const offlineBanner = document.getElementById('offline-banner');
+    if (offlineBanner) {
+        offlineBanner.classList.remove('show');
+        offlineBanner.classList.add('d-none');
+    }
+    
+    const pendientes = actualizarContadorCambiosPendientes();
+    
+    if (pendientes > 0) {
+        mostrarAlerta('success', `Conexión restaurada. Sincronizando ${pendientes} cambio(s) pendiente(s)...`);
+        
+        // ✅ SINCRONIZAR CAMBIOS PENDIENTES
+        setTimeout(() => {
+            sincronizarCambiosPendientes();
+        }, 1500);
+    } else {
+        mostrarAlerta('success', 'Conexión restaurada.');
+        
+        // Actualizar cronograma sin cambios pendientes
+        setTimeout(() => {
+            actualizarCronograma();
+        }, 500);
+    }
 });
     
     window.addEventListener('offline', function() {
-        console.log('📵 Conexión perdida');
+        console.log('🔴 ============ CONEXIÓN PERDIDA ============');
         isOffline = true;
         actualizarBadgeConexion(false);
-        mostrarAlerta('warning', 'Sin conexión. Los cambios se guardarán localmente.');
+        
+        // ✅ MOSTRAR BANNER OFFLINE
+        const offlineBanner = document.getElementById('offline-banner');
+        if (offlineBanner) {
+            offlineBanner.classList.add('show');
+            offlineBanner.classList.remove('d-none');
+        }
+        
+        actualizarContadorCambiosPendientes();
+        mostrarAlerta('warning', '📱 Modo offline activado. Los cambios se guardarán localmente.');
     });
     
     // Verificar conectividad cada 30 segundos
@@ -1965,13 +2150,38 @@ function verificarConectividad() {
 
 function actualizarBadgeConexion(online) {
     const badge = document.getElementById('badge-conexion');
+    const offlineBanner = document.getElementById('offline-banner');
+    
     if (badge) {
+        // ✅ CONTAR CAMBIOS PENDIENTES
+        let pendientes = 0;
+        if (localStorageDisponible) {
+            try {
+                const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+                pendientes = cambios.filter(c => !c.sincronizado).length;
+            } catch (e) {
+                console.error('Error contando cambios:', e);
+            }
+        }
+        
         if (online) {
             badge.className = 'badge bg-success connection-indicator online';
-            badge.innerHTML = '<i class="fas fa-wifi me-1"></i>Conectado';
+            badge.innerHTML = `<i class="fas fa-wifi me-1"></i>Conectado${pendientes > 0 ? ` <span class="badge bg-danger ms-1">${pendientes}</span>` : ''}`;
+            
+            // Ocultar banner
+            if (offlineBanner) {
+                offlineBanner.classList.remove('show');
+                offlineBanner.classList.add('d-none');
+            }
         } else {
             badge.className = 'badge bg-warning connection-indicator offline';
-            badge.innerHTML = '<i class="fas fa-database me-1"></i>Datos Locales';
+            badge.innerHTML = `<i class="fas fa-database me-1"></i>Offline${pendientes > 0 ? ` <span class="badge bg-danger ms-1">${pendientes}</span>` : ''}`;
+            
+            // Mostrar banner
+            if (offlineBanner) {
+                offlineBanner.classList.add('show');
+                offlineBanner.classList.remove('d-none');
+            }
         }
     }
 }
@@ -2230,6 +2440,119 @@ window.cronogramaDebug = {
         const url = `/historia-clinica/determinar-vista/${citaUuid}`; // ← NUEVA RUTA
         console.log('🔗 URL generada:', url);
         window.open(url, '_blank');
+    },
+    // ✅ FUNCIONES DE DEBUG OFFLINE
+    verCambiosPendientes: function() {
+        if (!localStorageDisponible) {
+            console.log('❌ localStorage no disponible');
+            return;
+        }
+        const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        console.log('📦 Cambios pendientes:', cambios);
+        console.table(cambios);
+        return cambios;
+    },
+    limpiarCambiosPendientes: function() {
+        if (confirm('¿Seguro que quieres limpiar todos los cambios pendientes?')) {
+            localStorage.setItem('cambios_estados_pendientes', JSON.stringify([]));
+            actualizarContadorCambiosPendientes();
+            console.log('✅ Cambios pendientes limpiados');
+        }
+    },
+    forzarModoOffline: function() {
+        isOffline = true;
+        actualizarBadgeConexion(false);
+        console.log('🔴 Modo offline forzado');
+    },
+    forzarModoOnline: function() {
+        isOffline = false;
+        actualizarBadgeConexion(true);
+        console.log('🟢 Modo online forzado');
+    },
+    infoSistema: function() {
+        const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        const pendientes = cambios.filter(c => !c.sincronizado);
+        const info = {
+            modo: isOffline ? 'OFFLINE' : 'ONLINE',
+            navigator_online: navigator.onLine,
+            localStorage_disponible: localStorageDisponible,
+            cambios_totales: cambios.length,
+            cambios_pendientes: pendientes.length,
+            cambios_sincronizados: cambios.filter(c => c.sincronizado).length,
+            agendas_cargadas: cronogramaData.agendas?.length || 0,
+            fecha_actual: fechaActual
+        };
+        console.table(info);
+        return info;
+    },
+    // ✅ VERIFICAR AGENDAS EN BASE DE DATOS
+    verificarAgendasOffline: async function() {
+        console.log('🔍 Verificando agendas offline en servidor...');
+        try {
+            const response = await fetch('/cronograma/debug-agendas-offline', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                }
+            });
+            const data = await response.json();
+            console.log('📊 Agendas offline:', data);
+            return data;
+        } catch (error) {
+            console.error('❌ Error verificando agendas:', error);
+            return null;
+        }
+    },
+    // ✅ SINCRONIZAR AGENDAS MANUALMENTE
+    sincronizarAgendasManual: async function() {
+        console.log('🔄 Sincronizando agendas manualmente...');
+        try {
+            const response = await fetch('/cronograma/sincronizar-agendas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                }
+            });
+            const data = await response.json();
+            console.log('✅ Resultado sincronización:', data);
+            if (data.success) {
+                mostrarAlerta('success', `${data.total || 0} agendas sincronizadas`);
+                location.reload();
+            }
+            return data;
+        } catch (error) {
+            console.error('❌ Error sincronizando:', error);
+            return null;
+        }
+    },
+    
+    // ✅ REPARAR UUIDs DE AGENDAS EXISTENTES
+    repararUUIDsAgendas: async function() {
+        console.log('🔧 Reparando UUIDs de agendas existentes...');
+        try {
+            const response = await fetch('/cronograma/reparar-uuids-agendas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                }
+            });
+            const data = await response.json();
+            console.log('✅ Resultado reparación:', data);
+            if (data.success) {
+                mostrarAlerta('success', `${data.reparadas || 0} agendas reparadas (${data.errores || 0} errores)`);
+                // Verificar agendas después de reparar
+                await this.verificarAgendasOffline();
+            }
+            return data;
+        } catch (error) {
+            console.error('❌ Error reparando:', error);
+            return null;
+        }
     }
 };
 

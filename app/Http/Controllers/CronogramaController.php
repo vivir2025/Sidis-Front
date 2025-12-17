@@ -1348,6 +1348,216 @@ public function sincronizarCambios(Request $request)
             ], 500);
         }
     }
+    
+    /**
+     * ✅ DEBUG: VERIFICAR AGENDAS OFFLINE
+     */
+    public function debugAgendasOffline(Request $request)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            $fecha = $request->get('fecha', now()->format('Y-m-d'));
+            
+            Log::info('🔍 DEBUG: Verificando agendas offline', [
+                'usuario_uuid' => $usuario['uuid'],
+                'fecha' => $fecha
+            ]);
+            
+            // Obtener agendas desde offline
+            $agendasOffline = $this->offlineService->getAgendasDelDia($usuario['uuid'], $fecha);
+            
+            // Estadísticas de la BD offline
+            $stats = $this->offlineService->getOfflineStats();
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'agendas_encontradas' => count($agendasOffline),
+                    'agendas' => $agendasOffline,
+                    'estadisticas_bd' => $stats,
+                    'usuario_uuid' => $usuario['uuid'],
+                    'fecha_consultada' => $fecha
+                ],
+                'message' => count($agendasOffline) . ' agendas encontradas en modo offline'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error en debug agendas offline', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * ✅ SINCRONIZAR AGENDAS MANUALMENTE
+     */
+    public function sincronizarAgendasManual(Request $request)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            $sedeId = $usuario['sede_id'];
+            
+            Log::info('🔄 Sincronización manual de agendas iniciada', [
+                'usuario' => $usuario['uuid'],
+                'sede_id' => $sedeId
+            ]);
+            
+            // Verificar conexión
+            if ($this->authService->isOffline() || !$this->apiService->isOnline()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No hay conexión a internet'
+                ], 503);
+            }
+            
+            // Sincronizar agendas del último mes
+            $fechaInicio = now()->subDays(30)->format('Y-m-d');
+            $fechaFin = now()->addDays(30)->format('Y-m-d');
+            
+            $response = $this->apiService->get('/agendas/disponibles', [
+                'usuario_medico_uuid' => $usuario['uuid'],
+                'fecha_desde' => $fechaInicio,
+                'fecha_hasta' => $fechaFin,
+                'sede_id' => $sedeId
+            ]);
+            
+            $totalSincronizadas = 0;
+            if (isset($response['data']) && is_array($response['data'])) {
+                foreach ($response['data'] as $agenda) {
+                    try {
+                        $this->offlineService->storeAgendaOffline($agenda, false);
+                        $totalSincronizadas++;
+                    } catch (\Exception $e) {
+                        Log::warning('⚠️ Error guardando agenda offline', [
+                            'agenda_uuid' => $agenda['uuid'] ?? 'N/A',
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+            }
+            
+            Log::info('✅ Sincronización manual completada', [
+                'total_sincronizadas' => $totalSincronizadas
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'total' => $totalSincronizadas,
+                'message' => "$totalSincronizadas agendas sincronizadas correctamente"
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error en sincronización manual', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error sincronizando agendas: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * ✅ REPARAR UUIDs DE AGENDAS EXISTENTES
+     */
+    public function repararUUIDsAgendas(Request $request)
+    {
+        try {
+            Log::info('🔧 Iniciando reparación de UUIDs desde controlador');
+            
+            $resultado = $this->offlineService->repararUUIDsAgendas();
+            
+            if ($resultado['success']) {
+                return response()->json([
+                    'success' => true,
+                    'reparadas' => $resultado['reparadas'],
+                    'errores' => $resultado['errores'],
+                    'total' => $resultado['total'],
+                    'message' => "{$resultado['reparadas']} agendas reparadas correctamente"
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'error' => $resultado['error'] ?? 'Error desconocido'
+                ], 500);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error reparando UUIDs', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error reparando UUIDs: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * ✅ OBTENER MIS AGENDAS DESDE OFFLINE (para uso directo desde frontend)
+     */
+    public function getMisAgendas(Request $request, string $fecha)
+    {
+        try {
+            $usuario = $this->authService->usuario();
+            $usuarioUuid = $usuario['uuid'];
+            
+            Log::info('📱 getMisAgendas solicitado', [
+                'usuario_uuid' => $usuarioUuid,
+                'fecha' => $fecha
+            ]);
+            
+            // ✅ OBTENER AGENDAS DESDE OFFLINE SERVICE
+            $agendas = $this->offlineService->getAgendasDelDia($usuarioUuid, $fecha);
+            
+            // ✅ ENRIQUECER CON CITAS
+            $agendasEnriquecidas = [];
+            foreach ($agendas as $agenda) {
+                $agendaArray = is_object($agenda) ? (array)$agenda : $agenda;
+                $agendaUuid = $agendaArray['uuid'] ?? null;
+                
+                if ($agendaUuid) {
+                    // Obtener citas de esta agenda
+                    $citas = $this->offlineService->getCitasPorAgenda($agendaUuid);
+                    $agendaArray['citas'] = $citas;
+                    $agendaArray['total_citas'] = count($citas);
+                }
+                
+                $agendasEnriquecidas[] = $agendaArray;
+            }
+            
+            Log::info('✅ Agendas offline devueltas', [
+                'total' => count($agendasEnriquecidas)
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'agendas' => $agendasEnriquecidas,
+                'fecha' => $fecha,
+                'offline' => true,
+                'estadisticas' => $this->getEstadisticasVacias()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo mis agendas', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Error obteniendo agendas: ' . $e->getMessage(),
+                'agendas' => []
+            ], 500);
+        }
+    }
 }
 
                         

@@ -337,6 +337,16 @@ Route::middleware(['custom.auth', 'profesional.salud'])->group(function () {
         Route::get('/agenda/{uuid}/citas', [CronogramaController::class, 'getCitasAgenda'])
               ->name('agenda.citas')
               ->where('uuid', '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
+        
+        // ✅ RUTAS DE DEBUG OFFLINE
+        Route::get('/debug-agendas-offline', [CronogramaController::class, 'debugAgendasOffline'])
+              ->name('debug-agendas-offline');
+              
+        Route::post('/sincronizar-agendas', [CronogramaController::class, 'sincronizarAgendasManual'])
+              ->name('sincronizar-agendas');
+              
+        Route::post('/reparar-uuids-agendas', [CronogramaController::class, 'repararUUIDsAgendas'])
+              ->name('reparar-uuids-agendas');
               
         Route::get('/mis-agendas/{fecha}', [CronogramaController::class, 'getMisAgendas'])
               ->name('mis-agendas')
