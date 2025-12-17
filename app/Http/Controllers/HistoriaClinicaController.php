@@ -3131,6 +3131,41 @@ public function determinarVista(Request $request, string $citaUuid)
                 'tipo_consulta' => $tipoConsulta,
                 'especialidad' => $especialidad
             ]);
+            
+            // ✅ SI NO HAY HISTORIA PREVIA, CARGAR CUPS SEGÚN ESPECIALIDAD Y TIPO DE CONSULTA
+            $categoriaCups = $tipoConsulta === 'PRIMERA VEZ' ? 'PRIMERA VEZ' : 'CONTROL';
+            
+            Log::info('🔍 Intentando cargar CUPS automáticos', [
+                'especialidad' => $especialidad,
+                'tipo_consulta' => $tipoConsulta,
+                'categoria_cups' => $categoriaCups
+            ]);
+            
+            $cupsAutomaticos = $this->obtenerCupsPorEspecialidadYCategoria($especialidad, $categoriaCups);
+            
+            Log::info('📊 Resultado de búsqueda CUPS automáticos', [
+                'cups_encontrados' => count($cupsAutomaticos),
+                'especialidad' => $especialidad,
+                'categoria' => $categoriaCups
+            ]);
+            
+            if (!empty($cupsAutomaticos)) {
+                // Crear estructura de historia previa con CUPS automáticos
+                $historiaPrevia = [
+                    'cups' => $cupsAutomaticos
+                ];
+                
+                Log::info('✅ CUPS automáticos cargados', [
+                    'especialidad' => $especialidad,
+                    'categoria' => $categoriaCups,
+                    'cups_count' => count($cupsAutomaticos)
+                ]);
+            } else {
+                Log::warning('⚠️ No se encontraron CUPS automáticos', [
+                    'especialidad' => $especialidad,
+                    'categoria' => $categoriaCups
+                ]);
+            }
         }
 
         // ✅ 8. RENDERIZAR VISTA
@@ -4566,6 +4601,116 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
             ]);
             return null;
         }
+    }
+
+    /**
+     * ✅ OBTENER CUPS POR ESPECIALIDAD Y CATEGORÍA (PRIMERA VEZ / CONTROL)
+     */
+    private function obtenerCupsPorEspecialidadYCategoria(string $especialidad, string $categoria): array
+    {
+        try {
+            Log::info('🔍 Buscando CUPS contratados', [
+                'especialidad' => $especialidad,
+                'categoria' => $categoria
+            ]);
+            
+            // Mapeo de especialidades a palabras clave para buscar en CUPS
+            $palabrasClave = $this->obtenerPalabrasClaveEspecialidad($especialidad);
+            
+            if (empty($palabrasClave)) {
+                Log::info('ℹ️ No hay palabras clave definidas para especialidad', [
+                    'especialidad' => $especialidad
+                ]);
+                return [];
+            }
+            
+            // Obtener cups_contratados que coincidan con la categoría
+            $cupsContratados = DB::connection('offline')
+                ->table('cups_contratados as cc')
+                ->join('categorias_cups as cat', 'cc.categoria_cups_id', '=', 'cat.id')
+                ->where('cat.nombre', 'LIKE', "%{$categoria}%")
+                ->where('cc.estado', 'ACTIVO')
+                ->select('cc.*', 'cat.nombre as categoria_nombre')
+                ->get();
+            
+            if ($cupsContratados->isEmpty()) {
+                Log::info('ℹ️ No se encontraron CUPS contratados', [
+                    'categoria' => $categoria
+                ]);
+                return [];
+            }
+            
+            // Filtrar por palabras clave de la especialidad
+            $cupsFormateados = [];
+            foreach ($cupsContratados as $cup) {
+                $nombreCups = strtoupper($cup->cups_nombre ?? '');
+                
+                // Verificar si el nombre del CUPS contiene alguna palabra clave
+                $coincide = false;
+                foreach ($palabrasClave as $palabra) {
+                    if (stripos($nombreCups, strtoupper($palabra)) !== false) {
+                        $coincide = true;
+                        break;
+                    }
+                }
+                
+                if ($coincide) {
+                    $cupsFormateados[] = [
+                        'cups_id' => $cup->cups_uuid,
+                        'observacion' => '',
+                        'cups' => [
+                            'uuid' => $cup->cups_uuid,
+                            'codigo' => $cup->cups_codigo,
+                            'nombre' => $cup->cups_nombre
+                        ]
+                    ];
+                }
+            }
+            
+            Log::info('✅ CUPS encontrados', [
+                'especialidad' => $especialidad,
+                'categoria' => $categoria,
+                'cups_count' => count($cupsFormateados),
+                'total_revisados' => count($cupsContratados)
+            ]);
+            
+            return $cupsFormateados;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error obteniendo CUPS por especialidad', [
+                'especialidad' => $especialidad,
+                'categoria' => $categoria,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+    
+    /**
+     * ✅ OBTENER PALABRAS CLAVE PARA BUSCAR CUPS SEGÚN ESPECIALIDAD
+     */
+    private function obtenerPalabrasClaveEspecialidad(string $especialidad): array
+    {
+        $mapa = [
+            'MEDICINA GENERAL' => ['MEDICINA GENERAL', 'GENERAL'],
+            'ODONTOLOGIA' => ['ODONTOLOGIA', 'ODONTOLOGICA', 'DENTAL'],
+            'GINECOLOGIA' => ['GINECOLOGIA', 'GINECOLOGICA', 'PRENATAL'],
+            'ENFERMERIA' => ['ENFERMERIA', 'TOMA DE MUESTRA'],
+            'PSICOLOGIA' => ['PSICOLOGIA', 'PSICOLOGICA'],
+            'NUTRICION' => ['NUTRICION', 'NUTRICIONAL'],
+            'TRABAJO SOCIAL' => ['TRABAJO SOCIAL'],
+        ];
+        
+        $especialidadUpper = strtoupper($especialidad);
+        
+        foreach ($mapa as $key => $palabras) {
+            if (stripos($especialidadUpper, $key) !== false) {
+                return $palabras;
+            }
+        }
+        
+        // Si no encuentra coincidencia, usar la misma especialidad como palabra clave
+        return [$especialidad];
     }
 
 }

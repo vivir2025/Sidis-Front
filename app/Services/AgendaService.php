@@ -1828,7 +1828,7 @@ public function disponibles(array $filters = []): array
         'usuario_id' => (int) ($agenda['usuario_id'] ?? 1), // ✅ Convertir a entero
     ];
 
-      // ✅ MANEJAR PROCESO_ID CORRECTAMENTE
+      // ✅ MANEJAR PROCESO_ID CORRECTAMENTE - Solo incluir si tiene valor
     if (!empty($agenda['proceso_id']) && $agenda['proceso_id'] !== 'null') {
         if (is_numeric($agenda['proceso_id'])) {
             $apiData['proceso_id'] = (int) $agenda['proceso_id']; // ID numérico
@@ -1841,9 +1841,11 @@ public function disponibles(array $filters = []): array
             'final' => $apiData['proceso_id'] ?? 'NOT_INCLUDED',
             'type' => gettype($apiData['proceso_id'] ?? null)
         ]);
+    } else {
+        Log::info('⚠️ proceso_id omitido (sin valor)');
     }
     
-    // ✅ MANEJAR BRIGADA_ID CORRECTAMENTE
+    // ✅ MANEJAR BRIGADA_ID CORRECTAMENTE - Solo incluir si tiene valor
     if (!empty($agenda['brigada_id']) && $agenda['brigada_id'] !== 'null') {
         if (is_numeric($agenda['brigada_id'])) {
             $apiData['brigada_id'] = (int) $agenda['brigada_id']; // ID numérico
@@ -1856,6 +1858,9 @@ public function disponibles(array $filters = []): array
             'final' => $apiData['brigada_id'] ?? 'NOT_INCLUDED',
             'type' => gettype($apiData['brigada_id'] ?? null)
         ]);
+    } else {
+        // ✅ NO INCLUIR brigada_id si no tiene valor (dejar que el backend use su default)
+        Log::info('⚠️ brigada_id omitido (sin valor) - backend usará su configuración por defecto');
     }
     // ✅ NUEVO: MANEJAR USUARIO MÉDICO CORRECTAMENTE
     $usuarioMedicoValue = null;
@@ -1877,7 +1882,7 @@ public function disponibles(array $filters = []): array
         ]);
     }
 
-    // ✅ LIMPIAR CAMPOS VACÍOS
+    // ✅ LIMPIAR CAMPOS VACÍOS (eliminar null y strings vacíos)
     $apiData = array_filter($apiData, function($value) {
         return $value !== null && $value !== '';
     });
@@ -1898,7 +1903,12 @@ public function disponibles(array $filters = []): array
         'agenda_uuid' => $agenda['uuid'] ?? 'sin-uuid',
         'has_usuario_medico' => isset($apiData['usuario_medico_uuid']),
         'usuario_medico_uuid' => $apiData['usuario_medico_uuid'] ?? 'no-enviado',
-        'all_fields' => array_keys($apiData)
+        'has_brigada_id' => isset($apiData['brigada_id']),
+        'brigada_id_value' => $apiData['brigada_id'] ?? 'OMITIDO',
+        'has_proceso_id' => isset($apiData['proceso_id']),
+        'proceso_id_value' => $apiData['proceso_id'] ?? 'OMITIDO',
+        'all_fields' => array_keys($apiData),
+        'total_fields' => count($apiData)
     ]);
 
     return $apiData;

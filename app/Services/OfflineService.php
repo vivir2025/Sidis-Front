@@ -523,6 +523,29 @@ private function createCitasTable(): void
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        
+        // ✅ TABLA proceso_cups (relación proceso -> cups)
+        DB::connection('offline')->statement('
+            CREATE TABLE IF NOT EXISTS proceso_cups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                proceso_uuid TEXT NOT NULL,
+                cups_uuid TEXT NOT NULL,
+                cups_codigo TEXT,
+                cups_nombre TEXT,
+                orden INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(proceso_uuid, cups_uuid)
+            )
+        ');
+        
+        DB::connection('offline')->statement('
+            CREATE INDEX IF NOT EXISTS idx_proceso_cups_proceso ON proceso_cups(proceso_uuid)
+        ');
+        
+        DB::connection('offline')->statement('
+            CREATE INDEX IF NOT EXISTS idx_proceso_cups_cups ON proceso_cups(cups_uuid)
+        ');
     }
 
 
@@ -996,6 +1019,18 @@ private function createContratosTable(): void
         if (isset($masterData['procesos'])) {
             $this->syncProcesos($masterData['procesos']);
             $syncResults['procesos'] = count($masterData['procesos']);
+            
+            // ✅ SINCRONIZAR CUPS DE CADA PROCESO
+            $totalProcesoCups = 0;
+            foreach ($masterData['procesos'] as $proceso) {
+                if (!empty($proceso['cups']) && is_array($proceso['cups'])) {
+                    $this->syncProcesoCups($proceso['uuid'], $proceso['cups']);
+                    $totalProcesoCups += count($proceso['cups']);
+                }
+            }
+            if ($totalProcesoCups > 0) {
+                $syncResults['proceso_cups'] = $totalProcesoCups;
+            }
         }
 
         if (isset($masterData['categorias_cups'])) {
@@ -1263,6 +1298,35 @@ private function createContratosTable(): void
             ]);
         }
         $this->updateSyncStatus('procesos', count($data));
+    }
+
+    /**
+     * ✅ SINCRONIZAR CUPS DE UN PROCESO
+     */
+    private function syncProcesoCups(string $procesoUuid, array $cups): void
+    {
+        // Eliminar CUPS previos de este proceso
+        DB::connection('offline')->table('proceso_cups')
+            ->where('proceso_uuid', $procesoUuid)
+            ->delete();
+        
+        // Insertar CUPS del proceso
+        foreach ($cups as $index => $cup) {
+            DB::connection('offline')->table('proceso_cups')->insert([
+                'proceso_uuid' => $procesoUuid,
+                'cups_uuid' => $cup['uuid'] ?? $cup['id'],
+                'cups_codigo' => $cup['codigo'] ?? '',
+                'cups_nombre' => $cup['nombre'] ?? '',
+                'orden' => $index,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        }
+        
+        Log::info('✅ CUPS del proceso sincronizados', [
+            'proceso_uuid' => $procesoUuid,
+            'cups_count' => count($cups)
+        ]);
     }
 
     
@@ -2571,8 +2635,8 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
 
         // ✅ ENRIQUECER JSON CON PROCESO COMPLETO
         $jsonData = array_merge($agendaData, [
-            'usuario_medico_uuid' => $usuarioMedicoValue,
-            'usuario_medico_id' => $usuarioMedicoValue,
+            'usuario_medico_uuid' => $usuarioMedicoUuid,
+            'usuario_medico_id' => $usuarioMedicoId,
             'sync_status' => $sqliteData['sync_status'],
             
             // ✅ ASEGURAR QUE EL PROCESO ESTÉ COMPLETO EN JSON
@@ -4724,8 +4788,8 @@ private function cleanDataForApi(array $data): array
         }
     }
 
-    // ✅ MANEJAR brigada_id
-    if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null') {
+    // ✅ MANEJAR brigada_id - SOLO ENVIAR SI TIENE VALOR VÁLIDO
+    if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null' && $data['brigada_id'] !== 0) {
         if (is_numeric($data['brigada_id'])) {
             $cleanData['brigada_id'] = (int) $data['brigada_id'];
             Log::info('✅ brigada_id incluido como entero', [
@@ -4739,6 +4803,11 @@ private function cleanDataForApi(array $data): array
                 'clean' => $cleanData['brigada_id']
             ]);
         }
+    } else {
+        // ✅ NO ENVIAR brigada_id si es null - el backend usará su valor por defecto
+        Log::info('ℹ️ brigada_id no enviado (null o vacío), backend usará valor por defecto', [
+            'brigada_id_original' => $data['brigada_id'] ?? 'no-existe'
+        ]);
     }
 
     // ✅ MANEJAR usuario_medico - BUSCAR EN MÚLTIPLES CAMPOS
@@ -4758,8 +4827,9 @@ private function cleanDataForApi(array $data): array
     }
     
     if ($usuarioMedicoValue) {
-        // ✅ SIEMPRE ENVIAR COMO usuario_medico_uuid (EL BACKEND LO ESPERA ASÍ)
+        // ✅ ENVIAR AMBOS CAMPOS PARA COMPATIBILIDAD CON BACKEND
         $cleanData['usuario_medico_uuid'] = $usuarioMedicoValue;
+        $cleanData['medico_uuid'] = $usuarioMedicoValue;
         
         Log::info('✅ usuario_medico_uuid agregado a datos de API', [
             'value' => $usuarioMedicoValue,
