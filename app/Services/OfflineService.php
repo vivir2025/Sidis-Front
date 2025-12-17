@@ -2551,7 +2551,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
                 
                 'brigada_id' => $brigadaId,
                 'brigada_uuid' => $brigadaUuid,
-                'usuario_medico_id' => $usuarioMedicoValue,
+                'usuario_medico_id' => $usuarioMedicoId,
                 'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
                 'sede_id' => (int) $agendaData['sede_id']
             ]),
