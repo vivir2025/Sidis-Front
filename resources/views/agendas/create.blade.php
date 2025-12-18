@@ -204,11 +204,11 @@
 {{-- ✅ PROCESO - VERSIÓN FINAL CORREGIDA --}}
 <div class="col-md-6">
     <label for="proceso_id" class="form-label">
-        <i class="fas fa-cogs me-1"></i>Proceso
+        <i class="fas fa-cogs me-1"></i>Proceso <span class="text-danger">*</span>
     </label>
     <select class="form-select @error('proceso_id') is-invalid @enderror" 
-            id="proceso_id" name="proceso_id">
-        <option value="">Seleccionar proceso (opcional)</option>
+            id="proceso_id" name="proceso_id" required>
+        <option value="">Seleccionar proceso</option>
         @if(isset($masterData['procesos']) && is_array($masterData['procesos']))
             @foreach($masterData['procesos'] as $proceso)
                 @php
@@ -233,7 +233,6 @@
     @error('proceso_id')
         <div class="invalid-feedback">{{ $message }}</div>
     @enderror
-    <div class="form-text">Campo opcional - Deje vacío si no aplica</div>
 </div>
 
 {{-- ✅ BRIGADA - VERSIÓN FINAL CORREGIDA --}}

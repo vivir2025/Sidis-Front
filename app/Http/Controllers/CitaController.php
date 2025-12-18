@@ -1362,14 +1362,22 @@ private function buscarCupsRecomendadoOffline(string $tipoConsulta, string $proc
                 'cups_nombre' => $cupsNombre,
                 'categoria' => $categoriaNombre,
                 'estado' => $estado,
-                'categoria_coincide' => $categoriaNombre === strtoupper($tipoConsulta),
+                // ✅ COINCIDENCIA FLEXIBLE DE CATEGORÍA
+                'categoria_coincide' => str_contains($categoriaNombre, strtoupper($tipoConsulta)) || 
+                                      str_contains(strtoupper($tipoConsulta), $categoriaNombre),
                 'estado_activo' => $estado === 'ACTIVO',
                 'palabras_encontradas' => []
             ];
             
+            // ✅ NORMALIZAR TEXTOS PARA BÚSQUEDA
+            $cupsNombreNorm = $this->normalizarTexto($cupsNombre);
+            
             // Verificar palabras clave
             foreach ($palabrasClave as $palabra) {
-                if (str_contains($cupsNombre, strtoupper($palabra))) {
+                $palabraNorm = $this->normalizarTexto($palabra);
+                
+                // Búsqueda normalizada
+                if (str_contains($cupsNombreNorm, $palabraNorm) || str_contains($cupsNombre, strtoupper($palabra))) {
                     $analisis['palabras_encontradas'][] = $palabra;
                 }
             }

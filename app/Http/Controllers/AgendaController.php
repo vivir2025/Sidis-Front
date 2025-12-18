@@ -143,7 +143,7 @@ class AgendaController extends Controller
             'hora_fin' => 'required|date_format:H:i|after:hora_inicio',
             'intervalo' => 'required|string|in:15,20,30,45,60', 
             'etiqueta' => 'required|string|max:50',
-            'proceso_id' => 'nullable|string|max:100',
+            'proceso_id' => 'required|string|max:100',
             'brigada_id' => 'nullable|string|max:100',
             'usuario_medico_id' => 'nullable|string|max:100',
         ]);
@@ -163,6 +163,13 @@ class AgendaController extends Controller
         // ✅ RESOLVER proceso_id
         if (!empty($validatedData['proceso_id']) && $validatedData['proceso_id'] !== '') {
             $resolvedProcesoId = $this->resolveProcesoId($validatedData['proceso_id'], $masterData);
+            
+            if ($resolvedProcesoId === null) {
+                return back()
+                    ->withErrors(['proceso_id' => 'El proceso seleccionado no es válido'])
+                    ->withInput();
+            }
+            
             $validatedData['proceso_id'] = $resolvedProcesoId;
             
             Log::info('✅ proceso_id procesado', [
@@ -170,7 +177,10 @@ class AgendaController extends Controller
                 'resolved' => $resolvedProcesoId
             ]);
         } else {
-            $validatedData['proceso_id'] = null;
+            // Si no hay proceso_id, retornar error porque es obligatorio
+            return back()
+                ->withErrors(['proceso_id' => 'El campo proceso es obligatorio'])
+                ->withInput();
         }
 
         // ✅ RESOLVER brigada_id

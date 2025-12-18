@@ -2164,6 +2164,47 @@ public function getUsuarioByUuid(string $uuid): ?array
 }
 
 /**
+ * ✅ Obtener UUID de usuario a partir de su ID
+ */
+private function getUserUuidFromId($id): ?string
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            Log::warning('⚠️ SQLite no disponible para buscar usuario por ID', ['id' => $id]);
+            return null;
+        }
+
+        // Buscar usuario en SQLite por su ID numérico (que se guarda en el campo 'documento' o 'id')
+        $usuario = DB::connection('offline')
+            ->table('usuarios')
+            ->where(function($query) use ($id) {
+                $query->where('id', $id)
+                      ->orWhere('documento', $id);
+            })
+            ->first();
+
+        if ($usuario && !empty($usuario->uuid)) {
+            Log::info('✅ UUID de usuario encontrado por ID', [
+                'id' => $id,
+                'uuid' => $usuario->uuid,
+                'nombre' => $usuario->nombre_completo ?? 'N/A'
+            ]);
+            return $usuario->uuid;
+        }
+
+        Log::warning('⚠️ No se encontró UUID para usuario con ID', ['id' => $id]);
+        return null;
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando UUID de usuario por ID', [
+            'id' => $id,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
  * ✅ Obtener todos los usuarios offline
  */
 public function getAllUsuariosOffline(array $filters = []): array
@@ -2519,7 +2560,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'id' => $usuarioMedicoId
         ]);
 
-        // ✅ CONVERTIR proceso_id A INTEGER Y EXTRAER UUID
+        // ✅ CONVERTIR proceso_id A INTEGER O MANTENER UUID
         $procesoId = null;
         $procesoUuid = null;
         
@@ -2527,23 +2568,32 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             !empty($agendaData['proceso_id']) && 
             $agendaData['proceso_id'] !== 'null') {
             
-            $procesoId = (int) $agendaData['proceso_id'];
-            
-            Log::info('✅ proceso_id convertido', [
-                'original' => $agendaData['proceso_id'],
-                'tipo_original' => gettype($agendaData['proceso_id']),
-                'convertido' => $procesoId,
-                'tipo_convertido' => gettype($procesoId)
-            ]);
+            // ✅ VERIFICAR SI ES UUID O ID NUMÉRICO
+            if ($this->isValidUuid($agendaData['proceso_id'])) {
+                // Es UUID - guardarlo como UUID
+                $procesoUuid = $agendaData['proceso_id'];
+                
+                Log::info('✅ proceso_id es UUID', [
+                    'uuid' => $procesoUuid
+                ]);
+            } else {
+                // Es ID numérico
+                $procesoId = (int) $agendaData['proceso_id'];
+                
+                Log::info('✅ proceso_id es numérico', [
+                    'original' => $agendaData['proceso_id'],
+                    'convertido' => $procesoId
+                ]);
+            }
         }
         
-        // ✅ EXTRAER proceso_uuid SI EXISTE
-        if (!empty($agendaData['proceso_uuid']) && $agendaData['proceso_uuid'] !== 'null') {
+        // ✅ EXTRAER proceso_uuid SI EXISTE (y no se extrajo arriba)
+        if (empty($procesoUuid) && !empty($agendaData['proceso_uuid']) && $agendaData['proceso_uuid'] !== 'null') {
             $procesoUuid = $agendaData['proceso_uuid'];
-            Log::info('✅ proceso_uuid extraído', ['proceso_uuid' => $procesoUuid]);
+            Log::info('✅ proceso_uuid extraído de campo separado', ['proceso_uuid' => $procesoUuid]);
         }
 
-        // ✅ CONVERTIR brigada_id A INTEGER Y EXTRAER UUID
+        // ✅ CONVERTIR brigada_id A INTEGER O MANTENER UUID
         $brigadaId = null;
         $brigadaUuid = null;
         
@@ -2551,20 +2601,73 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             !empty($agendaData['brigada_id']) && 
             $agendaData['brigada_id'] !== 'null') {
             
-            $brigadaId = (int) $agendaData['brigada_id'];
+            // ✅ VERIFICAR SI ES UUID O ID NUMÉRICO
+            if ($this->isValidUuid($agendaData['brigada_id'])) {
+                // Es UUID - guardarlo como UUID
+                $brigadaUuid = $agendaData['brigada_id'];
+                
+                Log::info('✅ brigada_id es UUID', [
+                    'uuid' => $brigadaUuid
+                ]);
+            } else {
+                // Es ID numérico
+                $brigadaId = (int) $agendaData['brigada_id'];
+                
+                Log::info('✅ brigada_id es numérico', [
+                    'original' => $agendaData['brigada_id'],
+                    'convertido' => $brigadaId
+                ]);
+            }
+        }
+        
+        // ✅ EXTRAER brigada_uuid SI EXISTE (y no se extrajo arriba)
+        if (empty($brigadaUuid) && !empty($agendaData['brigada_uuid']) && $agendaData['brigada_uuid'] !== 'null') {
+            $brigadaUuid = $agendaData['brigada_uuid'];
+            Log::info('✅ brigada_uuid extraído de campo separado', ['brigada_uuid' => $brigadaUuid]);
+        }
+
+        // ✅ NUEVO: OBTENER DATOS COMPLETOS DEL PROCESO
+        $procesoCompleto = null;
+        
+        if ($procesoUuid) {
+            // Buscar por UUID primero
+            $procesoCompleto = $this->getProcesoByUuid($procesoUuid);
             
-            Log::info('✅ brigada_id convertido', [
-                'original' => $agendaData['brigada_id'],
-                'tipo_original' => gettype($agendaData['brigada_id']),
-                'convertido' => $brigadaId,
-                'tipo_convertido' => gettype($brigadaId)
+            if ($procesoCompleto) {
+                Log::info('✅ Proceso encontrado por UUID', [
+                    'uuid' => $procesoUuid,
+                    'nombre' => $procesoCompleto['nombre'] ?? 'N/A'
+                ]);
+            }
+        } elseif ($procesoId) {
+            // Si no hay UUID, buscar por ID
+            $procesoCompleto = $this->getProcesoById($procesoId);
+            
+            if ($procesoCompleto) {
+                Log::info('✅ Proceso encontrado por ID', [
+                    'id' => $procesoId,
+                    'nombre' => $procesoCompleto['nombre'] ?? 'N/A'
+                ]);
+            }
+        }
+        
+        // Si no encontramos el proceso, usar datos del input
+        if (!$procesoCompleto && isset($agendaData['proceso'])) {
+            $procesoCompleto = $agendaData['proceso'];
+            Log::info('ℹ️ Usando proceso de input', [
+                'nombre' => $procesoCompleto['nombre'] ?? 'N/A'
             ]);
         }
         
-        // ✅ EXTRAER brigada_uuid SI EXISTE
-        if (!empty($agendaData['brigada_uuid']) && $agendaData['brigada_uuid'] !== 'null') {
-            $brigadaUuid = $agendaData['brigada_uuid'];
-            Log::info('✅ brigada_uuid extraído', ['brigada_uuid' => $brigadaUuid]);
+        // Si aún no tenemos proceso, crear uno básico
+        if (!$procesoCompleto) {
+            $procesoCompleto = [
+                'id' => $procesoId,
+                'uuid' => $procesoUuid,
+                'nombre' => 'Proceso desconocido',
+                'n_cups' => null
+            ];
+            Log::warning('⚠️ No se pudo obtener información del proceso, usando datos por defecto');
         }
 
         // ✅ PREPARAR DATOS PARA SQLITE
@@ -2605,17 +2708,14 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
                 'proceso_id' => $procesoId,
                 'proceso_uuid' => $procesoUuid,
                 
-                // ✅ INCLUIR OBJETO PROCESO COMPLETO
-                'proceso' => isset($agendaData['proceso']) ? $agendaData['proceso'] : [
-                    'id' => $procesoId,
-                    'uuid' => $procesoUuid,
-                    'nombre' => $agendaData['proceso']['nombre'] ?? 'Proceso desconocido',
-                    'n_cups' => $agendaData['proceso']['n_cups'] ?? null
-                ],
+                // ✅ INCLUIR OBJETO PROCESO COMPLETO REAL
+                'proceso' => $procesoCompleto,
                 
                 'brigada_id' => $brigadaId,
                 'brigada_uuid' => $brigadaUuid,
                 'usuario_medico_id' => $usuarioMedicoId,
+                'usuario_medico_uuid' => $usuarioMedicoUuid, // ✅ AGREGAR UUID AL ORIGINAL_DATA
+                'medico_uuid' => $usuarioMedicoUuid, // ✅ TAMBIÉN COMO medico_uuid
                 'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
                 'sede_id' => (int) $agendaData['sede_id']
             ]),
@@ -2633,19 +2733,14 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             );
         }
 
-        // ✅ ENRIQUECER JSON CON PROCESO COMPLETO
+        // ✅ ENRIQUECER JSON CON PROCESO COMPLETO REAL
         $jsonData = array_merge($agendaData, [
             'usuario_medico_uuid' => $usuarioMedicoUuid,
             'usuario_medico_id' => $usuarioMedicoId,
             'sync_status' => $sqliteData['sync_status'],
             
-            // ✅ ASEGURAR QUE EL PROCESO ESTÉ COMPLETO EN JSON
-            'proceso' => isset($agendaData['proceso']) ? $agendaData['proceso'] : [
-                'id' => $procesoId,
-                'uuid' => $procesoUuid,
-                'nombre' => $agendaData['proceso']['nombre'] ?? 'Proceso desconocido',
-                'n_cups' => $agendaData['proceso']['n_cups'] ?? null
-            ]
+            // ✅ USAR EL PROCESO COMPLETO OBTENIDO
+            'proceso' => $procesoCompleto
         ]);
         
         $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $jsonData);
@@ -2656,10 +2751,12 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'consultorio' => $agendaData['consultorio'],
             'proceso_id' => $procesoId,
             'proceso_uuid' => $procesoUuid,
-            'proceso_nombre' => $jsonData['proceso']['nombre'] ?? 'N/A',
+            'proceso_nombre' => $procesoCompleto['nombre'] ?? 'N/A',
+            'proceso_n_cups' => $procesoCompleto['n_cups'] ?? 'N/A',
             'brigada_id' => $brigadaId,
             'brigada_uuid' => $brigadaUuid,
-            'usuario_medico_value' => $usuarioMedicoValue,
+            'usuario_medico_uuid' => $usuarioMedicoUuid,
+            'usuario_medico_id' => $usuarioMedicoId,
             'sync_status' => $sqliteData['sync_status']
         ]);
 
@@ -4771,7 +4868,7 @@ private function cleanDataForApi(array $data): array
         'usuario_id' => (int) ($data['usuario_id'] ?? 1)
     ];
 
-    // ✅ MANEJAR proceso_id
+    // ✅ MANEJAR proceso_id - PRIORIDAD: proceso_id > proceso_uuid
     if (isset($data['proceso_id']) && !empty($data['proceso_id']) && $data['proceso_id'] !== 'null') {
         if (is_numeric($data['proceso_id'])) {
             $cleanData['proceso_id'] = (int) $data['proceso_id'];
@@ -4786,9 +4883,21 @@ private function cleanDataForApi(array $data): array
                 'clean' => $cleanData['proceso_id']
             ]);
         }
+    } elseif (isset($data['proceso_uuid']) && !empty($data['proceso_uuid']) && $data['proceso_uuid'] !== 'null') {
+        // Si no hay proceso_id pero sí proceso_uuid, usarlo
+        $cleanData['proceso_id'] = $data['proceso_uuid'];
+        Log::info('✅ proceso_id tomado de proceso_uuid', [
+            'proceso_uuid' => $data['proceso_uuid'],
+            'clean' => $cleanData['proceso_id']
+        ]);
+    } else {
+        Log::warning('⚠️ No se encontró proceso_id ni proceso_uuid válido', [
+            'proceso_id' => $data['proceso_id'] ?? 'no-existe',
+            'proceso_uuid' => $data['proceso_uuid'] ?? 'no-existe'
+        ]);
     }
 
-    // ✅ MANEJAR brigada_id - SOLO ENVIAR SI TIENE VALOR VÁLIDO
+    // ✅ MANEJAR brigada_id - PRIORIDAD: brigada_id > brigada_uuid
     if (isset($data['brigada_id']) && !empty($data['brigada_id']) && $data['brigada_id'] !== 'null' && $data['brigada_id'] !== 0) {
         if (is_numeric($data['brigada_id'])) {
             $cleanData['brigada_id'] = (int) $data['brigada_id'];
@@ -4803,6 +4912,13 @@ private function cleanDataForApi(array $data): array
                 'clean' => $cleanData['brigada_id']
             ]);
         }
+    } elseif (isset($data['brigada_uuid']) && !empty($data['brigada_uuid']) && $data['brigada_uuid'] !== 'null') {
+        // Si no hay brigada_id pero sí brigada_uuid, usarlo (opcional)
+        $cleanData['brigada_id'] = $data['brigada_uuid'];
+        Log::info('✅ brigada_id tomado de brigada_uuid', [
+            'brigada_uuid' => $data['brigada_uuid'],
+            'clean' => $cleanData['brigada_id']
+        ]);
     } else {
         // ✅ NO ENVIAR brigada_id si es null - el backend usará su valor por defecto
         Log::info('ℹ️ brigada_id no enviado (null o vacío), backend usará valor por defecto', [
@@ -4810,7 +4926,7 @@ private function cleanDataForApi(array $data): array
         ]);
     }
 
-    // ✅ MANEJAR usuario_medico - BUSCAR EN MÚLTIPLES CAMPOS
+    // ✅ MANEJAR usuario_medico - BUSCAR EN MÚLTIPLES CAMPOS Y CONVERTIR ID A UUID
     $usuarioMedicoValue = null;
     $foundInField = 'ninguno';
     
@@ -4819,8 +4935,21 @@ private function cleanDataForApi(array $data): array
         $usuarioMedicoValue = $data['usuario_medico_uuid'];
         $foundInField = 'usuario_medico_uuid';
     } elseif (!empty($data['usuario_medico_id']) && $data['usuario_medico_id'] !== 'null') {
-        $usuarioMedicoValue = $data['usuario_medico_id'];
-        $foundInField = 'usuario_medico_id';
+        // Si es un ID numérico, buscar el UUID correspondiente
+        if (is_numeric($data['usuario_medico_id']) || (!$this->isValidUuid($data['usuario_medico_id']))) {
+            $usuarioMedicoValue = $this->getUserUuidFromId($data['usuario_medico_id']);
+            $foundInField = 'usuario_medico_id (convertido a UUID)';
+            
+            if (!$usuarioMedicoValue) {
+                Log::warning('⚠️ No se pudo encontrar UUID para usuario_medico_id', [
+                    'usuario_medico_id' => $data['usuario_medico_id']
+                ]);
+            }
+        } else {
+            // Ya es UUID
+            $usuarioMedicoValue = $data['usuario_medico_id'];
+            $foundInField = 'usuario_medico_id';
+        }
     } elseif (!empty($data['medico_uuid']) && $data['medico_uuid'] !== 'null') {
         $usuarioMedicoValue = $data['medico_uuid'];
         $foundInField = 'medico_uuid';
