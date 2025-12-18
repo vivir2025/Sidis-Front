@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\{AuthService, ApiService, OfflineService, PacienteService, CitaService};
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+
 
 class HistoriaClinicaController extends Controller
 {
