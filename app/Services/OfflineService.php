@@ -2879,6 +2879,23 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
         ];
 
         if ($this->isSQLiteAvailable()) {
+            // ✅ VERIFICAR SI LA CITA YA EXISTE Y ESTÁ PENDIENTE
+            $citaExistente = DB::connection('offline')
+                ->table('citas')
+                ->where('uuid', $citaData['uuid'])
+                ->first();
+            
+            // ✅ SI LA CITA EXISTE Y ESTÁ PENDIENTE, NO SOBRESCRIBIR
+            if ($citaExistente && $citaExistente->sync_status === 'pending') {
+                Log::info('⚠️ Cita ya existe con sync_status=pending, NO sobrescribir', [
+                    'cita_uuid' => $citaData['uuid'],
+                    'sync_status_existente' => $citaExistente->sync_status,
+                    'needsSync_nuevo' => $needsSync ? 'pending' : 'synced',
+                    'accion' => 'SALTADA - preservando estado pending'
+                ]);
+                return; // ← SALIR SIN SOBRESCRIBIR
+            }
+            
             DB::connection('offline')->table('citas')->updateOrInsert(
                 ['uuid' => $citaData['uuid']],
                 $offlineData
@@ -2893,7 +2910,8 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
                 'cita_uuid' => $citaData['uuid'],
                 'guardada_correctamente' => $citaGuardada ? 'SÍ' : 'NO',
                 'sede_guardada' => $citaGuardada->sede_id ?? 'NO_ENCONTRADA',
-                'fecha_guardada' => $citaGuardada->fecha ?? 'NO_ENCONTRADA'
+                'fecha_guardada' => $citaGuardada->fecha ?? 'NO_ENCONTRADA',
+                'sync_status' => $citaGuardada->sync_status ?? 'NO_ENCONTRADA'
             ]);
         }
 
