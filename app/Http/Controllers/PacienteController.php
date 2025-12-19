@@ -531,63 +531,30 @@ public function update(Request $request, string $uuid)
 private function getMasterData(): array
 {
     try {
-        Log::info('🔍 Obteniendo datos maestros para formulario');
+        // ⚡ OPTIMIZADO: Usar datos offline si existen
+        if ($this->offlineService->hasMasterDataOffline()) {
+            Log::info('⚡ Usando datos maestros offline');
+            return $this->offlineService->getMasterDataOffline();
+        }
         
-        // ✅ INTENTAR API PRIMERO (IGUAL QUE EN CREATE)
+        // ✅ SI NO HAY DATOS OFFLINE, obtener desde API
         if ($this->apiService->isOnline()) {
             try {
                 $response = $this->apiService->get('/master-data/all');
                 
-                Log::info('📡 Respuesta de master-data/all', [
-                    'success' => $response['success'] ?? false,
-                    'has_data' => isset($response['data']),
-                    'data_keys' => isset($response['data']) ? array_keys($response['data']) : []
-                ]);
-                
                 if ($response['success'] && isset($response['data'])) {
-                    // ✅ SINCRONIZAR AUTOMÁTICAMENTE (COMO EN INDEX)
-                    $syncSuccess = $this->offlineService->syncMasterDataFromApi($response['data']);
-                    
-                    if ($syncSuccess) {
-                        Log::info('✅ Datos maestros sincronizados desde API en edit');
-                    }
-                    
-                    // ✅ RETORNAR DATOS DE LA API DIRECTAMENTE (SIN VALIDACIÓN ESTRICTA)
-                    Log::info('✅ Retornando datos maestros desde API');
+                    $this->offlineService->syncMasterDataFromApi($response['data']);
                     return $response['data'];
                 }
             } catch (\Exception $e) {
-                Log::warning('⚠️ Error obteniendo datos maestros desde API', [
-                    'error' => $e->getMessage()
-                ]);
+                Log::warning('⚠️ Error obteniendo datos maestros: ' . $e->getMessage());
             }
         }
         
-        // ✅ USAR DATOS OFFLINE SIN VALIDACIÓN ESTRICTA
-        if ($this->offlineService->hasMasterDataOffline()) {
-            Log::info('📱 Usando datos maestros desde almacenamiento offline');
-            $offlineData = $this->offlineService->getMasterDataOffline();
-            
-            // ✅ VERIFICACIÓN BÁSICA (NO ESTRICTA)
-            if (!empty($offlineData['empresas']) && !empty($offlineData['tipos_documento'])) {
-                Log::info('✅ Datos maestros offline básicos disponibles', [
-                    'empresas' => count($offlineData['empresas'] ?? []),
-                    'tipos_documento' => count($offlineData['tipos_documento'] ?? [])
-                ]);
-                return $offlineData;
-            }
-        }
-        
-        Log::info('📱 Usando datos maestros por defecto');
         return $this->getDefaultMasterData();
         
     } catch (\Exception $e) {
-        Log::error('❌ Error obteniendo datos maestros', [
-            'error' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine()
-        ]);
-        
+        Log::error('❌ Error obteniendo datos maestros: ' . $e->getMessage());
         return $this->getDefaultMasterData();
     }
 }

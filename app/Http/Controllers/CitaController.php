@@ -53,21 +53,9 @@ public function index(Request $request)
         $usuario = $this->authService->usuario();
         $isOffline = $this->authService->isOffline();
 
-        Log::info('🔄 CitaController@index: Iniciando sincronizaciones silenciosas');
+        Log::info('✅ CitaController@index: Cargando vista (sin sincronización - se hace desde botón Actualizar Datos)');
 
-        // ✅ SINCRONIZAR CUPS CONTRATADOS
-        Log::info('📋 Paso 1: Sincronizando CUPS contratados...');
-        $cupsContratadosStats = $this->sincronizarCupsContratadosSilencioso();
-        Log::info('📊 Resultado CUPS contratados', $cupsContratadosStats);
-        
-        // ✅ SINCRONIZAR CUPS NORMALES
-        Log::info('📋 Paso 2: Sincronizando CUPS normales...');
-        $cupsStats = $this->sincronizarCupsSilencioso();
-        Log::info('📊 Resultado CUPS normales', $cupsStats);
-
-        Log::info('✅ CitaController@index: Sincronizaciones completadas');
-
-        return view('citas.index', compact('usuario', 'isOffline', 'cupsContratadosStats', 'cupsStats'));
+        return view('citas.index', compact('usuario', 'isOffline'));
         
     } catch (\Exception $e) {
         Log::error('Error en CitaController@index', [

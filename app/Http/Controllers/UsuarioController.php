@@ -747,80 +747,125 @@ public function show(string $uuid)
     private function getMasterData(): array
     {
         try {
-            Log::info('📊 [FRONTEND] Obteniendo master data');
-
+            $offlineService = app(\App\Services\OfflineService::class);
+            
+            // ⚡ OPTIMIZADO: Usar datos offline si existen (sin llamadas HTTP)
+            if ($offlineService->hasMasterDataOffline()) {
+                $masterData = $offlineService->getMasterDataOffline();
+                
+                // ✅ Completar roles/especialidades desde offline también
+                if (empty($masterData['roles'])) {
+                    $masterData['roles'] = $this->getRolesOfflineFirst();
+                }
+                if (empty($masterData['especialidades'])) {
+                    $masterData['especialidades'] = $this->getEspecialidadesOfflineFirst();
+                }
+                
+                Log::info('⚡ Usando datos maestros offline completos');
+                return $masterData;
+            }
+            
+            // ✅ SI NO HAY DATOS OFFLINE, obtener desde API
             if ($this->apiService->isOnline()) {
                 $response = $this->apiService->get('/master-data/all');
-                
-                Log::info('📥 [FRONTEND] Respuesta de master-data/all', [
-                    'success' => $response['success'] ?? false,
-                    'has_data' => isset($response['data']),
-                    'data_keys' => isset($response['data']) ? array_keys($response['data']) : []
-                ]);
                 
                 if ($response['success'] && isset($response['data'])) {
                     $masterData = $response['data'];
                     
-                    // Verificar y completar roles si están vacíos
                     if (empty($masterData['roles'])) {
-                        Log::warning('⚠️ [FRONTEND] Master data sin roles, obteniendo directamente');
-                        $roles = $this->getRolesFromApi();
-                        if (!empty($roles)) {
-                            $masterData['roles'] = $roles;
-                        }
+                        $masterData['roles'] = $this->getRolesFromApi();
                     }
-                    
-                    // Verificar y completar especialidades si están vacías
                     if (empty($masterData['especialidades'])) {
-                        Log::warning('⚠️ [FRONTEND] Master data sin especialidades, obteniendo directamente');
-                        $especialidades = $this->getEspecialidadesFromApi();
-                        if (!empty($especialidades)) {
-                            $masterData['especialidades'] = $especialidades;
-                
-                        }
+                        $masterData['especialidades'] = $this->getEspecialidadesFromApi();
                     }
-                    
-                    Log::info('✅ [FRONTEND] Master data obtenida exitosamente', [
-                        'roles_count' => count($masterData['roles'] ?? []),
-                        'especialidades_count' => count($masterData['especialidades'] ?? []),
-                        'estados_count' => count($masterData['estados'] ?? []),
-                        'sedes_count' => count($masterData['sedes'] ?? [])
-                    ]);
                     
                     return $masterData;
                 }
             }
 
-            // Fallback a datos offline
-            Log::info('📴 [FRONTEND] Usando datos offline para master data');
-            $offlineService = app(\App\Services\OfflineService::class);
-            $masterData = $offlineService->getMasterDataOffline();
-            
-            // Intentar completar roles y especialidades incluso en modo offline
-            if (empty($masterData['roles'])) {
-                $roles = $this->getRolesFromApi();
-                if (!empty($roles)) {
-                    $masterData['roles'] = $roles;
-                }
-            }
-            
-            if (empty($masterData['especialidades'])) {
-                $especialidades = $this->getEspecialidadesFromApi();
-                if (!empty($especialidades)) {
-                    $masterData['especialidades'] = $especialidades;
-                }
-            }
-            
-            return $masterData;
+            return $this->getDefaultMasterData();
 
         } catch (\Exception $e) {
-            Log::error('❌ [FRONTEND] Error obteniendo master data', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            // Retornar estructura mínima con datos por defecto
+            Log::error('❌ Error obteniendo master data: ' . $e->getMessage());
             return $this->getDefaultMasterData();
+        }
+    }
+    
+    /**
+     * ⚡ OPTIMIZADO: Obtener roles desde offline primero (sin fallar si no existe)
+     */
+    private function getRolesOfflineFirst(): array
+    {
+        try {
+            // Intentar leer desde SQLite solo si está 100% disponible
+            $offlineService = app(\App\Services\OfflineService::class);
+            if ($offlineService->isSQLiteAvailable()) {
+                // Verificar que la tabla existe antes de consultar
+                $tableExists = \DB::connection('offline')
+                    ->select("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'");
+                
+                if (!empty($tableExists)) {
+                    $roles = \DB::connection('offline')
+                        ->table('roles')
+                        ->select('id', 'uuid', 'nombre')
+                        ->get()
+                        ->toArray();
+                    
+                    if (!empty($roles)) {
+                        Log::info('⚡ Roles obtenidos desde offline SQLite');
+                        return array_map(function($role) {
+                            return (array) $role;
+                        }, $roles);
+                    }
+                }
+            }
+            
+            // Si no hay datos offline, devolver array vacío (no llamar API)
+            Log::info('ℹ️ Roles no disponibles en offline, usando defaults');
+            return $this->getDefaultRoles();
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ No se pudieron obtener roles offline, usando defaults: ' . $e->getMessage());
+            return $this->getDefaultRoles();
+        }
+    }
+    
+    /**
+     * ⚡ OPTIMIZADO: Obtener especialidades desde offline primero (sin fallar si no existe)
+     */
+    private function getEspecialidadesOfflineFirst(): array
+    {
+        try {
+            // Intentar leer desde SQLite solo si está 100% disponible
+            $offlineService = app(\App\Services\OfflineService::class);
+            if ($offlineService->isSQLiteAvailable()) {
+                // Verificar que la tabla existe antes de consultar
+                $tableExists = \DB::connection('offline')
+                    ->select("SELECT name FROM sqlite_master WHERE type='table' AND name='especialidades'");
+                
+                if (!empty($tableExists)) {
+                    $especialidades = \DB::connection('offline')
+                        ->table('especialidades')
+                        ->select('id', 'uuid', 'nombre')
+                        ->get()
+                        ->toArray();
+                    
+                    if (!empty($especialidades)) {
+                        Log::info('⚡ Especialidades obtenidas desde offline SQLite');
+                        return array_map(function($esp) {
+                            return (array) $esp;
+                        }, $especialidades);
+                    }
+                }
+            }
+            
+            // Si no hay datos offline, devolver array vacío (no llamar API)
+            Log::info('ℹ️ Especialidades no disponibles en offline, usando defaults');
+            return [];
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ No se pudieron obtener especialidades offline: ' . $e->getMessage());
+            return [];
         }
     }
     

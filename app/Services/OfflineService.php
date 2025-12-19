@@ -5106,6 +5106,76 @@ public function countCups(): int
         return 0;
     }
 }
+
+/**
+ * ⚡ Contar medicamentos almacenados
+ */
+public function countMedicamentos(): int
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            return DB::connection('offline')->table('medicamentos')->count();
+        }
+        
+        $medicamentosPath = $this->storagePath . '/medicamentos';
+        if (!is_dir($medicamentosPath)) {
+            return 0;
+        }
+        
+        $files = glob($medicamentosPath . '/*.json');
+        return count($files);
+    } catch (\Exception $e) {
+        Log::error('Error contando medicamentos', ['error' => $e->getMessage()]);
+        return 0;
+    }
+}
+
+/**
+ * ⚡ Contar diagnósticos almacenados
+ */
+public function countDiagnosticos(): int
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            return DB::connection('offline')->table('diagnosticos')->count();
+        }
+        
+        $diagnosticosPath = $this->storagePath . '/diagnosticos';
+        if (!is_dir($diagnosticosPath)) {
+            return 0;
+        }
+        
+        $files = glob($diagnosticosPath . '/*.json');
+        return count($files);
+    } catch (\Exception $e) {
+        Log::error('Error contando diagnósticos', ['error' => $e->getMessage()]);
+        return 0;
+    }
+}
+
+/**
+ * ⚡ Contar remisiones almacenadas
+ */
+public function countRemisiones(): int
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            return DB::connection('offline')->table('remisiones')->count();
+        }
+        
+        $remisionesPath = $this->storagePath . '/remisiones';
+        if (!is_dir($remisionesPath)) {
+            return 0;
+        }
+        
+        $files = glob($remisionesPath . '/*.json');
+        return count($files);
+    } catch (\Exception $e) {
+        Log::error('Error contando remisiones', ['error' => $e->getMessage()]);
+        return 0;
+    }
+}
+
 /**
  * ✅ BUSCAR CUPS OFFLINE
  */

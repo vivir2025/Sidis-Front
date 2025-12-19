@@ -45,18 +45,19 @@ public function index(array $filters = [], int $page = 1, int $perPage = 15): ar
             $filters = [];
         }
 
-        // ✅ NUEVA LÓGICA: SINCRONIZACIÓN COMPLETA AUTOMÁTICA EN PRIMERA CARGA
+        // ✅ LÓGICA OPTIMIZADA: SINCRONIZACIÓN MÁS LIGERA
         if ($this->apiService->isOnline()) {
             try {
-                // ✅ VERIFICAR SI ES PRIMERA VEZ O NECESITA SINCRONIZACIÓN COMPLETA
-                $needsFullSync = $this->needsFullSync($sedeId);
+                // ✅ VERIFICAR SI ES PRIMERA VEZ (sin agendas locales)
+                $needsInitialSync = $this->needsInitialSync($sedeId);
                 
-                if ($needsFullSync) {
-                    Log::info('🔄 INICIANDO SINCRONIZACIÓN COMPLETA AUTOMÁTICA DE AGENDAS');
+                if ($needsInitialSync) {
+                    Log::info('🔄 Primera carga - Sincronizando agendas recientes');
+                    // ✅ Solo sincronizar en background si realmente no hay datos
                     $fullSyncResult = $this->performFullSyncBackground($sedeId, $filters);
                     
                     if ($fullSyncResult['success']) {
-                        Log::info('✅ SINCRONIZACIÓN COMPLETA AUTOMÁTICA EXITOSA', [
+                        Log::info('✅ Sincronización inicial completada', [
                             'total_synced' => $fullSyncResult['total_synced']
                         ]);
                         
@@ -175,12 +176,12 @@ public function index(array $filters = [], int $page = 1, int $perPage = 15): ar
 }
 
 /**
- * ✅ NUEVO: Verificar si necesita sincronización completa
+ * ✅ OPTIMIZADO: Verificar si necesita sincronización inicial (solo primera vez)
  */
-private function needsFullSync(int $sedeId): bool
+private function needsInitialSync(int $sedeId): bool
 {
     try {
-        // ✅ VERIFICAR SI HAY AGENDAS EN OFFLINE
+        // ✅ SOLO VERIFICAR SI HAY AGENDAS LOCALES
         if ($this->offlineService->isSQLiteAvailable()) {
             $count = DB::connection('offline')
                 ->table('agendas')
@@ -188,47 +189,26 @@ private function needsFullSync(int $sedeId): bool
                 ->whereNull('deleted_at')
                 ->count();
             
-            // ✅ SI NO HAY AGENDAS, NECESITA SYNC COMPLETO
+            // ✅ SI NO HAY AGENDAS, NECESITA SYNC INICIAL
             if ($count === 0) {
-                Log::info('📊 No hay agendas offline, necesita sync completo automático');
+                Log::info('📊 No hay agendas offline, necesita sync inicial');
                 return true;
             }
             
-            // ✅ VERIFICAR ÚLTIMA SINCRONIZACIÓN COMPLETA
-            $lastFullSync = $this->offlineService->getData('full_sync_status.json', []);
-            $lastSyncTime = $lastFullSync['last_full_sync'] ?? null;
-            
-            if (!$lastSyncTime) {
-                Log::info('📊 No hay registro de sync completo anterior');
-                return true;
-            }
-            
-            // ✅ VERIFICAR SI HA PASADO MUCHO TIEMPO (24 horas)
-            $lastSync = \Carbon\Carbon::parse($lastSyncTime);
-            $hoursAgo = $lastSync->diffInHours(now());
-            
-            if ($hoursAgo > 24) {
-                Log::info('📊 Última sincronización hace más de 24 horas', [
-                    'hours_ago' => $hoursAgo
-                ]);
-                return true;
-            }
-            
-            Log::info('📊 Sincronización completa no necesaria', [
-                'agendas_count' => $count,
-                'last_sync_hours_ago' => $hoursAgo
+            Log::info('📊 Ya hay agendas offline, sync no necesario', [
+                'agendas_count' => $count
             ]);
             return false;
         }
         
-        // ✅ SI NO HAY SQLite, SIEMPRE NECESITA SYNC
+        // ✅ SI NO HAY SQLite, necesita sync
         return true;
         
     } catch (\Exception $e) {
-        Log::error('❌ Error verificando necesidad de sync completo', [
+        Log::error('❌ Error verificando necesidad de sync inicial', [
             'error' => $e->getMessage()
         ]);
-        return true; // En caso de error, hacer sync completo
+        return false; // En caso de error, NO hacer sync para evitar demoras
     }
 }
 
@@ -242,9 +222,9 @@ private function performFullSyncBackground(int $sedeId, array $baseFilters = [])
         
         $totalSynced = 0;
         $currentPage = 1;
-        $perPage = 100; // ✅ PÁGINAS MÁS GRANDES PARA EFICIENCIA
+        $perPage = 50; // ✅ REDUCIDO PARA CARGA MÁS RÁPIDA
         $hasMorePages = true;
-        $maxPages = 50; // ✅ LÍMITE DE SEGURIDAD PARA PRIMERA CARGA
+        $maxPages = 10; // ✅ REDUCIDO: Solo últimas 500 agendas en primera carga
         
         // ✅ FILTROS BASE PARA OBTENER TODAS LAS AGENDAS
         $baseParams = [
@@ -254,8 +234,8 @@ private function performFullSyncBackground(int $sedeId, array $baseFilters = [])
             'per_page' => $perPage
         ];
         
-        // ✅ AGREGAR FILTROS BÁSICOS PARA PRIMERA CARGA (últimos 6 meses)
-        $baseParams['fecha_desde'] = now()->subMonths(6)->format('Y-m-d');
+        // ✅ AGREGAR FILTROS BÁSICOS PARA PRIMERA CARGA (último mes para carga rápida)
+        $baseParams['fecha_desde'] = now()->subMonth()->format('Y-m-d');
         
         while ($hasMorePages && $currentPage <= $maxPages) {
             try {

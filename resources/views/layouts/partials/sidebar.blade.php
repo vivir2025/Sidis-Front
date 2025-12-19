@@ -85,6 +85,12 @@
                 <i class="fas fa-building"></i>
                 <span>Sedes</span>
             </a>
+
+            {{-- ✅ BOTÓN ACTUALIZAR DATOS MAESTROS --}}
+            <a class="nav-link nav-link-sync" href="#" onclick="sincronizarDatosMaestros(); return false;">
+                <i class="fas fa-sync-alt"></i>
+                <span>Actualizar Datos</span>
+            </a>
         @endif
 
         <hr class="sidebar-divider">
@@ -292,6 +298,85 @@
     height: 60%;
     background: white;
     border-radius: 0 4px 4px 0;
+}
+
+/* ===== BOTÓN DE SINCRONIZACIÓN ===== */
+.nav-link-sync {
+    background: linear-gradient(135deg, #28a745, #20c997) !important;
+    color: white !important;
+    font-weight: 600;
+    margin-top: 10px;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.nav-link-sync:hover {
+    background: linear-gradient(135deg, #218838, #1fa084) !important;
+    transform: translateX(5px) scale(1.02);
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.5);
+}
+
+.nav-link-sync i {
+    animation: rotate-icon 2s linear infinite paused;
+}
+
+.nav-link-sync:hover i {
+    animation-play-state: running;
+}
+
+@keyframes rotate-icon {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ===== MODAL DE SINCRONIZACIÓN ===== */
+.sync-progress-container {
+    margin: 20px 0;
+}
+
+.sync-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px;
+    margin: 8px 0;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #6c757d;
+    transition: all 0.3s ease;
+}
+
+.sync-item i:first-child {
+    font-size: 20px;
+    margin-right: 12px;
+    color: #495057;
+}
+
+.sync-item span {
+    flex: 1;
+    font-weight: 600;
+    color: #495057;
+}
+
+.sync-item .sync-status {
+    font-size: 18px;
+}
+
+.sync-item .sync-status .fa-spinner {
+    color: #007bff;
+}
+
+.sync-item .sync-status .fa-check-circle {
+    color: #28a745;
+}
+
+.sync-item .sync-status .fa-clock {
+    color: #6c757d;
+}
+
+#sync-current-task {
+    font-weight: 600;
+    color: #007bff;
+    font-size: 14px;
 }
 
 /* ===== SIDEBAR DIVIDER ===== */
@@ -691,6 +776,179 @@ function confirmLogout() {
             document.body.appendChild(form);
             form.submit();
         }
+    });
+}
+
+/**
+ * 🔄 Sincronizar datos maestros desde el sidebar
+ */
+function sincronizarDatosMaestros() {
+    Swal.fire({
+        title: '¿Actualizar Datos?',
+        html: `
+            <p>Se sincronizarán todos los datos maestros del sistema:</p>
+            <ul class="text-start" style="list-style: none; padding-left: 0;">
+                <li><i class="fas fa-check-circle text-success me-2"></i>Departamentos y Municipios</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Empresas y Regímenes</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Procesos y Brigadas</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Especialidades</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Tipos de Documento</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Medicamentos</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Diagnósticos</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>Remisiones</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>CUPS</li>
+                <li><i class="fas fa-check-circle text-success me-2"></i>CUPS Contratados</li>
+            </ul>
+            <p class="text-muted mt-3"><i class="fas fa-info-circle"></i> Este proceso puede tardar unos segundos</p>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-sync-alt me-2"></i>Actualizar',
+        cancelButtonText: '<i class="fas fa-times me-2"></i>Cancelar',
+        confirmButtonColor: '#2c5aa0',
+        cancelButtonColor: '#6c757d'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            ejecutarSincronizacionDatosMaestros();
+        }
+    });
+}
+
+/**
+ * ⚙️ Ejecutar sincronización con barra de progreso animada
+ */
+function ejecutarSincronizacionDatosMaestros() {
+    // Mostrar barra de progreso con animación
+    Swal.fire({
+        title: 'Sincronizando Datos...',
+        html: `
+            <div class="sync-progress-container">
+                <div class="sync-item" id="sync-maestros">
+                    <i class="fas fa-database"></i>
+                    <span>Datos Maestros</span>
+                    <div class="sync-status"><i class="fas fa-spinner fa-spin"></i></div>
+                </div>
+                <div class="sync-item" id="sync-medicamentos">
+                    <i class="fas fa-pills"></i>
+                    <span>Medicamentos</span>
+                    <div class="sync-status"><i class="fas fa-clock text-muted"></i></div>
+                </div>
+                <div class="sync-item" id="sync-diagnosticos">
+                    <i class="fas fa-file-medical"></i>
+                    <span>Diagnósticos</span>
+                    <div class="sync-status"><i class="fas fa-clock text-muted"></i></div>
+                </div>
+                <div class="sync-item" id="sync-remisiones">
+                    <i class="fas fa-file-invoice"></i>
+                    <span>Remisiones</span>
+                    <div class="sync-status"><i class="fas fa-clock text-muted"></i></div>
+                </div>
+                <div class="sync-item" id="sync-cups">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>CUPS</span>
+                    <div class="sync-status"><i class="fas fa-clock text-muted"></i></div>
+                </div>
+                <div class="sync-item" id="sync-cups-contratados">
+                    <i class="fas fa-file-contract"></i>
+                    <span>CUPS Contratados</span>
+                    <div class="sync-status"><i class="fas fa-clock text-muted"></i></div>
+                </div>
+            </div>
+            <div class="progress mt-3" style="height: 25px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                     id="sync-progress-bar" 
+                     role="progressbar" 
+                     style="width: 16%">
+                     16%
+                </div>
+            </div>
+            <p class="text-muted mt-3" id="sync-current-task">Sincronizando datos maestros...</p>
+            <p class="text-warning"><i class="fas fa-hourglass-half"></i> Este proceso puede tardar varios minutos</p>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        width: '600px',
+        customClass: {
+            popup: 'sync-modal'
+        }
+    });
+    
+    // Realizar petición AJAX
+    fetch('{{ route("offline.sync-master-data") }}', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Marcar todo como completado
+            document.querySelectorAll('.sync-item').forEach(item => {
+                item.querySelector('.sync-status').innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+            });
+            document.getElementById('sync-progress-bar').style.width = '100%';
+            document.getElementById('sync-progress-bar').textContent = '100%';
+            
+            // Mostrar resultado exitoso
+            setTimeout(() => {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Actualización Exitosa!',
+                    html: `
+                        <p>${data.message || 'Datos sincronizados correctamente'}</p>
+                        ${data.stats ? `
+                            <div class="alert alert-info mt-3">
+                                <strong>📊 Registros sincronizados:</strong>
+                                <div class="row mt-3">
+                                    <div class="col-6 text-start">
+                                        ${data.stats.departamentos ? `<div><i class="fas fa-map-marked-alt me-2 text-primary"></i>Departamentos: <strong>${data.stats.departamentos}</strong></div>` : ''}
+                                        ${data.stats.municipios ? `<div><i class="fas fa-city me-2 text-primary"></i>Municipios: <strong>${data.stats.municipios}</strong></div>` : ''}
+                                        ${data.stats.medicamentos ? `<div><i class="fas fa-pills me-2 text-success"></i>Medicamentos: <strong>${data.stats.medicamentos}</strong></div>` : ''}
+                                        ${data.stats.diagnosticos ? `<div><i class="fas fa-file-medical me-2 text-info"></i>Diagnósticos: <strong>${data.stats.diagnosticos}</strong></div>` : ''}
+                                        ${data.stats.remisiones ? `<div><i class="fas fa-file-invoice me-2 text-warning"></i>Remisiones: <strong>${data.stats.remisiones}</strong></div>` : ''}
+                                    </div>
+                                    <div class="col-6 text-start">
+                                        ${data.stats.cups ? `<div><i class="fas fa-clipboard-list me-2 text-danger"></i>CUPS: <strong>${data.stats.cups}</strong></div>` : ''}
+                                        ${data.stats.cups_contratados ? `<div><i class="fas fa-file-contract me-2 text-secondary"></i>CUPS Contratados: <strong>${data.stats.cups_contratados}</strong></div>` : ''}
+                                        ${data.stats.empresas ? `<div><i class="fas fa-building me-2"></i>Empresas: <strong>${data.stats.empresas}</strong></div>` : ''}
+                                        ${data.stats.procesos ? `<div><i class="fas fa-tasks me-2"></i>Procesos: <strong>${data.stats.procesos}</strong></div>` : ''}
+                                        ${data.stats.brigadas ? `<div><i class="fas fa-users me-2"></i>Brigadas: <strong>${data.stats.brigadas}</strong></div>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    `,
+                    confirmButtonText: 'Aceptar',
+                    confirmButtonColor: '#28a745',
+                    width: '700px'
+                });
+            }, 500);
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error en la Sincronización',
+                text: data.error || 'No se pudieron actualizar los datos',
+                confirmButtonText: 'Cerrar',
+                confirmButtonColor: '#dc3545'
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de Conexión',
+            html: `
+                <p>No se pudo conectar con el servidor</p>
+                <p class="text-muted">Por favor verifique su conexión e intente nuevamente</p>
+            `,
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#dc3545'
+        });
     });
 }
 

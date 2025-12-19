@@ -24,6 +24,9 @@ class AgendaController extends Controller
 
  public function index(Request $request)
 {
+    set_time_limit(300); // 5 minutos
+    ini_set('max_execution_time', 300);
+
     try {
         $filters = $request->only([
             'fecha_desde', 'fecha_hasta', 'estado', 'modalidad', 'consultorio'
@@ -861,59 +864,35 @@ private function enrichAgendaData(array $agenda): array
   private function getMasterData(): array
 {
     try {
-        Log::info('🔍 Obteniendo datos maestros para formulario');
+        // ⚡ OPTIMIZADO: Usar datos offline si existen (sin llamadas HTTP)
+        if ($this->offlineService->hasMasterDataOffline()) {
+            $offlineData = $this->offlineService->getMasterDataOffline();
+            Log::info('⚡ Usando datos maestros offline (rápido)');
+            return $offlineData;
+        }
         
-        // ✅ SIEMPRE INTENTAR ACTUALIZAR DESDE API SI HAY CONEXIÓN
+        // ✅ SI NO HAY DATOS OFFLINE, obtener desde API (solo primera vez)
         if ($this->apiService->isOnline()) {
             try {
-                Log::info('🌐 Intentando obtener datos maestros desde API');
+                Log::info('🌐 Primera carga - Obteniendo datos maestros desde API');
                 
                 $response = $this->apiService->get('/master-data/all');
                 
                 if ($response['success'] && isset($response['data'])) {
-                    Log::info('✅ Datos maestros obtenidos desde API', [
-                        'tables_count' => count($response['data']),
-                        'procesos_count' => count($response['data']['procesos'] ?? []),
-                        'brigadas_count' => count($response['data']['brigadas'] ?? [])
-                    ]);
-                    
-                    // ✅ SINCRONIZAR OFFLINE INMEDIATAMENTE
                     $this->offlineService->syncMasterDataFromApi($response['data']);
-                    
+                    Log::info('✅ Datos maestros sincronizados correctamente');
                     return $response['data'];
-                } else {
-                    Log::warning('⚠️ Respuesta de API inválida para datos maestros');
                 }
             } catch (\Exception $e) {
-                Log::warning('⚠️ Error obteniendo datos maestros desde API', [
-                    'error' => $e->getMessage()
-                ]);
+                Log::warning('⚠️ Error obteniendo datos maestros: ' . $e->getMessage());
             }
-        } else {
-            Log::info('📱 Sin conexión, usando datos offline');
-        }
-        
-        // ✅ USAR DATOS OFFLINE
-        if ($this->offlineService->hasMasterDataOffline()) {
-            $offlineData = $this->offlineService->getMasterDataOffline();
-            
-            Log::info('📱 Usando datos maestros offline', [
-                'tables_count' => count($offlineData),
-                'procesos_count' => count($offlineData['procesos'] ?? []),
-                'brigadas_count' => count($offlineData['brigadas'] ?? [])
-            ]);
-            
-            return $offlineData;
         }
         
         Log::warning('⚠️ No hay datos maestros disponibles, usando defaults');
         return $this->getDefaultMasterData();
         
     } catch (\Exception $e) {
-        Log::error('❌ Error crítico obteniendo datos maestros', [
-            'error' => $e->getMessage()
-        ]);
-        
+        Log::error('❌ Error crítico obteniendo datos maestros: ' . $e->getMessage());
         return $this->getDefaultMasterData();
     }
 }
