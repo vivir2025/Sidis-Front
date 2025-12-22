@@ -84,7 +84,8 @@
         @if(isset($masterData['usuarios_con_especialidad']) && is_array($masterData['usuarios_con_especialidad']))
             @foreach($masterData['usuarios_con_especialidad'] as $usuario)
                 @php
-                    $usuarioValue = $usuario['id'] ?? $usuario['uuid'] ?? '';
+                    // ✅ CORREGIDO: Preferir UUID sobre ID para sincronización correcta
+                    $usuarioValue = $usuario['uuid'] ?? $usuario['id'] ?? '';
                 @endphp
                 
                 @if(!empty($usuarioValue))

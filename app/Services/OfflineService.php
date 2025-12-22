@@ -2555,17 +2555,75 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             ]);
         }
         
-        // 4. Guardar el ID si no tenemos UUID
-        if (empty($usuarioMedicoId) && !empty($agendaData['usuario_medico_id'])) {
-            $usuarioMedicoId = $agendaData['usuario_medico_id'];
-            Log::info('🔍 Usuario médico ID encontrado', [
-                'value' => $usuarioMedicoId
-            ]);
+        // 4. ✅ CORREGIDO: usuario_medico_id puede contener UUID (enviado desde AgendaService)
+        if (empty($usuarioMedicoUuid) && !empty($agendaData['usuario_medico_id']) && $agendaData['usuario_medico_id'] !== 'null') {
+            // Verificar si el valor en usuario_medico_id es un UUID
+            if ($this->isValidUuid($agendaData['usuario_medico_id'])) {
+                $usuarioMedicoUuid = $agendaData['usuario_medico_id'];
+                Log::info('🔍 Usuario médico UUID encontrado en usuario_medico_id', [
+                    'value' => $usuarioMedicoUuid
+                ]);
+            } else {
+                // Es un ID numérico
+                $usuarioMedicoId = $agendaData['usuario_medico_id'];
+                Log::info('🔍 Usuario médico ID numérico encontrado', [
+                    'value' => $usuarioMedicoId
+                ]);
+            }
+        }
+        
+        // 5. ✅ NUEVO: PRESERVAR USUARIO MÉDICO EXISTENTE SI LA API NO LO ENVÍA
+        // Esto previene que datos de la API (que puede no devolver usuario_medico) sobrescriban datos locales
+        if (empty($usuarioMedicoUuid)) {
+            $agendaExistente = $this->getAgendaOffline($agendaData['uuid']);
+            if ($agendaExistente) {
+                // Buscar usuario_medico en los datos existentes
+                $existingMedicoUuid = $agendaExistente['usuario_medico_uuid'] 
+                    ?? $agendaExistente['medico_uuid'] 
+                    ?? null;
+                
+                // Verificar también en usuario_medico_id si es UUID
+                if (empty($existingMedicoUuid) && !empty($agendaExistente['usuario_medico_id'])) {
+                    if ($this->isValidUuid($agendaExistente['usuario_medico_id'])) {
+                        $existingMedicoUuid = $agendaExistente['usuario_medico_id'];
+                    }
+                }
+                
+                // Verificar en el objeto usuario_medico anidado
+                if (empty($existingMedicoUuid) && !empty($agendaExistente['usuario_medico']) && is_array($agendaExistente['usuario_medico'])) {
+                    $existingMedicoUuid = $agendaExistente['usuario_medico']['uuid'] ?? null;
+                }
+                
+                if (!empty($existingMedicoUuid)) {
+                    $usuarioMedicoUuid = $existingMedicoUuid;
+                    Log::info('🔄 Usuario médico preservado de datos existentes', [
+                        'uuid' => $usuarioMedicoUuid,
+                        'agenda_uuid' => $agendaData['uuid']
+                    ]);
+                }
+            }
+        }
+        
+        // ✅ NUEVO: Cargar datos completos del médico si tenemos UUID
+        $usuarioMedicoCompleto = null;
+        if (!empty($usuarioMedicoUuid)) {
+            $usuarioMedicoCompleto = $this->getUsuarioByUuid($usuarioMedicoUuid);
+            if ($usuarioMedicoCompleto) {
+                Log::info('✅ Datos completos del médico cargados', [
+                    'uuid' => $usuarioMedicoUuid,
+                    'nombre' => $usuarioMedicoCompleto['nombre'] ?? $usuarioMedicoCompleto['nombre_completo'] ?? 'Sin nombre'
+                ]);
+            } else {
+                Log::warning('⚠️ No se encontraron datos del médico', [
+                    'uuid' => $usuarioMedicoUuid
+                ]);
+            }
         }
         
         Log::info('✅ Usuario médico final', [
             'uuid' => $usuarioMedicoUuid,
-            'id' => $usuarioMedicoId
+            'id' => $usuarioMedicoId,
+            'tiene_datos_completos' => !empty($usuarioMedicoCompleto)
         ]);
 
         // ✅ CONVERTIR proceso_id A INTEGER O MANTENER UUID
@@ -2702,7 +2760,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'sync_status' => $needsSync ? 'pending' : 'synced',
             'operation_type' => $needsSync ? 'create' : 'sync',
             
-            // ✅ GUARDAR DATOS COMPLETOS EN original_data (INCLUYENDO PROCESO)
+            // ✅ GUARDAR DATOS COMPLETOS EN original_data (INCLUYENDO PROCESO Y MÉDICO)
             'original_data' => json_encode([
                 'uuid' => $agendaData['uuid'],
                 'fecha' => $agendaData['fecha'],
@@ -2724,6 +2782,10 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
                 'usuario_medico_id' => $usuarioMedicoUuid, // ✅ CAMBIO CRÍTICO: UUID EN ORIGINAL_DATA
                 'usuario_medico_uuid' => $usuarioMedicoUuid,
                 'medico_uuid' => $usuarioMedicoUuid,
+                
+                // ✅ NUEVO: INCLUIR OBJETO USUARIO MÉDICO COMPLETO
+                'usuario_medico' => $usuarioMedicoCompleto,
+                
                 'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
                 'sede_id' => (int) $agendaData['sede_id']
             ]),
@@ -2749,14 +2811,17 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             );
         }
 
-        // ✅ ENRIQUECER JSON CON PROCESO COMPLETO REAL
+        // ✅ ENRIQUECER JSON CON PROCESO COMPLETO REAL Y USUARIO MÉDICO
         $jsonData = array_merge($agendaData, [
             'usuario_medico_uuid' => $usuarioMedicoUuid,
             'usuario_medico_id' => $usuarioMedicoUuid, // ✅ CAMBIO CRÍTICO: UUID EN JSON TAMBIÉN
             'sync_status' => $sqliteData['sync_status'],
             
             // ✅ USAR EL PROCESO COMPLETO OBTENIDO
-            'proceso' => $procesoCompleto
+            'proceso' => $procesoCompleto,
+            
+            // ✅ NUEVO: INCLUIR OBJETO USUARIO_MEDICO COMPLETO
+            'usuario_medico' => $usuarioMedicoCompleto
         ]);
         
         $this->storeData('agendas/' . $agendaData['uuid'] . '.json', $jsonData);
@@ -12359,6 +12424,155 @@ public function sincronizarEstadosCitas(int $sedeId): array
             'total' => 0,
             'errors' => [['error' => $e->getMessage()]]
         ];
+    }
+}
+
+/**
+ * ✅ LIMPIAR AGENDAS PENDIENTES QUE NO ESTÁN EN LA API
+ * Elimina agendas con sync_status='pending' que no existen en el servidor
+ */
+public function limpiarAgendasPendientesHuerfanas(array $agendasApiUuids = []): array
+{
+    try {
+        Log::info('🧹 Iniciando limpieza de agendas pendientes huérfanas');
+        
+        $eliminadas = 0;
+        $errores = [];
+        
+        // Obtener agendas pendientes de SQLite
+        $agendasPendientes = [];
+        
+        if ($this->isSQLiteAvailable()) {
+            $agendasPendientes = DB::connection('offline')
+                ->table('agendas')
+                ->where('sync_status', 'pending')
+                ->get();
+        }
+        
+        // También revisar archivos JSON
+        $agendasPath = storage_path('app/offline/agendas');
+        $jsonFiles = glob($agendasPath . '/*.json');
+        
+        foreach ($jsonFiles as $jsonFile) {
+            try {
+                $content = file_get_contents($jsonFile);
+                $agenda = json_decode($content, true);
+                
+                // Si está pendiente y NO está en la API, eliminar
+                if (isset($agenda['sync_status']) && $agenda['sync_status'] === 'pending') {
+                    $uuid = $agenda['uuid'] ?? '';
+                    
+                    // Si no tenemos lista de UUIDs de API, o el UUID no está en la lista
+                    if (empty($agendasApiUuids) || !in_array($uuid, $agendasApiUuids)) {
+                        // Eliminar archivo JSON
+                        if (unlink($jsonFile)) {
+                            Log::info('🗑️ Archivo JSON de agenda eliminado', ['uuid' => $uuid]);
+                            $eliminadas++;
+                        }
+                        
+                        // Eliminar de SQLite si existe
+                        if ($this->isSQLiteAvailable() && !empty($uuid)) {
+                            DB::connection('offline')
+                                ->table('agendas')
+                                ->where('uuid', $uuid)
+                                ->delete();
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $errores[] = [
+                    'file' => basename($jsonFile),
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        Log::info('✅ Limpieza de agendas pendientes completada', [
+            'eliminadas' => $eliminadas,
+            'errores' => count($errores)
+        ]);
+        
+        return [
+            'success' => true,
+            'eliminadas' => $eliminadas,
+            'errores' => $errores
+        ];
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error limpiando agendas pendientes', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [
+            'success' => false,
+            'eliminadas' => 0,
+            'errores' => [['error' => $e->getMessage()]]
+        ];
+    }
+}
+
+/**
+ * ✅ OBTENER ESTADÍSTICAS DE AGENDAS OFFLINE
+ */
+public function getAgendasOfflineStats(): array
+{
+    try {
+        $stats = [
+            'total_sqlite' => 0,
+            'pendientes_sqlite' => 0,
+            'sincronizadas_sqlite' => 0,
+            'total_json' => 0,
+            'pendientes_json' => 0,
+            'sincronizadas_json' => 0
+        ];
+        
+        // Stats de SQLite
+        if ($this->isSQLiteAvailable()) {
+            $stats['total_sqlite'] = DB::connection('offline')
+                ->table('agendas')
+                ->count();
+            
+            $stats['pendientes_sqlite'] = DB::connection('offline')
+                ->table('agendas')
+                ->where('sync_status', 'pending')
+                ->count();
+            
+            $stats['sincronizadas_sqlite'] = DB::connection('offline')
+                ->table('agendas')
+                ->where('sync_status', 'synced')
+                ->count();
+        }
+        
+        // Stats de archivos JSON
+        $agendasPath = storage_path('app/offline/agendas');
+        $jsonFiles = glob($agendasPath . '/*.json');
+        $stats['total_json'] = count($jsonFiles);
+        
+        foreach ($jsonFiles as $jsonFile) {
+            try {
+                $content = file_get_contents($jsonFile);
+                $agenda = json_decode($content, true);
+                
+                if (isset($agenda['sync_status'])) {
+                    if ($agenda['sync_status'] === 'pending') {
+                        $stats['pendientes_json']++;
+                    } else {
+                        $stats['sincronizadas_json']++;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Ignorar errores al leer archivos
+            }
+        }
+        
+        return $stats;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo stats de agendas', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return [];
     }
 }
 

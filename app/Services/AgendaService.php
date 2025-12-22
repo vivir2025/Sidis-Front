@@ -888,6 +888,15 @@ public function store(array $data): array
         $validated = $this->validateAgendaData($data);
 
         // ✅ PREPARAR DATOS PARA ALMACENAR
+        // ✅ EXTRAER USUARIO MÉDICO UUID CORRECTAMENTE
+        $usuarioMedicoUuid = $validated['usuario_medico_uuid'] ?? $validated['usuario_medico_id'] ?? null;
+        
+        Log::info('🔍 Usuario médico extraído para agenda', [
+            'usuario_medico_uuid_input' => $validated['usuario_medico_uuid'] ?? 'NO_EXISTE',
+            'usuario_medico_id_input' => $validated['usuario_medico_id'] ?? 'NO_EXISTE',
+            'uuid_final' => $usuarioMedicoUuid
+        ]);
+        
         $agendaData = [
             'uuid' => \Illuminate\Support\Str::uuid()->toString(),
             'modalidad' => $validated['modalidad'],
@@ -902,7 +911,9 @@ public function store(array $data): array
             'usuario_id' => $validated['usuario_id'],
             'proceso_id' => $validated['proceso_id'] ?? null,
             'brigada_id' => $validated['brigada_id'] ?? null,
-            'usuario_medico_id' => $validated['usuario_medico_uuid'] ?? null,
+            'usuario_medico_id' => $usuarioMedicoUuid,       // ✅ UUID para compatibilidad
+            'usuario_medico_uuid' => $usuarioMedicoUuid,     // ✅ UUID explícito
+            'medico_uuid' => $usuarioMedicoUuid,             // ✅ Campo adicional para búsquedas
             'cupos_disponibles' => 0,
             'created_at' => now()->toISOString(),
             'updated_at' => now()->toISOString(),
