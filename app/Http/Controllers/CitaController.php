@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\{CitaService, AuthService, ApiService, OfflineService, PacienteService, AgendaService};
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CitaController extends Controller
     {
@@ -1656,111 +1657,272 @@ private function validarRequisitoEspecialControlOffline(string $pacienteUuid, st
         ];
     }
 }
-private function determinarTipoConsultaConReglasOffline(
-    string $pacienteUuid, 
-    string $agendaUuid, 
-    string $procesoNombre
-): string {
-    try {
-        Log::info('🔍 INICIO: Determinando tipo de consulta offline', [
-            'paciente_uuid' => $pacienteUuid,
-            'agenda_uuid' => $agendaUuid,
-            'proceso_nombre' => $procesoNombre
-        ]);
+    private function determinarTipoConsultaConReglasOffline(
+        string $pacienteUuid, 
+        string $agendaUuid, 
+        string $procesoNombre
+    ): string {
+        try {
+            Log::info('🔍 INICIO: Determinando tipo de consulta offline', [
+                'paciente_uuid' => $pacienteUuid,
+                'agenda_uuid' => $agendaUuid,
+                'proceso_nombre' => $procesoNombre
+            ]);
 
-        // ✅ REGLA 1: NEFROLOGÍA e INTERNISTA siempre son CONTROL
-        $procesosSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
-        
-        if (in_array($procesoNombre, $procesosSoloControl)) {
-            Log::info('✅ Proceso solo permite CONTROL offline', [
+            // ✅ REGLA 1: NEFROLOGÍA e INTERNISTA siempre son CONTROL
+            $procesosSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
+            
+            if (in_array($procesoNombre, $procesosSoloControl)) {
+                Log::info('✅ Proceso solo permite CONTROL offline', [
+                    'proceso' => $procesoNombre
+                ]);
+                return 'CONTROL';
+            }
+
+            // ✅ REGLA 2: Verificar historial del paciente
+            $usuario = $this->authService->usuario();
+            $sedeId = $usuario['sede_id'];
+
+            // ✅ PASO 2A: VERIFICAR CITAS PREVIAS
+            $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+                'paciente_uuid' => $pacienteUuid,
+                'exclude_agenda_uuid' => $agendaUuid
+            ]);
+
+            Log::info('📊 Citas obtenidas (excluyendo agenda actual)', [
+                'total_citas' => count($citasPaciente),
+                'agenda_excluida' => $agendaUuid,
+                'paciente_uuid' => $pacienteUuid
+            ]);
+
+            // ✅ CONTAR CITAS ANTERIORES DEL MISMO PROCESO
+            $citasAnteriores = 0;
+            
+            foreach ($citasPaciente as $cita) {
+                // ✅ VERIFICACIÓN ADICIONAL: Asegurar que NO sea la agenda actual
+                if (($cita['agenda_uuid'] ?? null) === $agendaUuid) {
+                    Log::warning('⚠️ Agenda actual encontrada en resultados (no debería pasar)', [
+                        'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                        'agenda_uuid' => $agendaUuid
+                    ]);
+                    continue;
+                }
+
+                $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
+                $estadoCita = $cita['estado'] ?? '';
+                
+                if ($procesoNombreCita === $procesoNombre &&
+                    in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA', 'EN_ATENCION'])) {
+                    $citasAnteriores++;
+                    
+                    Log::info('✅ Cita anterior válida encontrada', [
+                        'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                        'proceso' => $procesoNombreCita,
+                        'estado' => $estadoCita,
+                        'total_hasta_ahora' => $citasAnteriores
+                    ]);
+                }
+            }
+
+            // ✅ PASO 2B: SI NO HAY CITAS, VERIFICAR HISTORIAS CLÍNICAS
+            $historiasAnteriores = 0;
+            
+            if ($citasAnteriores === 0) {
+                Log::info('🔍 No hay citas previas, verificando historias clínicas offline', [
+                    'paciente_uuid' => $pacienteUuid,
+                    'proceso' => $procesoNombre
+                ]);
+                
+                $historiasAnteriores = $this->contarHistoriasClinicasOffline($pacienteUuid, $procesoNombre);
+                
+                if ($historiasAnteriores > 0) {
+                    Log::info('✅ Encontradas historias clínicas previas', [
+                        'total_historias' => $historiasAnteriores,
+                        'proceso' => $procesoNombre
+                    ]);
+                    
+                    // ✅ SI HAY HISTORIAS PREVIAS → CONTROL
+                    Log::info('✅ TIPO DE CONSULTA DETERMINADO POR HISTORIAS', [
+                        'tipo_consulta' => 'CONTROL',
+                        'historias_previas' => $historiasAnteriores,
+                        'proceso' => $procesoNombre
+                    ]);
+                    
+                    return 'CONTROL';
+                }
+            }
+
+            Log::info('📊 Resultado final del conteo', [
+                'paciente_uuid' => $pacienteUuid,
+                'proceso_buscado' => $procesoNombre,
+                'agenda_actual_excluida' => $agendaUuid,
+                'citas_anteriores_encontradas' => $citasAnteriores,
+                'historias_anteriores_encontradas' => $historiasAnteriores,
+                'total_citas_analizadas' => count($citasPaciente)
+            ]);
+
+            // ✅ DETERMINAR TIPO DE CONSULTA
+            $tipoConsulta = ($citasAnteriores > 0) ? 'CONTROL' : 'PRIMERA VEZ';
+            
+            Log::info('✅ TIPO DE CONSULTA DETERMINADO', [
+                'tipo_consulta' => $tipoConsulta,
+                'citas_previas' => $citasAnteriores,
+                'historias_previas' => $historiasAnteriores,
                 'proceso' => $procesoNombre
             ]);
-            return 'CONTROL';
-        }
 
-        // ✅ REGLA 2: Verificar historial del paciente
-        $usuario = $this->authService->usuario();
-        $sedeId = $usuario['sede_id'];
+            return $tipoConsulta;
 
-        // ✅ CRÍTICO: EXCLUIR LA AGENDA ACTUAL
-        $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
-            'paciente_uuid' => $pacienteUuid,
-            'exclude_agenda_uuid' => $agendaUuid  // ← AGREGAR ESTO
-        ]);
-
-        Log::info('📊 Citas obtenidas (excluyendo agenda actual)', [
-            'total_citas' => count($citasPaciente),
-            'agenda_excluida' => $agendaUuid,
-            'paciente_uuid' => $pacienteUuid
-        ]);
-
-        // ✅ CONTAR CITAS ANTERIORES DEL MISMO PROCESO
-        $citasAnteriores = 0;
-        
-        foreach ($citasPaciente as $cita) {
-            // ✅ VERIFICACIÓN ADICIONAL: Asegurar que NO sea la agenda actual
-            if (($cita['agenda_uuid'] ?? null) === $agendaUuid) {
-                Log::warning('⚠️ Agenda actual encontrada en resultados (no debería pasar)', [
-                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
-                    'agenda_uuid' => $agendaUuid
-                ]);
-                continue;
-            }
-
-            $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
-            $estadoCita = $cita['estado'] ?? '';
-            
-            Log::debug('🔍 Analizando cita', [
-                'cita_uuid' => $cita['uuid'] ?? 'N/A',
-                'agenda_uuid_cita' => $cita['agenda_uuid'] ?? 'N/A',
-                'proceso_cita' => $procesoNombreCita,
-                'proceso_buscado' => $procesoNombre,
-                'estado' => $estadoCita,
-                'coincide' => $procesoNombreCita === $procesoNombre
+        } catch (\Exception $e) {
+            Log::error('❌ Error determinando tipo de consulta offline', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             
-            if ($procesoNombreCita === $procesoNombre &&
-                in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA', 'EN_ATENCION'])) {
-                $citasAnteriores++;
-                
-                Log::info('✅ Cita anterior válida encontrada', [
-                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
-                    'agenda_uuid' => $cita['agenda_uuid'] ?? 'N/A',
-                    'proceso' => $procesoNombreCita,
-                    'estado' => $estadoCita,
-                    'total_hasta_ahora' => $citasAnteriores
-                ]);
-            }
+            return 'PRIMERA VEZ';
         }
-
-        Log::info('📊 Resultado final del conteo', [
-            'paciente_uuid' => $pacienteUuid,
-            'proceso_buscado' => $procesoNombre,
-            'agenda_actual_excluida' => $agendaUuid,
-            'citas_anteriores_encontradas' => $citasAnteriores,
-            'total_citas_analizadas' => count($citasPaciente)
-        ]);
-
-        // ✅ DETERMINAR TIPO DE CONSULTA
-        $tipoConsulta = ($citasAnteriores > 0) ? 'CONTROL' : 'PRIMERA VEZ';
-        
-        Log::info('✅ TIPO DE CONSULTA DETERMINADO', [
-            'tipo_consulta' => $tipoConsulta,
-            'citas_previas' => $citasAnteriores,
-            'proceso' => $procesoNombre
-        ]);
-
-        return $tipoConsulta;
-
-    } catch (\Exception $e) {
-        Log::error('❌ Error determinando tipo de consulta offline', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return 'PRIMERA VEZ';
     }
-}
+
+    /**
+     * ✅ NUEVO: Contar historias clínicas offline del mismo proceso
+     */
+    private function contarHistoriasClinicasOffline(string $pacienteUuid, string $procesoNombre): int
+    {
+        try {
+            Log::info('🔍 Contando historias clínicas offline', [
+                'paciente_uuid' => $pacienteUuid,
+                'proceso' => $procesoNombre
+            ]);
+
+            $count = 0;
+
+            // ✅ BUSCAR EN SQLite PRIMERO
+            if ($this->offlineService->isSQLiteAvailable()) {
+                try {
+                    // ✅ CONSULTA CORREGIDA: Usar proceso_nombre de agendas
+                    $count = DB::connection('offline')
+                        ->table('historias_clinicas as hc')
+                        ->join('citas as c', 'hc.cita_uuid', '=', 'c.uuid')
+                        ->join('agendas as a', 'c.agenda_uuid', '=', 'a.uuid')
+                        ->where('hc.paciente_uuid', $pacienteUuid)
+                        ->whereRaw('UPPER(a.proceso_nombre) = ?', [strtoupper($procesoNombre)])
+                        ->whereNull('hc.deleted_at')
+                        ->count();
+                        
+                    Log::info('📊 Historias encontradas en SQLite', [
+                        'count' => $count,
+                        'proceso' => $procesoNombre,
+                        'paciente_uuid' => $pacienteUuid
+                    ]);
+                    
+                    return $count;
+                    
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error en SQLite, intentando con JSON', [
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            // ✅ FALLBACK: Buscar en JSON
+            Log::info('📱 Buscando historias en archivos JSON');
+            
+            $historiasPath = storage_path('app/offline/historias_clinicas');
+            
+            if (!is_dir($historiasPath)) {
+                Log::info('📁 Directorio de historias no existe', [
+                    'path' => $historiasPath
+                ]);
+                return 0;
+            }
+            
+            $files = glob($historiasPath . '/*.json');
+            
+            Log::info('📄 Archivos de historias encontrados', [
+                'total_archivos' => count($files)
+            ]);
+            
+            foreach ($files as $file) {
+                try {
+                    $historia = json_decode(file_get_contents($file), true);
+                    
+                    if (!$historia) {
+                        continue;
+                    }
+                    
+                    // ✅ VERIFICAR QUE NO ESTÉ ELIMINADA
+                    if ($historia['deleted_at'] ?? null) {
+                        continue;
+                    }
+                    
+                    // ✅ VERIFICAR PACIENTE
+                    if (($historia['paciente_uuid'] ?? null) !== $pacienteUuid) {
+                        continue;
+                    }
+                    
+                    // ✅ OBTENER CITA ASOCIADA
+                    $citaUuid = $historia['cita_uuid'] ?? null;
+                    if (!$citaUuid) {
+                        Log::debug('⚠️ Historia sin cita_uuid', [
+                            'historia_uuid' => $historia['uuid'] ?? 'N/A'
+                        ]);
+                        continue;
+                    }
+                    
+                    // ✅ OBTENER PROCESO DE LA CITA
+                    $cita = $this->offlineService->getCitaOffline($citaUuid);
+                    if (!$cita) {
+                        Log::debug('⚠️ Cita no encontrada para historia', [
+                            'cita_uuid' => $citaUuid,
+                            'historia_uuid' => $historia['uuid'] ?? 'N/A'
+                        ]);
+                        continue;
+                    }
+                    
+                    $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
+                    
+                    Log::debug('🔍 Analizando historia', [
+                        'historia_uuid' => $historia['uuid'] ?? 'N/A',
+                        'proceso_historia' => $procesoNombreCita,
+                        'proceso_buscado' => $procesoNombre,
+                        'coincide' => $procesoNombreCita === strtoupper($procesoNombre)
+                    ]);
+                    
+                    if ($procesoNombreCita === strtoupper($procesoNombre)) {
+                        $count++;
+                        
+                        Log::info('✅ Historia válida encontrada', [
+                            'historia_uuid' => $historia['uuid'] ?? 'N/A',
+                            'proceso' => $procesoNombreCita,
+                            'total_hasta_ahora' => $count
+                        ]);
+                    }
+                    
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ Error procesando archivo de historia', [
+                        'file' => basename($file),
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            Log::info('📊 Historias encontradas en JSON', [
+                'count' => $count,
+                'proceso' => $procesoNombre,
+                'archivos_analizados' => count($files)
+            ]);
+
+            return $count;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error contando historias clínicas offline', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return 0;
+        }
+    }
 
 
 /**

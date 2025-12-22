@@ -21,6 +21,33 @@ $(document).ready(function() {
     // ============================================
 
     /**
+     * ✅ LIMPIAR CAMBIOS PENDIENTES DE CITA EN LOCALSTORAGE
+     * Previene que cambios antiguos (como EN_ATENCION) sobrescriban ATENDIDA
+     */
+    function limpiarCambiosPendientesCita(citaUuid) {
+        try {
+            if (typeof localStorage === 'undefined') return false;
+            
+            const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+            if (cambiosPendientes.length === 0) return true;
+            
+            const cambioExistente = cambiosPendientes.find(c => c.cita_uuid === citaUuid);
+            if (cambioExistente) {
+                console.log('🧹 Eliminando cambio pendiente:', {
+                    citaUuid: citaUuid,
+                    estadoPendiente: cambioExistente.nuevo_estado
+                });
+                const cambiosFiltrados = cambiosPendientes.filter(c => c.cita_uuid !== citaUuid);
+                localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosFiltrados));
+            }
+            return true;
+        } catch (error) {
+            console.error('❌ Error limpiando cambios pendientes:', error);
+            return false;
+        }
+    }
+
+    /**
      * ✅ DISPARAR EVENTO DE HISTORIA GUARDADA
      */
     function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
@@ -29,6 +56,9 @@ $(document).ready(function() {
             historiaUuid: historiaUuid,
             offline: offline
         });
+        
+        // ✅ LIMPIAR CAMBIOS PENDIENTES ANTES DE DISPARAR EVENTO
+        limpiarCambiosPendientesCita(citaUuid);
         
         window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
             detail: {

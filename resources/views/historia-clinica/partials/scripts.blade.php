@@ -8,6 +8,53 @@
     let remisionCounter = 0;
     let cupsCounter = 0;
     let diagnosticoSeleccionado = null;
+
+/**
+ * ✅ LIMPIAR CAMBIOS PENDIENTES DE CITA EN LOCALSTORAGE
+ * Esta función elimina cualquier cambio de estado pendiente para una cita específica
+ * del localStorage. Esto previene que cambios antiguos (como EN_ATENCION) sobrescriban
+ * el estado ATENDIDA cuando la página del cronograma se recarga después de guardar la historia.
+ */
+function limpiarCambiosPendientesCita(citaUuid) {
+    try {
+        if (typeof localStorage === 'undefined') {
+            console.log('⚠️ localStorage no disponible');
+            return false;
+        }
+        
+        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+        
+        if (cambiosPendientes.length === 0) {
+            console.log('📦 No hay cambios pendientes en localStorage');
+            return true;
+        }
+        
+        // Buscar si existe un cambio pendiente para esta cita
+        const cambioExistente = cambiosPendientes.find(c => c.cita_uuid === citaUuid);
+        
+        if (cambioExistente) {
+            console.log('🧹 Eliminando cambio pendiente de cita:', {
+                citaUuid: citaUuid,
+                estadoPendiente: cambioExistente.nuevo_estado,
+                razon: 'Historia clínica guardada - cita marcada como ATENDIDA'
+            });
+            
+            // Filtrar para eliminar cambios de esta cita
+            const cambiosFiltrados = cambiosPendientes.filter(c => c.cita_uuid !== citaUuid);
+            localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosFiltrados));
+            
+            console.log('✅ Cambio pendiente eliminado correctamente. Cambios restantes:', cambiosFiltrados.length);
+        } else {
+            console.log('📦 No hay cambios pendientes para esta cita:', citaUuid);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Error limpiando cambios pendientes:', error);
+        return false;
+    }
+}
+
 /**
  * ✅ DISPARAR EVENTO DE HISTORIA GUARDADA
  */
@@ -17,6 +64,10 @@ function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
         historiaUuid: historiaUuid,
         offline: offline
     });
+    
+    // ✅ LIMPIAR CAMBIOS PENDIENTES DE ESTA CITA ANTES DE DISPARAR EL EVENTO
+    // Esto previene que cambios antiguos (como EN_ATENCION) sobrescriban ATENDIDA
+    limpiarCambiosPendientesCita(citaUuid);
     
     window.dispatchEvent(new CustomEvent('historiaClinicaGuardada', {
         detail: {

@@ -2894,9 +2894,28 @@ public function storeCitaOffline(array $citaData, bool $needsSync = false): void
                 ->where('uuid', $citaData['uuid'])
                 ->first();
             
-            // ✅ SI LA CITA EXISTE Y ESTÁ PENDIENTE, NO SOBRESCRIBIR
+            // ✅ SI LA CITA EXISTE Y ESTÁ PENDIENTE, SOLO PERMITIR ACTUALIZACIÓN DE ESTADO
             if ($citaExistente && $citaExistente->sync_status === 'pending') {
-                Log::info('⚠️ Cita ya existe con sync_status=pending, NO sobrescribir', [
+                // ✅ PERMITIR ACTUALIZACIÓN SI EL ESTADO CAMBIÓ (ej: PROGRAMADA → ATENDIDA)
+                if ($citaExistente->estado !== $offlineData['estado']) {
+                    Log::info('🔄 Actualizando SOLO el estado de cita pendiente', [
+                        'cita_uuid' => $citaData['uuid'],
+                        'estado_anterior' => $citaExistente->estado,
+                        'estado_nuevo' => $offlineData['estado'],
+                        'sync_status' => 'pending (preservado)'
+                    ]);
+                    
+                    // ✅ ACTUALIZAR SOLO EL ESTADO, PRESERVAR sync_status='pending'
+                    DB::connection('offline')->table('citas')
+                        ->where('uuid', $citaData['uuid'])
+                        ->update([
+                            'estado' => $offlineData['estado'],
+                            'updated_at' => now()->toISOString()
+                        ]);
+                    return;
+                }
+                
+                Log::info('⚠️ Cita ya existe con sync_status=pending y mismo estado, NO sobrescribir', [
                     'cita_uuid' => $citaData['uuid'],
                     'sync_status_existente' => $citaExistente->sync_status,
                     'needsSync_nuevo' => $needsSync ? 'pending' : 'synced',
