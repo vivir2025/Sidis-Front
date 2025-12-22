@@ -82,6 +82,14 @@ class OfflineService
     }
 
     /**
+     * ✅ OBTENER CONEXIÓN A LA BASE DE DATOS OFFLINE (SQLite)
+     */
+    public function getDbConnection()
+    {
+        return DB::connection('offline');
+    }
+
+    /**
      * ✅ NUEVO: Crear tablas SQLite dinámicamente
      */
   private function createTablesIfNotExist(): void

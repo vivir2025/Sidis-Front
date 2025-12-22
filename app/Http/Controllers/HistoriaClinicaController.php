@@ -766,14 +766,38 @@ private function formatearMedicamentosParaFormulario(array $medicamentos): array
                           $medicamento['medicamento_uuid'] ?? 
                           $this->obtenerMedicamentoUuid($medicamento['medicamento_id'] ?? $medicamento['id'] ?? null);
         
+        // ✅ OBTENER NOMBRE - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
+        $nombre = $medicamento['medicamento']['nombre'] ?? '';
+        $principioActivo = $medicamento['medicamento']['principio_activo'] ?? '';
+        
+        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
+        if (empty($nombre) && $medicamentoUuid) {
+            Log::debug('🔍 Buscando nombre de medicamento desde offline', [
+                'medicamento_uuid' => $medicamentoUuid
+            ]);
+            $medicamentoOffline = $this->obtenerMedicamentoCompleto($medicamentoUuid);
+            if ($medicamentoOffline) {
+                $nombre = $medicamentoOffline['nombre'] ?? '';
+                $principioActivo = $medicamentoOffline['principio_activo'] ?? '';
+                Log::debug('✅ Nombre de medicamento recuperado desde offline', [
+                    'medicamento_uuid' => $medicamentoUuid,
+                    'nombre' => $nombre
+                ]);
+            } else {
+                Log::warning('⚠️ Medicamento no encontrado en offline', [
+                    'medicamento_uuid' => $medicamentoUuid
+                ]);
+            }
+        }
+        
         return [
             'medicamento_id' => $medicamentoUuid, // ✅ SIEMPRE UUID
             'cantidad' => $medicamento['cantidad'] ?? '',
             'dosis' => $medicamento['dosis'] ?? '',
             'medicamento' => [
                 'uuid' => $medicamentoUuid,
-                'nombre' => $medicamento['medicamento']['nombre'] ?? '',
-                'principio_activo' => $medicamento['medicamento']['principio_activo'] ?? ''
+                'nombre' => $nombre,
+                'principio_activo' => $principioActivo
             ]
         ];
     }, $medicamentos);
@@ -790,13 +814,37 @@ private function formatearRemisionesParaFormulario(array $remisiones): array
                        $remision['remision_uuid'] ?? 
                        $this->obtenerRemisionUuid($remision['remision_id'] ?? $remision['id'] ?? null);
         
+        // ✅ OBTENER NOMBRE - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
+        $nombre = $remision['remision']['nombre'] ?? '';
+        $tipo = $remision['remision']['tipo'] ?? '';
+        
+        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
+        if (empty($nombre) && $remisionUuid) {
+            Log::debug('🔍 Buscando nombre de remisión desde offline', [
+                'remision_uuid' => $remisionUuid
+            ]);
+            $remisionOffline = $this->obtenerRemisionCompleta($remisionUuid);
+            if ($remisionOffline) {
+                $nombre = $remisionOffline['nombre'] ?? '';
+                $tipo = $remisionOffline['tipo'] ?? '';
+                Log::debug('✅ Nombre de remisión recuperado desde offline', [
+                    'remision_uuid' => $remisionUuid,
+                    'nombre' => $nombre
+                ]);
+            } else {
+                Log::warning('⚠️ Remisión no encontrada en offline', [
+                    'remision_uuid' => $remisionUuid
+                ]);
+            }
+        }
+        
         return [
             'remision_id' => $remisionUuid, // ✅ SIEMPRE UUID
             'observacion' => $remision['observacion'] ?? '',
             'remision' => [
                 'uuid' => $remisionUuid,
-                'nombre' => $remision['remision']['nombre'] ?? '',
-                'tipo' => $remision['remision']['tipo'] ?? ''
+                'nombre' => $nombre,
+                'tipo' => $tipo
             ]
         ];
     }, $remisiones);
@@ -813,14 +861,39 @@ private function formatearDiagnosticosParaFormulario(array $diagnosticos): array
                           $diagnostico['diagnostico_uuid'] ?? 
                           $this->obtenerDiagnosticoUuid($diagnostico['diagnostico_id'] ?? $diagnostico['id'] ?? null);
         
+        // ✅ OBTENER NOMBRE Y CÓDIGO - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
+        $codigo = $diagnostico['diagnostico']['codigo'] ?? '';
+        $nombre = $diagnostico['diagnostico']['nombre'] ?? '';
+        
+        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
+        if (empty($nombre) && $diagnosticoUuid) {
+            Log::debug('🔍 Buscando nombre de diagnóstico desde offline', [
+                'diagnostico_uuid' => $diagnosticoUuid
+            ]);
+            $diagnosticoOffline = $this->obtenerDiagnosticoCompleto($diagnosticoUuid);
+            if ($diagnosticoOffline) {
+                $codigo = $diagnosticoOffline['codigo'] ?? '';
+                $nombre = $diagnosticoOffline['nombre'] ?? '';
+                Log::debug('✅ Nombre de diagnóstico recuperado desde offline', [
+                    'diagnostico_uuid' => $diagnosticoUuid,
+                    'codigo' => $codigo,
+                    'nombre' => $nombre
+                ]);
+            } else {
+                Log::warning('⚠️ Diagnóstico no encontrado en offline', [
+                    'diagnostico_uuid' => $diagnosticoUuid
+                ]);
+            }
+        }
+        
         return [
             'diagnostico_id' => $diagnosticoUuid, // ✅ SIEMPRE UUID
             'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
             'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
             'diagnostico' => [
                 'uuid' => $diagnosticoUuid,
-                'codigo' => $diagnostico['diagnostico']['codigo'] ?? '',
-                'nombre' => $diagnostico['diagnostico']['nombre'] ?? ''
+                'codigo' => $codigo,
+                'nombre' => $nombre
             ]
         ];
     }, $diagnosticos);
@@ -837,13 +910,26 @@ private function formatearCupsParaFormulario(array $cups): array
                    $cup['cups_uuid'] ?? 
                    $this->obtenerCupsUuid($cup['cups_id'] ?? $cup['id'] ?? null);
         
+        // ✅ OBTENER NOMBRE Y CÓDIGO - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
+        $codigo = $cup['cups']['codigo'] ?? '';
+        $nombre = $cup['cups']['nombre'] ?? '';
+        
+        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
+        if (empty($nombre) && $cupsUuid) {
+            $cupsOffline = $this->obtenerCupsCompleto($cupsUuid);
+            if ($cupsOffline) {
+                $codigo = $cupsOffline['codigo'] ?? '';
+                $nombre = $cupsOffline['nombre'] ?? '';
+            }
+        }
+        
         return [
             'cups_id' => $cupsUuid, // ✅ SIEMPRE UUID
             'observacion' => $cup['observacion'] ?? '',
             'cups' => [
                 'uuid' => $cupsUuid,
-                'codigo' => $cup['cups']['codigo'] ?? '',
-                'nombre' => $cup['cups']['nombre'] ?? ''
+                'codigo' => $codigo,
+                'nombre' => $nombre
             ]
         ];
     }, $cups);
@@ -4599,6 +4685,234 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
         } catch (\Exception $e) {
             Log::error('❌ Error obteniendo UUID de CUPS', [
                 'id' => $idOUuid,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER DATOS COMPLETOS DE UN MEDICAMENTO DESDE OFFLINE
+     */
+    private function obtenerMedicamentoCompleto($uuidOId): ?array
+    {
+        try {
+            // ✅ PRIMERO: Buscar en archivos JSON de medicamentos
+            $jsonPath = storage_path('app/offline/medicamentos/' . $uuidOId . '.json');
+            if (file_exists($jsonPath)) {
+                $data = json_decode(file_get_contents($jsonPath), true);
+                if ($data) {
+                    return $data;
+                }
+            }
+            
+            // ✅ SEGUNDO: Buscar en SQLite por UUID
+            $medicamento = $this->offlineService->getDbConnection()
+                ->table('medicamentos')
+                ->where('uuid', $uuidOId)
+                ->first();
+            
+            if ($medicamento) {
+                return [
+                    'uuid' => $medicamento->uuid,
+                    'nombre' => $medicamento->nombre ?? '',
+                    'principio_activo' => $medicamento->principio_activo ?? ''
+                ];
+            }
+            
+            // ✅ TERCERO: Buscar por ID numérico
+            if (is_numeric($uuidOId)) {
+                $medicamento = $this->offlineService->getDbConnection()
+                    ->table('medicamentos')
+                    ->where('id', $uuidOId)
+                    ->first();
+                
+                if ($medicamento) {
+                    return [
+                        'uuid' => $medicamento->uuid ?? '',
+                        'nombre' => $medicamento->nombre ?? '',
+                        'principio_activo' => $medicamento->principio_activo ?? ''
+                    ];
+                }
+            }
+            
+            Log::debug('ℹ️ Medicamento no encontrado en offline', ['uuid_o_id' => $uuidOId]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ Error obteniendo medicamento completo', [
+                'uuid_o_id' => $uuidOId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER DATOS COMPLETOS DE UNA REMISIÓN DESDE OFFLINE
+     */
+    private function obtenerRemisionCompleta($uuidOId): ?array
+    {
+        try {
+            // ✅ PRIMERO: Buscar en archivos JSON de remisiones
+            $jsonPath = storage_path('app/offline/remisiones/' . $uuidOId . '.json');
+            if (file_exists($jsonPath)) {
+                $data = json_decode(file_get_contents($jsonPath), true);
+                if ($data) {
+                    return $data;
+                }
+            }
+            
+            // ✅ SEGUNDO: Buscar en SQLite por UUID
+            $remision = $this->offlineService->getDbConnection()
+                ->table('remisiones')
+                ->where('uuid', $uuidOId)
+                ->first();
+            
+            if ($remision) {
+                return [
+                    'uuid' => $remision->uuid,
+                    'nombre' => $remision->nombre ?? '',
+                    'tipo' => $remision->tipo ?? ''
+                ];
+            }
+            
+            // ✅ TERCERO: Buscar por ID numérico
+            if (is_numeric($uuidOId)) {
+                $remision = $this->offlineService->getDbConnection()
+                    ->table('remisiones')
+                    ->where('id', $uuidOId)
+                    ->first();
+                
+                if ($remision) {
+                    return [
+                        'uuid' => $remision->uuid ?? '',
+                        'nombre' => $remision->nombre ?? '',
+                        'tipo' => $remision->tipo ?? ''
+                    ];
+                }
+            }
+            
+            Log::debug('ℹ️ Remisión no encontrada en offline', ['uuid_o_id' => $uuidOId]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ Error obteniendo remisión completa', [
+                'uuid_o_id' => $uuidOId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER DATOS COMPLETOS DE UN DIAGNÓSTICO DESDE OFFLINE
+     */
+    private function obtenerDiagnosticoCompleto($uuidOId): ?array
+    {
+        try {
+            // ✅ PRIMERO: Buscar en archivos JSON de diagnósticos
+            $jsonPath = storage_path('app/offline/diagnosticos/' . $uuidOId . '.json');
+            if (file_exists($jsonPath)) {
+                $data = json_decode(file_get_contents($jsonPath), true);
+                if ($data) {
+                    return $data;
+                }
+            }
+            
+            // ✅ SEGUNDO: Buscar en SQLite por UUID
+            $diagnostico = $this->offlineService->getDbConnection()
+                ->table('diagnosticos')
+                ->where('uuid', $uuidOId)
+                ->first();
+            
+            if ($diagnostico) {
+                return [
+                    'uuid' => $diagnostico->uuid,
+                    'codigo' => $diagnostico->codigo ?? '',
+                    'nombre' => $diagnostico->nombre ?? ''
+                ];
+            }
+            
+            // ✅ TERCERO: Buscar por ID numérico
+            if (is_numeric($uuidOId)) {
+                $diagnostico = $this->offlineService->getDbConnection()
+                    ->table('diagnosticos')
+                    ->where('id', $uuidOId)
+                    ->first();
+                
+                if ($diagnostico) {
+                    return [
+                        'uuid' => $diagnostico->uuid ?? '',
+                        'codigo' => $diagnostico->codigo ?? '',
+                        'nombre' => $diagnostico->nombre ?? ''
+                    ];
+                }
+            }
+            
+            Log::debug('ℹ️ Diagnóstico no encontrado en offline', ['uuid_o_id' => $uuidOId]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ Error obteniendo diagnóstico completo', [
+                'uuid_o_id' => $uuidOId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * ✅ OBTENER DATOS COMPLETOS DE UN CUPS DESDE OFFLINE
+     */
+    private function obtenerCupsCompleto($uuidOId): ?array
+    {
+        try {
+            // ✅ PRIMERO: Buscar en archivos JSON de cups
+            $jsonPath = storage_path('app/offline/cups/' . $uuidOId . '.json');
+            if (file_exists($jsonPath)) {
+                $data = json_decode(file_get_contents($jsonPath), true);
+                if ($data) {
+                    return $data;
+                }
+            }
+            
+            // ✅ SEGUNDO: Buscar en SQLite por UUID
+            $cups = $this->offlineService->getDbConnection()
+                ->table('cups')
+                ->where('uuid', $uuidOId)
+                ->first();
+            
+            if ($cups) {
+                return [
+                    'uuid' => $cups->uuid,
+                    'codigo' => $cups->codigo ?? '',
+                    'nombre' => $cups->nombre ?? ''
+                ];
+            }
+            
+            // ✅ TERCERO: Buscar por ID numérico
+            if (is_numeric($uuidOId)) {
+                $cups = $this->offlineService->getDbConnection()
+                    ->table('cups')
+                    ->where('id', $uuidOId)
+                    ->first();
+                
+                if ($cups) {
+                    return [
+                        'uuid' => $cups->uuid ?? '',
+                        'codigo' => $cups->codigo ?? '',
+                        'nombre' => $cups->nombre ?? ''
+                    ];
+                }
+            }
+            
+            Log::debug('ℹ️ CUPS no encontrado en offline', ['uuid_o_id' => $uuidOId]);
+            return null;
+            
+        } catch (\Exception $e) {
+            Log::warning('⚠️ Error obteniendo CUPS completo', [
+                'uuid_o_id' => $uuidOId,
                 'error' => $e->getMessage()
             ]);
             return null;
