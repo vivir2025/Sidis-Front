@@ -2685,9 +2685,9 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'proceso_id' => $procesoId,
             'proceso_uuid' => $procesoUuid,
             'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
-            'usuario_medico_id' => $usuarioMedicoId,
-            'usuario_medico_uuid' => $usuarioMedicoUuid, // ✅ AGREGAR UUID
-            'medico_uuid' => $usuarioMedicoUuid, // ✅ TAMBIÉN COMO medico_uuid
+            'usuario_medico_id' => $usuarioMedicoUuid, // ✅ CAMBIO CRÍTICO: USAR UUID EN LUGAR DE ID
+            'usuario_medico_uuid' => $usuarioMedicoUuid,
+            'medico_uuid' => $usuarioMedicoUuid,
             'brigada_id' => $brigadaId,
             'brigada_uuid' => $brigadaUuid,
             'cupos_disponibles' => (int) ($agendaData['cupos_disponibles'] ?? 0),
@@ -2713,9 +2713,9 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
                 
                 'brigada_id' => $brigadaId,
                 'brigada_uuid' => $brigadaUuid,
-                'usuario_medico_id' => $usuarioMedicoId,
-                'usuario_medico_uuid' => $usuarioMedicoUuid, // ✅ AGREGAR UUID AL ORIGINAL_DATA
-                'medico_uuid' => $usuarioMedicoUuid, // ✅ TAMBIÉN COMO medico_uuid
+                'usuario_medico_id' => $usuarioMedicoUuid, // ✅ CAMBIO CRÍTICO: UUID EN ORIGINAL_DATA
+                'usuario_medico_uuid' => $usuarioMedicoUuid,
+                'medico_uuid' => $usuarioMedicoUuid,
                 'usuario_id' => (int) ($agendaData['usuario_id'] ?? 1),
                 'sede_id' => (int) $agendaData['sede_id']
             ]),
@@ -2724,6 +2724,14 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'updated_at' => now()->toISOString(),
             'deleted_at' => $agendaData['deleted_at'] ?? null
         ];
+
+        // ✅ LOG DE VERIFICACIÓN
+        Log::info('✅ Datos SQLite preparados para agenda', [
+            'agenda_uuid' => $agendaData['uuid'],
+            'usuario_medico_id' => $sqliteData['usuario_medico_id'],
+            'usuario_medico_uuid' => $sqliteData['usuario_medico_uuid'],
+            'es_uuid_correcto' => $this->isValidUuid($sqliteData['usuario_medico_id'] ?? '')
+        ]);
 
         // ✅ GUARDAR EN SQLITE
         if ($this->isSQLiteAvailable()) {
@@ -2736,7 +2744,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         // ✅ ENRIQUECER JSON CON PROCESO COMPLETO REAL
         $jsonData = array_merge($agendaData, [
             'usuario_medico_uuid' => $usuarioMedicoUuid,
-            'usuario_medico_id' => $usuarioMedicoId,
+            'usuario_medico_id' => $usuarioMedicoUuid, // ✅ CAMBIO CRÍTICO: UUID EN JSON TAMBIÉN
             'sync_status' => $sqliteData['sync_status'],
             
             // ✅ USAR EL PROCESO COMPLETO OBTENIDO
@@ -2756,7 +2764,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
             'brigada_id' => $brigadaId,
             'brigada_uuid' => $brigadaUuid,
             'usuario_medico_uuid' => $usuarioMedicoUuid,
-            'usuario_medico_id' => $usuarioMedicoId,
+            'usuario_medico_id_guardado' => $usuarioMedicoUuid, // ✅ CONFIRMAR QUE ES UUID
             'sync_status' => $sqliteData['sync_status']
         ]);
 
@@ -2768,6 +2776,7 @@ public function storeAgendaOffline(array $agendaData, bool $needsSync = false): 
         ]);
     }
 }
+
 
 public function storeCitaOffline(array $citaData, bool $needsSync = false): void
 {
@@ -3335,6 +3344,7 @@ public function actualizarEstadoCitaOffline(string $uuid, string $nuevoEstado, i
             ->where('sede_id', $sedeId)
             ->update([
                 'estado' => $nuevoEstado,
+                'sync_status' => 'pending',
                 'updated_at' => now()->toISOString()
                 // ✅ NO USAR 'offline_modificado' - NO EXISTE EN LA TABLA
             ]);
@@ -3350,11 +3360,24 @@ public function actualizarEstadoCitaOffline(string $uuid, string $nuevoEstado, i
             $cita = $this->getCitaOffline($uuid);
             if ($cita) {
                 $cita['estado'] = $nuevoEstado;
+                $cita['sync_status'] = 'pending';
                 $cita['updated_at'] = now()->toISOString();
                 $this->storeCitaOffline($cita, false); // ✅ NO MARCAR COMO PENDIENTE
             }
+              // ✅ REGISTRAR CAMBIO PENDIENTE
+            $this->registrarCambioPendiente([
+                'entidad_uuid' => $uuid,
+                'entidad_tipo' => 'cita',
+                'tipo_operacion' => 'estado_actualizado',
+                'datos' => [
+                    'nuevo_estado' => $nuevoEstado,
+                    'fecha_cambio' => now()->toISOString()
+                ],
+                'sede_id' => $sedeId
+            ]);
 
             return true;
+       
         } else {
             Log::warning('⚠️ No se encontró la cita para actualizar', [
                 'uuid' => $uuid,
@@ -3652,6 +3675,26 @@ public function sincronizarCambiosEstadoPendientes(): array
             try {
                 if ($cambio['tipo_operacion'] === 'estado_actualizado') {
                     $citaUuid = $cambio['entidad_uuid'];
+                      // ✅ OBTENER UUID REAL DE LA CITA (puede haber cambiado)
+                    $citaReal = DB::connection('offline')
+                        ->table('citas')
+                        ->where('uuid', $citaUuidOffline)
+                        ->first();
+                          if (!$citaReal) {
+                        Log::error('❌ Cita no encontrada en SQLite', [
+                            'uuid_offline' => $citaUuidOffline
+                        ]);
+                        $results['errors']++;
+                        continue;
+                    }
+                    
+                    $citaUuid = $citaReal->uuid; // ✅ Usar UUID actualizado
+                    
+                    Log::info('📡 Sincronizando cambio de estado', [
+                        'cita_uuid_offline' => $citaUuidOffline,
+                        'cita_uuid_real' => $citaUuid,
+                        'nuevo_estado' => $nuevoEstado
+                    ]);
                     
                     // ✅ VALIDAR UUID CRÍTICO
                     if (empty($citaUuid) || !is_string($citaUuid) || strlen(trim($citaUuid)) === 0) {
@@ -5735,12 +5778,27 @@ public function syncPendingCitas(): array
                 ]);
 
                 if (isset($response['success']) && $response['success'] === true) {
+                       // ✅ VERIFICAR SI EL UUID CAMBIÓ
+                    $oldUuid = $cita->uuid;
+                    $newUuid = $response['data']['uuid'] ?? $oldUuid;
+                    
+                    if ($oldUuid !== $newUuid) {
+                        Log::info('🔄 UUID de cita cambió después de sincronizar', [
+                            'old_uuid' => $oldUuid,
+                            'new_uuid' => $newUuid
+                        ]);
+                        
+                        // ✅ ACTUALIZAR HISTORIA CLÍNICA
+                        $this->updateHistoriaClinicaCitaUuid($oldUuid, $newUuid);
+                    }
+                    
                     // ✅ ÉXITO
                     DB::connection('offline')
                         ->table('citas')
                         ->where('uuid', $cita->uuid)
                         ->update([
                             'sync_status' => 'synced',
+                            'uuid' => $newUuid,
                             'updated_at' => now()
                         ]);
                     
@@ -5848,7 +5906,62 @@ public function syncPendingCitas(): array
         ];
     }
 }
-
+/**
+ * ✅ NUEVO: Actualizar UUID de cita en historia clínica
+ */
+private function updateHistoriaClinicaCitaUuid(string $oldUuid, string $newUuid): void
+{
+    try {
+        // Actualizar en SQLite
+        if ($this->isSQLiteAvailable()) {
+            $updated = DB::connection('offline')
+                ->table('historias_clinicas')
+                ->where('cita_uuid', $oldUuid)
+                ->update([
+                    'cita_uuid' => $newUuid,
+                    'sync_status' => 'pending', // ✅ Marcar para re-sincronizar
+                    'updated_at' => now()->toISOString()
+                ]);
+            
+            if ($updated > 0) {
+                Log::info('✅ Historia clínica actualizada en SQLite', [
+                    'old_cita_uuid' => $oldUuid,
+                    'new_cita_uuid' => $newUuid,
+                    'historias_actualizadas' => $updated
+                ]);
+            }
+        }
+        
+        // Actualizar en JSON
+        $historiasPath = storage_path('app/offline/historias_clinicas');
+        if (is_dir($historiasPath)) {
+            $files = glob($historiasPath . '/*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data && ($data['cita_uuid'] ?? '') === $oldUuid) {
+                    $data['cita_uuid'] = $newUuid;
+                    $data['sync_status'] = 'pending';
+                    $data['updated_at'] = now()->toISOString();
+                    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+                    
+                    Log::info('✅ Historia clínica actualizada en JSON', [
+                        'file' => basename($file),
+                        'old_cita_uuid' => $oldUuid,
+                        'new_cita_uuid' => $newUuid
+                    ]);
+                    break;
+                }
+            }
+        }
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando UUID de cita en historia', [
+            'error' => $e->getMessage(),
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+    }
+}
 /**
  * ✅ NUEVO: Preparar datos de cita para sincronización CON MANEJO DE CUPS
  */
