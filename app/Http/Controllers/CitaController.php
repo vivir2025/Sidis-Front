@@ -1656,16 +1656,18 @@ private function validarRequisitoEspecialControlOffline(string $pacienteUuid, st
         ];
     }
 }
-
-/**
- * ✅ DETERMINAR TIPO DE CONSULTA CON REGLAS OFFLINE
- */
 private function determinarTipoConsultaConReglasOffline(
     string $pacienteUuid, 
     string $agendaUuid, 
     string $procesoNombre
 ): string {
     try {
+        Log::info('🔍 INICIO: Determinando tipo de consulta offline', [
+            'paciente_uuid' => $pacienteUuid,
+            'agenda_uuid' => $agendaUuid,
+            'proceso_nombre' => $procesoNombre
+        ]);
+
         // ✅ REGLA 1: NEFROLOGÍA e INTERNISTA siempre son CONTROL
         $procesosSoloControl = ['NEFROLOGIA', 'INTERNISTA'];
         
@@ -1680,7 +1682,15 @@ private function determinarTipoConsultaConReglasOffline(
         $usuario = $this->authService->usuario();
         $sedeId = $usuario['sede_id'];
 
+        // ✅ CRÍTICO: EXCLUIR LA AGENDA ACTUAL
         $citasPaciente = $this->offlineService->getCitasOffline($sedeId, [
+            'paciente_uuid' => $pacienteUuid,
+            'exclude_agenda_uuid' => $agendaUuid  // ← AGREGAR ESTO
+        ]);
+
+        Log::info('📊 Citas obtenidas (excluyendo agenda actual)', [
+            'total_citas' => count($citasPaciente),
+            'agenda_excluida' => $agendaUuid,
             'paciente_uuid' => $pacienteUuid
         ]);
 
@@ -1688,39 +1698,70 @@ private function determinarTipoConsultaConReglasOffline(
         $citasAnteriores = 0;
         
         foreach ($citasPaciente as $cita) {
+            // ✅ VERIFICACIÓN ADICIONAL: Asegurar que NO sea la agenda actual
+            if (($cita['agenda_uuid'] ?? null) === $agendaUuid) {
+                Log::warning('⚠️ Agenda actual encontrada en resultados (no debería pasar)', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                    'agenda_uuid' => $agendaUuid
+                ]);
+                continue;
+            }
+
             $procesoNombreCita = strtoupper($cita['agenda']['proceso']['nombre'] ?? '');
             $estadoCita = $cita['estado'] ?? '';
+            
+            Log::debug('🔍 Analizando cita', [
+                'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                'agenda_uuid_cita' => $cita['agenda_uuid'] ?? 'N/A',
+                'proceso_cita' => $procesoNombreCita,
+                'proceso_buscado' => $procesoNombre,
+                'estado' => $estadoCita,
+                'coincide' => $procesoNombreCita === $procesoNombre
+            ]);
             
             if ($procesoNombreCita === $procesoNombre &&
                 in_array($estadoCita, ['ATENDIDA', 'PROGRAMADA', 'CONFIRMADA', 'EN_ATENCION'])) {
                 $citasAnteriores++;
+                
+                Log::info('✅ Cita anterior válida encontrada', [
+                    'cita_uuid' => $cita['uuid'] ?? 'N/A',
+                    'agenda_uuid' => $cita['agenda_uuid'] ?? 'N/A',
+                    'proceso' => $procesoNombreCita,
+                    'estado' => $estadoCita,
+                    'total_hasta_ahora' => $citasAnteriores
+                ]);
             }
         }
 
-        Log::info('📊 Citas anteriores encontradas offline', [
+        Log::info('📊 Resultado final del conteo', [
             'paciente_uuid' => $pacienteUuid,
             'proceso_buscado' => $procesoNombre,
-            'citas_anteriores' => $citasAnteriores
+            'agenda_actual_excluida' => $agendaUuid,
+            'citas_anteriores_encontradas' => $citasAnteriores,
+            'total_citas_analizadas' => count($citasPaciente)
         ]);
 
         // ✅ DETERMINAR TIPO DE CONSULTA
         $tipoConsulta = ($citasAnteriores > 0) ? 'CONTROL' : 'PRIMERA VEZ';
         
-        Log::info('✅ Tipo de consulta determinado offline', [
+        Log::info('✅ TIPO DE CONSULTA DETERMINADO', [
             'tipo_consulta' => $tipoConsulta,
-            'citas_previas' => $citasAnteriores
+            'citas_previas' => $citasAnteriores,
+            'proceso' => $procesoNombre
         ]);
 
         return $tipoConsulta;
 
     } catch (\Exception $e) {
         Log::error('❌ Error determinando tipo de consulta offline', [
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return 'PRIMERA VEZ';
     }
 }
+
 
 /**
  * ✅ GENERAR MENSAJE DE TIPO DE CONSULTA

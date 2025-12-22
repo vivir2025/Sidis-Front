@@ -3077,6 +3077,13 @@ public function getCitasOffline($sedeId, array $filters = [])
                     'paciente_uuid' => $filters['paciente_uuid']
                 ]);
             }
+            // ✅ AGREGAR AQUÍ EL NUEVO FILTRO
+            if (!empty($filters['exclude_agenda_uuid'])) {
+                $query->where('citas.agenda_uuid', '!=', $filters['exclude_agenda_uuid']);
+                Log::info('🔍 Filtro exclude_agenda_uuid aplicado', [
+                    'agenda_uuid_excluida' => $filters['exclude_agenda_uuid']
+                ]);
+            }
 
             if (!empty($filters['fecha'])) {
                 // ✅ LIMPIAR FECHA
@@ -3243,7 +3250,15 @@ public function getCitasOffline($sedeId, array $filters = [])
                             $data['paciente_uuid'] !== $filters['paciente_uuid']) {
                             $cumpleFiltros = false;
                         }
-                        
+                        // ✅ AGREGAR ESTE NUEVO FILTRO
+                        if (!empty($filters['exclude_agenda_uuid']) && 
+                            $data['agenda_uuid'] === $filters['exclude_agenda_uuid']) {
+                            $cumpleFiltros = false;
+                            Log::info('🚫 Cita excluida por exclude_agenda_uuid (JSON)', [
+                                'cita_uuid' => $data['uuid'] ?? 'N/A',
+                                'agenda_uuid' => $data['agenda_uuid']
+                            ]);
+                        }
                         if (!empty($filters['fecha'])) {
                             $fechaLimpia = $filters['fecha'];
                             if (strpos($fechaLimpia, 'T') !== false) {
