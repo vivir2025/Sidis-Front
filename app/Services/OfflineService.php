@@ -8573,12 +8573,21 @@ private function historiaClinicaExiste(string $uuid): bool
 
 /**
  * ✅ CREAR TABLA DE HISTORIAS CLÍNICAS - VERSIÓN COMPLETA CON TODOS LOS CAMPOS
+ * ⚠️ SOLO CREA SI NO EXISTE - NO ELIMINA DATOS EXISTENTES
  */
 private function createHistoriasClinicasTable(): void
 {
     try {
-        // ✅ ELIMINAR TABLA EXISTENTE PARA RECREARLA
-        DB::connection('offline')->statement('DROP TABLE IF EXISTS historias_clinicas');
+        // ✅ VERIFICAR SI LA TABLA YA EXISTE (NO ELIMINAR NUNCA)
+        $tableExists = DB::connection('offline')
+            ->select("SELECT name FROM sqlite_master WHERE type='table' AND name='historias_clinicas'");
+        
+        if (!empty($tableExists)) {
+            // ✅ La tabla ya existe, no hacer nada
+            return;
+        }
+        
+        Log::info('🔧 Creando tabla historias_clinicas (no existía)');
         
         DB::connection('offline')->statement('
             CREATE TABLE IF NOT EXISTS historias_clinicas (
@@ -8998,7 +9007,7 @@ private function createHistoriasClinicasTable(): void
             CREATE INDEX IF NOT EXISTS idx_historias_documento ON historias_clinicas(paciente_documento)
         ');
         
-        Log::info('✅ Tabla historias_clinicas recreada con TODOS los campos', [
+        Log::info('✅ Tabla historias_clinicas creada exitosamente', [
             'total_columnas' => 'más de 150 campos',
             'indices_creados' => 5
         ]);
