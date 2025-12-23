@@ -8019,6 +8019,13 @@ public function storeHistoriaClinicaOffline(array $historiaData, bool $needsSync
             return;
         }
 
+        // ✅ ASEGURAR QUE EL UUID SEA STRING (NO OBJETO LazyUuidFromString)
+        $uuid = $historiaData['uuid'];
+        if (is_object($uuid)) {
+            $uuid = (string) $uuid;
+        }
+        $historiaData['uuid'] = $uuid;
+
         // ✅ EXTRAER Y PRESERVAR ARRAYS DE RELACIONES ANTES DE PROCESAR
         $diagnosticos = $historiaData['diagnosticos'] ?? [];
         $medicamentos = $historiaData['medicamentos'] ?? [];
@@ -8029,7 +8036,8 @@ public function storeHistoriaClinicaOffline(array $historiaData, bool $needsSync
         $sede = $historiaData['sede'] ?? null;
 
         Log::info('📦 Arrays extraídos para almacenamiento', [
-            'uuid' => $historiaData['uuid'],
+            'uuid' => $uuid,
+            'uuid_type' => gettype($uuid),
             'diagnosticos_count' => count($diagnosticos),
             'medicamentos_count' => count($medicamentos),
             'remisiones_count' => count($remisiones),
@@ -8046,8 +8054,8 @@ public function storeHistoriaClinicaOffline(array $historiaData, bool $needsSync
             // ═══════════════════════════════════════════
             // 🔹 CAMPOS BÁSICOS
             // ═══════════════════════════════════════════
-            'uuid' => $historiaData['uuid'],
-            'cita_uuid' => $historiaData['cita_uuid'] ?? null,
+            'uuid' => $uuid, // ✅ USAR EL UUID YA CONVERTIDO A STRING
+            'cita_uuid' => is_object($historiaData['cita_uuid'] ?? null) ? (string) $historiaData['cita_uuid'] : ($historiaData['cita_uuid'] ?? null),
             'cita_id' => $historiaData['cita_id'] ?? null,
             'sede_id' => $historiaData['sede_id'] ?? null,
             'usuario_id' => $historiaData['usuario_id'] ?? null,
@@ -12346,7 +12354,8 @@ public function checkNuevasHistorias(int $sedeId): array
 }
 
 /**
- * ✅✅✅ NUEVO: ENVIAR HISTORIAS PENDIENTES A LA API (OFFLINE → API) ✅✅✅
+ * ✅✅✅ ENVIAR HISTORIAS PENDIENTES A LA API (OFFLINE → API) ✅✅✅
+ * Las historias se buscan SOLO en SQLite (JSON es para datos completos)
  */
 public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = null): array
 {
@@ -12356,7 +12365,7 @@ public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = n
             'paciente_uuid' => $pacienteUuid
         ]);
 
-        // ✅ OBTENER HISTORIAS CON sync_status = 'pending'
+        // ✅ BUSCAR EN SQLite (FUENTE ÚNICA PARA SINCRONIZACIÓN)
         $query = DB::connection('offline')->table('historias_clinicas')
             ->where('sync_status', 'pending');
 
@@ -12385,21 +12394,23 @@ public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = n
         // ✅ ENVIAR CADA HISTORIA A LA API
         foreach ($historiasPendientes as $historia) {
             try {
+                $uuid = $historia->uuid;
+                
                 Log::info('📤 Enviando historia a API', [
-                    'uuid' => $historia->uuid,
-                    'paciente' => $historia->paciente_nombre
+                    'uuid' => $uuid,
+                    'paciente' => $historia->paciente_nombre ?? 'N/A'
                 ]);
 
                 // ✅ CARGAR ARCHIVO JSON CON DATOS COMPLETOS
-                $jsonPath = storage_path("app/offline/historias_clinicas/{$historia->uuid}.json");
+                $jsonPath = storage_path("app/offline/historias_clinicas/{$uuid}.json");
                 
                 if (!file_exists($jsonPath)) {
                     Log::warning('⚠️ Archivo JSON no encontrado', [
-                        'uuid' => $historia->uuid,
+                        'uuid' => $uuid,
                         'path' => $jsonPath
                     ]);
                     $errors[] = [
-                        'uuid' => $historia->uuid,
+                        'uuid' => $uuid,
                         'error' => 'Archivo JSON no encontrado'
                     ];
                     continue;
@@ -12409,10 +12420,10 @@ public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = n
                 
                 if (!$historiaData) {
                     Log::warning('⚠️ No se pudo decodificar JSON', [
-                        'uuid' => $historia->uuid
+                        'uuid' => $uuid
                     ]);
                     $errors[] = [
-                        'uuid' => $historia->uuid,
+                        'uuid' => $uuid,
                         'error' => 'Error decodificando JSON'
                     ];
                     continue;
@@ -12423,25 +12434,34 @@ public function enviarHistoriasPendientes(int $sedeId, ?string $pacienteUuid = n
 
                 if (isset($response['success']) && $response['success']) {
                     Log::info('✅ Historia enviada exitosamente', [
-                        'uuid' => $historia->uuid
+                        'uuid' => $uuid
                     ]);
 
-                    // ✅ ACTUALIZAR sync_status A 'synced'
+                    // ✅ ACTUALIZAR sync_status A 'synced' EN SQLite
                     DB::connection('offline')->table('historias_clinicas')
-                        ->where('uuid', $historia->uuid)
+                        ->where('uuid', $uuid)
                         ->update([
                             'sync_status' => 'synced',
                             'updated_at' => now()
                         ]);
 
+                    // ✅ TAMBIÉN ACTUALIZAR EN EL ARCHIVO JSON
+                    $historiaData['sync_status'] = 'synced';
+                    $historiaData['updated_at'] = now()->toISOString();
+                    file_put_contents($jsonPath, json_encode($historiaData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    
+                    Log::info('✅ sync_status actualizado en SQLite y JSON', [
+                        'uuid' => $uuid
+                    ]);
+
                     $enviadas++;
                 } else {
                     Log::warning('⚠️ API rechazó la historia', [
-                        'uuid' => $historia->uuid,
+                        'uuid' => $uuid,
                         'response' => $response
                     ]);
                     $errors[] = [
-                        'uuid' => $historia->uuid,
+                        'uuid' => $uuid,
                         'error' => $response['error'] ?? 'Error desconocido'
                     ];
                 }
