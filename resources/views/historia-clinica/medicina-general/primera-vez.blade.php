@@ -11,6 +11,8 @@
     <form id="historiaClinicaForm" method="POST" action="{{ route('historia-clinica.store') }}">
         @csrf
         <input type="hidden" name="cita_uuid" value="{{ $cita['uuid'] }}">
+        <input type="hidden" name="tipo_consulta" value="PRIMERA VEZ">
+        <input type="hidden" name="especialidad" value="MEDICINA GENERAL">
         
         {{-- ✅ TODAS LAS SECCIONES COMO PARTIALS --}}
         @include('historia-clinica.partials.datos-basicos')

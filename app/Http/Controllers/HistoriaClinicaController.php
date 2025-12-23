@@ -945,11 +945,51 @@ private function formatearCupsParaFormulario(array $cups): array
             'usuario' => $usuario['nombre_completo']
         ]);
 
+        // ✅✅✅ DEBUG: Ver campos de psicología y complementarios que llegan ✅✅✅
+        Log::info('🔍 CAMPOS COMPLEMENTARIOS RECIBIDOS DEL FORMULARIO', [
+            // Psicología
+            'estructura_familiar' => $request->input('estructura_familiar'),
+            'psicologia_red_apoyo' => $request->input('psicologia_red_apoyo'),
+            'psicologia_comportamiento_consulta' => $request->input('psicologia_comportamiento_consulta'),
+            'psicologia_tratamiento_actual_adherencia' => $request->input('psicologia_tratamiento_actual_adherencia'),
+            'psicologia_descripcion_problema' => $request->input('psicologia_descripcion_problema'),
+            'analisis_conclusiones' => $request->input('analisis_conclusiones'),
+            'psicologia_plan_intervencion_recomendacion' => $request->input('psicologia_plan_intervencion_recomendacion'),
+            'avance_paciente' => $request->input('avance_paciente'),
+            // Fisioterapia
+            'actitud' => $request->input('actitud'),
+            'evaluacion_d' => $request->input('evaluacion_d'),
+            'plan_seguir' => $request->input('plan_seguir'),
+            // Nutrición
+            'enfermedad_diagnostica' => $request->input('enfermedad_diagnostica'),
+            'analisis_nutricional' => $request->input('analisis_nutricional'),
+        ]);
+
         // ✅ VALIDAR DATOS BÁSICOS
         $validatedData = $this->validateHistoriaClinica($request);
 
+        // ✅✅✅ DEBUG: Ver campos de psicología después de validación ✅✅✅
+        Log::info('🔍 CAMPOS COMPLEMENTARIOS DESPUÉS DE VALIDAR', [
+            // Psicología
+            'estructura_familiar' => $validatedData['estructura_familiar'] ?? 'NO_EXISTE',
+            'psicologia_red_apoyo' => $validatedData['psicologia_red_apoyo'] ?? 'NO_EXISTE',
+            'psicologia_descripcion_problema' => $validatedData['psicologia_descripcion_problema'] ?? 'NO_EXISTE',
+            'analisis_conclusiones' => $validatedData['analisis_conclusiones'] ?? 'NO_EXISTE',
+            'psicologia_plan_intervencion_recomendacion' => $validatedData['psicologia_plan_intervencion_recomendacion'] ?? 'NO_EXISTE',
+        ]);
+
         // ✅ PREPARAR DATOS PARA ENVÍO
         $historiaData = $this->prepareHistoriaData($validatedData, $usuario);
+
+        // ✅✅✅ DEBUG: Ver campos complementarios en historiaData preparado ✅✅✅
+        Log::info('🔍 CAMPOS COMPLEMENTARIOS EN HISTORIA DATA PREPARADO', [
+            // Psicología
+            'estructura_familiar' => $historiaData['estructura_familiar'] ?? 'NO_EXISTE',
+            'psicologia_red_apoyo' => $historiaData['psicologia_red_apoyo'] ?? 'NO_EXISTE',
+            'psicologia_descripcion_problema' => $historiaData['psicologia_descripcion_problema'] ?? 'NO_EXISTE',
+            'analisis_conclusiones' => $historiaData['analisis_conclusiones'] ?? 'NO_EXISTE',
+            'psicologia_plan_intervencion_recomendacion' => $historiaData['psicologia_plan_intervencion_recomendacion'] ?? 'NO_EXISTE',
+        ]);
 
         // ✅ INTENTAR GUARDAR ONLINE PRIMERO
         if ($this->apiService->isOnline()) {
@@ -1181,6 +1221,8 @@ private function validateHistoriaClinica(Request $request): array
     return $request->validate([
         // ✅ DATOS BÁSICOS OBLIGATORIOS
         'cita_uuid' => 'required|string',
+        'especialidad' => 'nullable|string|max:100',
+        'tipo_consulta' => 'nullable|string|max:50',
         'motivo' => 'nullable|string|max:1000',
         'enfermedad_actual' => 'nullable|string|max:2000',
         
@@ -1952,6 +1994,7 @@ private function prepareHistoriaData(array $validatedData, array $usuario): arra
         'sede_id' => $usuario['sede_id'], // ✅ AGREGADO - OBLIGATORIO  
         'usuario_id' => $usuario['id'], // ✅ AGREGADO - OBLIGATORIO
         'tipo_consulta' => $tipoConsulta, // ✅ AGREGADO - INTELIGENTE
+        'especialidad' => $validatedData['especialidad'] ?? null, // ✅ AGREGADO - ESPECIALIDAD DESDE FORMULARIO
         
         // ✅ RESTO DE CAMPOS (mantén todo lo que ya tienes)...
         'finalidad' => $validatedData['finalidad'] ?? 'CONSULTA',

@@ -12,6 +12,7 @@
         @csrf
         <input type="hidden" name="cita_uuid" value="{{ $cita['uuid'] }}">
         <input type="hidden" name="tipo_consulta" value="PRIMERA VEZ">
+        <input type="hidden" name="especialidad" value="NUTRICIONISTA">
         <input type="hidden" name="paciente_uuid" value="{{ $cita['paciente_uuid'] ?? $cita['paciente']['uuid'] }}">
         <input type="hidden" name="usuario_id" value="{{ $usuario['id'] }}">
         <input type="hidden" name="sede_id" value="{{ $usuario['sede_id'] }}">

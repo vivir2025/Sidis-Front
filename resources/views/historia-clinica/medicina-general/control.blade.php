@@ -13,6 +13,7 @@
         @csrf
         <input type="hidden" name="cita_uuid" value="{{ $cita['uuid'] }}">
         <input type="hidden" name="tipo_consulta" value="CONTROL">
+        <input type="hidden" name="especialidad" value="MEDICINA GENERAL">
         
         {{-- ✅ SECCIÓN: DATOS BÁSICOS --}}
         @include('historia-clinica.partials.datos-basicos')
