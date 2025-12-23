@@ -1768,6 +1768,15 @@
         });
     </script>
 
+    <script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => console.log('SW registrado'))
+    .catch(err => console.log('SW error:', err));
+}
+</script>
+
+
     @stack('scripts')
 </body>
 </html>
