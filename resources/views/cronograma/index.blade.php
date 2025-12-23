@@ -28,34 +28,6 @@
     border: none;
     box-shadow: var(--shadow-sm);
 }
-/* ✅ ESTILOS PARA CAMBIOS PENDIENTES */
-.cambios-pendientes {
-    position: relative;
-    border-left: 4px solid #17a2b8 !important;
-}
-
-.cambios-pendientes::before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 12px;
-    height: 12px;
-    background: #17a2b8;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.cambios-pendientes-text {
-    font-size: 0.75rem;
-    font-weight: 500;
-}
 
 .card-stat:hover {
     transform: translateY(-4px);
@@ -86,50 +58,6 @@
 .cita-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-/* ✅ ESTILOS PARA CAMBIOS PENDIENTES */
-.cita-card.cambios-pendientes {
-    border-left: 4px solid #17a2b8 !important;
-    background: linear-gradient(135deg, rgba(23, 162, 184, 0.05) 0%, rgba(255, 255, 255, 1) 100%);
-}
-
-.badge.cambios-pendientes {
-    position: relative;
-    overflow: visible;
-}
-
-.badge.cambios-pendientes::after {
-    content: '';
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 8px;
-    height: 8px;
-    background: #ffc107;
-    border-radius: 50%;
-    border: 2px solid white;
-    animation: pulse-pending 2s infinite;
-}
-
-@keyframes pulse-pending {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.2); opacity: 0.7; }
-    100% { transform: scale(1); opacity: 1; }
-}
-
-.text-info.cambios-pendientes {
-    font-weight: 600;
-    animation: fade-in-out 3s infinite;
-}
-
-@keyframes fade-in-out {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
-}
-
-.border-start.border-4 {
-    border-left-width: 4px !important;
 }
 
 .badge-sm {
@@ -164,9 +92,9 @@
 }
 
 .connection-indicator.offline {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
 }
 
 @keyframes fadeIn {
@@ -174,18 +102,8 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
 .card {
     animation: fadeIn 0.5s ease-out;
-}
-
-.badge {
-    animation: pulse 2s infinite;
 }
 
 @media (max-width: 768px) {
@@ -205,31 +123,9 @@
 }
 </style>
 @endpush
-@if(!$isOffline && isset($nuevasHistorias) && $nuevasHistorias > 0)
-<div class="alert alert-info alert-dismissible fade show" role="alert">
-    <i class="fas fa-info-circle me-2"></i>
-    <strong>Historias Clínicas:</strong> Hay {{ $nuevasHistorias }} historias nuevas disponibles para sincronizar.
-    <button type="button" class="btn btn-sm btn-primary ms-3" onclick="sincronizarHistorias()">
-        <i class="fas fa-download me-1"></i> Sincronizar Ahora
-    </button>
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-@endif
 
 @section('content')
 <div class="container-fluid">
-    <!-- ✅ ALERTA DE MODO OFFLINE PERMANENTE -->
-    <div id="offline-banner" class="alert alert-warning alert-dismissible fade {{ $isOffline ? 'show' : 'd-none' }} mb-3" role="alert" style="position: sticky; top: 0; z-index: 1040;">
-        <div class="d-flex align-items-center">
-            <i class="fas fa-wifi-slash me-2 fa-lg"></i>
-            <div class="flex-grow-1">
-                <strong>📱 Modo Offline Activo</strong>
-                <p class="mb-0 small">Los cambios se guardarán localmente y se sincronizarán automáticamente cuando recuperes la conexión.</p>
-            </div>
-            <span id="offline-pending-count" class="badge bg-danger ms-2" style="display: none;">0</span>
-        </div>
-    </div>
-    
     <!-- ✅ HEADER DEL CRONOGRAMA -->
     <div class="row mb-4">
         <div class="col-12">
@@ -256,7 +152,7 @@
                     <!-- Estado de Conexión -->
                     @if($isOffline)
                         <span class="badge bg-warning connection-indicator offline" id="badge-conexion">
-                            <i class="fas fa-database"></i> Datos Locales
+                            <i class="fas fa-database"></i> Local
                         </span>
                     @else
                         <span class="badge bg-success connection-indicator online" id="badge-conexion">
@@ -386,11 +282,6 @@
                             <a href="{{ route('agendas.create') }}" class="btn btn-primary">
                                 <i class="fas fa-plus me-1"></i>Crear Nueva Agenda
                             </a>
-                        @else
-                            <div class="alert alert-info mt-3">
-                                <i class="fas fa-info-circle me-2"></i>
-                                <strong>Modo Offline:</strong> Para crear nuevas agendas necesitas conexión a internet.
-                            </div>
                         @endif
                     </div>
                 </div>
@@ -490,11 +381,6 @@
                                         <a href="{{ route('citas.create') }}?agenda={{ $agenda['uuid'] }}" class="btn btn-outline-primary btn-sm">
                                             <i class="fas fa-plus me-1"></i>Agendar Cita
                                         </a>
-                                    @else
-                                        <div class="alert alert-info mt-2">
-                                            <i class="fas fa-info-circle me-1"></i>
-                                            <small>Modo offline: Las nuevas citas se sincronizarán cuando tengas conexión</small>
-                                        </div>
                                     @endif
                                 </div>
                             @else
@@ -544,7 +430,6 @@
                                 <div class="row g-3">
                                     @foreach($agenda['citas'] as $cita)
                                         @php
-                                            // ✅ MEJORAR LA BÚSQUEDA DE DATOS DEL PACIENTE
                                             $paciente = $cita['paciente'] ?? [];
                                             $estado = $cita['estado'] ?? 'PROGRAMADA';
                                             $estadoInfo = [
@@ -555,7 +440,6 @@
                                                 'NO_ASISTIO' => ['color' => 'secondary', 'icon' => 'user-times', 'label' => 'No Asistió']
                                             ][$estado] ?? ['color' => 'secondary', 'icon' => 'question', 'label' => $estado];
                                             
-                                            // ✅ BUSCAR NOMBRE EN MÚLTIPLES UBICACIONES CON MEJOR LÓGICA
                                             $nombrePaciente = '';
                                             if (!empty($paciente['nombre_completo'])) {
                                                 $nombrePaciente = $paciente['nombre_completo'];
@@ -569,62 +453,35 @@
                                                 $nombrePaciente = 'Paciente no identificado';
                                             }
                                             
-                                            // ✅ BUSCAR DOCUMENTO
                                             $documentoPaciente = $paciente['documento'] ?? 
                                                                 $paciente['cedula'] ?? 
                                                                 $cita['paciente_documento'] ?? 
                                                                 $cita['documento_paciente'] ?? 
                                                                 'Sin documento';
                                                                 
-                                            // ✅ BUSCAR TELÉFONO
                                             $telefonoPaciente = $paciente['telefono'] ?? 
                                                                $paciente['celular'] ?? 
                                                                $cita['paciente_telefono'] ?? 
                                                                $cita['telefono_paciente'] ?? 
                                                                null;
-                                            
-                                            // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES OFFLINE
-                                            $tieneCambiosPendientes = false;
-                                            if (isset($cita['offline_modificado']) && $cita['offline_modificado']) {
-                                                $tieneCambiosPendientes = true;
-                                            }
-                                                           
-                                            // ✅ DEBUG MEJORADO
-                                            if ($loop->first) {
-                                                \Log::info('🔍 DEBUG PACIENTE CRONOGRAMA MEJORADO:', [
-                                                    'cita_uuid' => $cita['uuid'],
-                                                    'paciente_raw' => $paciente,
-                                                    'nombre_encontrado' => $nombrePaciente,
-                                                    'documento_encontrado' => $documentoPaciente,
-                                                    'telefono_encontrado' => $telefonoPaciente,
-                                                    'tiene_cambios_pendientes' => $tieneCambiosPendientes,
-                                                    'estado_actual' => $cita['estado'] ?? 'N/A'
-                                                ]);
-                                            }
                                         @endphp
                                         
                                         <div class="col-md-6 col-lg-4" data-cita-uuid="{{ $cita['uuid'] }}">
-                                            <div class="card border-start border-4 border-{{ $estadoInfo['color'] }} h-100 cita-card {{ $tieneCambiosPendientes ? 'cambios-pendientes' : '' }}">
+                                            <div class="card border-start border-4 border-{{ $estadoInfo['color'] }} h-100 cita-card">
                                                 <div class="card-body">
-                                                    <!-- ✅ HEADER DE CITA MEJORADO -->
+                                                    <!-- ✅ HEADER DE CITA -->
                                                     <div class="d-flex justify-content-between align-items-start mb-2">
                                                         <h6 class="card-title mb-0 text-truncate" style="max-width: 70%;">
                                                             <i class="fas fa-user me-1"></i>
                                                             {{ $nombrePaciente }}
-                                                            @if($tieneCambiosPendientes)
-                                                                <i class="fas fa-sync-alt text-info ms-1" title="Cambios pendientes de sincronización"></i>
-                                                            @endif
                                                         </h6>
-                                                        <span class="badge bg-{{ $estadoInfo['color'] }} badge-sm {{ $tieneCambiosPendientes ? 'cambios-pendientes' : '' }}">
+                                                        <span class="badge bg-{{ $estadoInfo['color'] }} badge-sm">
                                                             <i class="fas fa-{{ $estadoInfo['icon'] }} me-1"></i>
                                                             {{ $estadoInfo['label'] }}
-                                                            @if($tieneCambiosPendientes)
-                                                                <i class="fas fa-clock ms-1" title="Pendiente de sincronizar"></i>
-                                                            @endif
                                                         </span>
                                                     </div>
 
-                                                    <!-- ✅ INFORMACIÓN DE LA CITA MEJORADA -->
+                                                    <!-- ✅ INFORMACIÓN DE LA CITA -->
                                                     <div class="text-muted small mb-2">
                                                         <div class="mb-1">
                                                             <i class="fas fa-id-card me-1"></i> 
@@ -638,22 +495,15 @@
                                                         @if($telefonoPaciente)
                                                             <div class="mb-1">
                                                                 <i class="fas fa-phone me-1"></i>
-                                                                                                                                {{ $telefonoPaciente }}
+                                                                {{ $telefonoPaciente }}
                                                             </div>
                                                         @endif
                                                         
-                                                        <!-- ✅ INDICADORES DE ESTADO -->
                                                         @if(isset($cita['source']) && $cita['source'] === 'offline')
                                                             <div class="mb-1">
-                                                                <i class="fas fa-database me-1"></i>
-                                                                <span class="text-warning">Datos locales</span>
-                                                            </div>
-                                                        @endif
-                                                        
-                                                        @if($tieneCambiosPendientes)
-                                                            <div class="mb-1">
-                                                                <i class="fas fa-sync-alt me-1"></i>
-                                                                <span class="text-info cambios-pendientes">Cambios pendientes</span>
+                                                                <span class="badge badge-sm bg-warning">
+                                                                    <i class="fas fa-database me-1"></i>Local
+                                                                </span>
                                                             </div>
                                                         @endif
                                                     </div>
@@ -666,97 +516,82 @@
                                                         </p>
                                                     @endif
                                                     
-                                                <!-- ✅ BOTONES DE ACCIÓN MEJORADOS CON HISTORIA CLÍNICA -->
-<div class="d-flex gap-1 mt-auto position-relative">
-    <button type="button" 
-            class="btn btn-outline-primary btn-sm flex-fill btn-detalle-cita"
-            data-cita-uuid="{{ $cita['uuid'] }}">
-        <i class="fas fa-eye"></i> Ver
-    </button>
-    
-    <!-- ✅ BOTONES QUE FUNCIONAN TANTO ONLINE COMO OFFLINE -->
-    @switch($estado)
-        @case('PROGRAMADA')
-            <button type="button" 
-                    class="btn btn-success btn-sm btn-estado-cita"
-                    data-cita-uuid="{{ $cita['uuid'] }}"
-                    data-estado="EN_ATENCION"
-                    title="Iniciar atención">
-                <i class="fas fa-play"></i>
-            </button>
-            <div class="dropdown">
-                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
-                        data-bs-toggle="dropdown">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
-                <ul class="dropdown-menu">
-                    <li>
-                        <a class="dropdown-item btn-estado-cita" 
-                           data-cita-uuid="{{ $cita['uuid'] }}" 
-                           data-estado="CANCELADA">
-                            <i class="fas fa-times text-danger me-2"></i>Cancelar
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item btn-estado-cita" 
-                           data-cita-uuid="{{ $cita['uuid'] }}" 
-                           data-estado="NO_ASISTIO">
-                            <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
-                        </a>
-                    </li>
-                </ul>
-            </div>
-            @break
-            
-        @case('EN_ATENCION')
-            <!-- ✅ AGREGADO: Botón de Historia Clínica para EN_ATENCION -->
-            <button type="button" 
-                    class="btn btn-info btn-sm btn-historia-clinica"
-                    data-cita-uuid="{{ $cita['uuid'] }}"
-                    title="Crear Historia Clínica">
-                <i class="fas fa-file-medical"></i> HC
-            </button>
-            <button type="button" 
-                    class="btn btn-success btn-sm btn-estado-cita"
-                    data-cita-uuid="{{ $cita['uuid'] }}"
-                    data-estado="ATENDIDA"
-                    title="Marcar como atendida">
-                <i class="fas fa-check"></i>
-            </button>
-            @break
-            
-        @case('ATENDIDA')
-            <!-- ✅ AGREGADO: Botón de Historia Clínica para ATENDIDA -->
-            <button type="button" 
-                    class="btn btn-success btn-sm btn-historia-clinica"
-                    data-cita-uuid="{{ $cita['uuid'] }}"
-                    title="Ver Historia Clínica">
-                <i class="fas fa-file-medical"></i> HC
-            </button>
-            <span class="badge bg-success flex-fill text-center py-2 ms-1">
-                <i class="fas fa-check-circle"></i> Completada
-            </span>
-            @break
-            
-        @default
-            <button type="button" 
-                    class="btn btn-outline-primary btn-sm btn-estado-cita"
-                    data-cita-uuid="{{ $cita['uuid'] }}"
-                    data-estado="PROGRAMADA"
-                    title="Reprogramar">
-                <i class="fas fa-redo"></i>
-            </button>
-    @endswitch
-    
-    <!-- ✅ INDICADOR DE MODO OFFLINE (OPCIONAL) -->
-    @if($isOffline)
-        <div class="position-absolute top-0 end-0 mt-1 me-1">
-            <span class="badge bg-warning badge-sm" title="Modo offline - Los cambios se sincronizarán">
-                <i class="fas fa-database"></i>
-            </span>
-        </div>
-    @endif
-</div>
+                                                    <!-- ✅ BOTONES DE ACCIÓN -->
+                                                    <div class="d-flex gap-1 mt-auto">
+                                                        <button type="button" 
+                                                                class="btn btn-outline-primary btn-sm flex-fill btn-detalle-cita"
+                                                                data-cita-uuid="{{ $cita['uuid'] }}">
+                                                            <i class="fas fa-eye"></i> Ver
+                                                        </button>
+                                                        
+                                                        @switch($estado)
+                                                            @case('PROGRAMADA')
+                                                                <button type="button" 
+                                                                        class="btn btn-success btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="EN_ATENCION"
+                                                                        title="Iniciar atención">
+                                                                    <i class="fas fa-play"></i>
+                                                                </button>
+                                                                <div class="dropdown">
+                                                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
+                                                                            data-bs-toggle="dropdown">
+                                                                        <i class="fas fa-ellipsis-v"></i>
+                                                                    </button>
+                                                                    <ul class="dropdown-menu">
+                                                                        <li>
+                                                                            <a class="dropdown-item btn-estado-cita" 
+                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
+                                                                               data-estado="CANCELADA">
+                                                                                <i class="fas fa-times text-danger me-2"></i>Cancelar
+                                                                            </a>
+                                                                        </li>
+                                                                        <li>
+                                                                            <a class="dropdown-item btn-estado-cita" 
+                                                                               data-cita-uuid="{{ $cita['uuid'] }}" 
+                                                                               data-estado="NO_ASISTIO">
+                                                                                <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
+                                                                            </a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                                @break
+                                                            
+                                                            @case('EN_ATENCION')
+                                                                <button type="button" 
+                                                                        class="btn btn-info btn-sm btn-historia-clinica"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        title="Crear Historia Clínica">
+                                                                    <i class="fas fa-file-medical"></i>
+                                                                </button>
+                                                                <button type="button" 
+                                                                        class="btn btn-success btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="ATENDIDA"
+                                                                        title="Marcar como atendida">
+                                                                    <i class="fas fa-check"></i>
+                                                                </button>
+                                                                @break
+                                                            
+                                                            @case('ATENDIDA')
+                                                                <button type="button" 
+                                                                        class="btn btn-success btn-sm btn-historia-clinica flex-fill"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        title="Ver Historia Clínica">
+                                                                    <i class="fas fa-file-medical me-1"></i> Historia Clínica
+                                                                </button>
+                                                                @break
+                                                            
+                                                            @default
+                                                                <button type="button" 
+                                                                        class="btn btn-outline-primary btn-sm btn-estado-cita"
+                                                                        data-cita-uuid="{{ $cita['uuid'] }}"
+                                                                        data-estado="PROGRAMADA"
+                                                                        title="Reprogramar">
+                                                                    <i class="fas fa-redo"></i>
+                                                                </button>
+                                                        @endswitch
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -779,7 +614,6 @@
                     <span class="visually-hidden">Cargando...</span>
                 </div>
                 <h5>Actualizando cronograma...</h5>
-                <p class="mb-0">Por favor espere un momento</p>
             </div>
         </div>
     </div>
@@ -861,52 +695,14 @@ function validarLocalStorage() {
         localStorage.removeItem(test);
         return true;
     } catch (e) {
-        console.error('❌ localStorage NO disponible:', e);
         return false;
     }
 }
 
 const localStorageDisponible = validarLocalStorage();
 
-// ✅ SI NO HAY AGENDAS Y ESTAMOS OFFLINE, INTENTAR CARGAR
-if ((!cronogramaData.agendas || cronogramaData.agendas.length === 0) && !navigator.onLine) {
-    setTimeout(cargarAgendasOfflineDirecto, 1000);
-}
-
-// ✅ CARGAR AGENDAS OFFLINE DIRECTAMENTE DESDE BACKEND
-async function cargarAgendasOfflineDirecto() {
-    try {
-        const url = `/cronograma/mis-agendas/${fechaActual}`;
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error('Error en la respuesta: ' + response.status);
-        }
-        
-        const data = await response.json();
-        
-        if (data.agendas && data.agendas.length > 0) {
-            cronogramaData = data;
-            mostrarAlerta('success', `${data.agendas.length} agendas encontradas offline`);
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            mostrarAlerta('warning', 'No hay agendas disponibles offline');
-        }
-        
-    } catch (error) {
-        console.error('❌ Error cargando agendas offline:', error);
-    }
-}
-
 // ✅ INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
-    actualizarContadorCambiosPendientes();
     initEventListeners();
 
     if (!isOffline) {
@@ -919,9 +715,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initDetectorConectividad();
 });
 
-// ✅ EVENT LISTENERS CORREGIDOS
+// ✅ EVENT LISTENERS
 function initEventListeners() {
-    // Selector de fecha
     const fechaSelector = document.getElementById('fecha-selector');
     if (fechaSelector) {
         fechaSelector.addEventListener('change', function() {
@@ -930,87 +725,53 @@ function initEventListeners() {
         });
     }
     
-    // Botón actualizar
     const btnActualizar = document.getElementById('btn-actualizar');
     if (btnActualizar) {
         btnActualizar.addEventListener('click', function() {
-            if (isOffline) {
-                mostrarAlerta('warning', 'Modo offline: No se puede actualizar desde el servidor');
-                return;
-            }
             actualizarCronograma();
         });
     }
     
-    // ✅ EVENT DELEGATION CORREGIDO CON DEBUG COMPLETO
     document.addEventListener('click', function(e) {
-        // ✅ BOTÓN DE HISTORIA CLÍNICA
-       if (e.target.classList.contains('btn-historia-clinica') || e.target.closest('.btn-historia-clinica')) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const btn = e.target.classList.contains('btn-historia-clinica') ? e.target : e.target.closest('.btn-historia-clinica');
-    const citaUuid = btn.dataset.citaUuid;
-    
-    console.log('📋 Abriendo Historia Clínica para cita:', citaUuid);
-    
-    if (!citaUuid) {
-        mostrarAlerta('error', 'Error: ID de cita no válido para Historia Clínica');
-        return;
-    }
-    
-    // ✅ CAMBIAR ESTA LÍNEA:
-    const url = `/historia-clinica/determinar-vista/${citaUuid}`; // ← NUEVA RUTA
-    console.log('🔗 Redirigiendo a:', url);
-    window.location.href = url;
-    return;
-}
+        // Botón de Historia Clínica
+        if (e.target.classList.contains('btn-historia-clinica') || e.target.closest('.btn-historia-clinica')) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const btn = e.target.classList.contains('btn-historia-clinica') ? e.target : e.target.closest('.btn-historia-clinica');
+            const citaUuid = btn.dataset.citaUuid;
+            
+            if (!citaUuid) {
+                mostrarAlerta('error', 'Error: ID de cita no válido');
+                return;
+            }
+            
+            const url = `/historia-clinica/determinar-vista/${citaUuid}`;
+            window.location.href = url;
+            return;
+        }
         
         // Botones de estado de citas
         if (e.target.classList.contains('btn-estado-cita') || e.target.closest('.btn-estado-cita')) {
-            e.preventDefault(); // ✅ PREVENIR COMPORTAMIENTO DEFAULT
-            e.stopPropagation(); // ✅ EVITAR PROPAGACIÓN
+            e.preventDefault();
+            e.stopPropagation();
             
             const btn = e.target.classList.contains('btn-estado-cita') ? e.target : e.target.closest('.btn-estado-cita');
             const citaUuid = btn.dataset.citaUuid;
             const nuevoEstado = btn.dataset.estado;
             
-            // ✅ DEBUG CRÍTICO COMPLETO
-            console.log('🔍 DEBUG COMPLETO: Botón clickeado', {
-                citaUuid: citaUuid,
-                nuevoEstado: nuevoEstado,
-                citaUuidType: typeof citaUuid,
-                citaUuidLength: citaUuid ? citaUuid.length : 0,
-                btnElement: btn,
-                btnDataset: btn.dataset,
-                btnOuterHTML: btn.outerHTML.substring(0, 200) + '...',
-                targetElement: e.target,
-                targetOuterHTML: e.target.outerHTML.substring(0, 200) + '...'
-            });
-            
-            // ✅ VALIDACIÓN ESTRICTA
             if (!citaUuid || citaUuid.trim() === '') {
-                console.error('❌ ERROR: UUID vacío o inválido', {
-                    citaUuid: citaUuid,
-                    btn: btn,
-                    dataset: btn.dataset
-                });
                 mostrarAlerta('error', 'Error: ID de cita no válido');
                 return;
             }
             
             if (!nuevoEstado || nuevoEstado.trim() === '') {
-                console.error('❌ ERROR: Estado vacío o inválido', {
-                    nuevoEstado: nuevoEstado,
-                    btn: btn
-                });
                 mostrarAlerta('error', 'Error: Estado no válido');
                 return;
             }
             
-            // ✅ LLAMAR A LA FUNCIÓN
             cambiarEstadoCita(citaUuid.trim(), nuevoEstado.trim());
-            return; // ✅ SALIR AQUÍ
+            return;
         }
         
         // Botones de detalle de cita
@@ -1043,13 +804,6 @@ function cambiarFecha(fecha) {
 
 // ✅ ACTUALIZAR CRONOGRAMA
 function actualizarCronograma() {
-    if (isOffline) {
-        mostrarAlerta('warning', 'Modo offline: No se puede actualizar desde el servidor');
-        return;
-    }
-    
-    console.log('🔄 Actualizando cronograma para fecha:', fechaActual);
-    
     if (document.getElementById('btn-actualizar').disabled) {
         return;
     }
@@ -1067,19 +821,17 @@ function actualizarCronograma() {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        console.log('📥 Respuesta del servidor:', data);
-        
         if (data.success) {
             cronogramaData = data.data;
             isOffline = data.offline || false;
             
             actualizarContenidoCronograma(data.data);
-            mostrarAlerta('success', 'Cronograma actualizado correctamente');
+            mostrarAlerta('success', 'Cronograma actualizado');
             actualizarTimestamp();
             actualizarBadgeConexion(!isOffline);
         } else {
@@ -1087,8 +839,6 @@ function actualizarCronograma() {
         }
     })
     .catch(error => {
-        console.error('❌ Error actualizando cronograma:', error);
-        mostrarAlerta('error', 'Error de conexión. Trabajando con datos locales.');
         manejarErrorConexion();
     })
     .finally(() => {
@@ -1099,11 +849,7 @@ function actualizarCronograma() {
 
 // ✅ ACTUALIZACIÓN AUTOMÁTICA
 function actualizarCronogramaAuto() {
-    if (isOffline) {
-        return;
-    }
-    
-    console.log('🔄 Actualización automática iniciada');
+    if (isOffline) return;
     
     fetch(`/cronograma/refresh?fecha=${fechaActual}`, {
         method: 'GET',
@@ -1115,7 +861,6 @@ function actualizarCronogramaAuto() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            console.log('✅ Actualización automática exitosa');
             cronogramaData = data.data;
             isOffline = data.offline || false;
             actualizarContenidoCronograma(data.data);
@@ -1124,7 +869,6 @@ function actualizarCronogramaAuto() {
         }
     })
     .catch(error => {
-        console.warn('⚠️ Error en actualización automática:', error);
         manejarErrorConexion();
     });
 }
@@ -1132,15 +876,9 @@ function actualizarCronogramaAuto() {
 // ✅ ACTUALIZAR CONTENIDO
 function actualizarContenidoCronograma(data) {
     try {
-        console.log('🔄 Actualizando contenido del cronograma');
-        
         actualizarEstadisticasGlobales(data.estadisticas);
         actualizarAgendasExistentes(data.agendas);
-        
-        console.log('✅ Contenido actualizado correctamente');
-        
     } catch (error) {
-        console.error('❌ Error actualizando contenido:', error);
         mostrarAlerta('error', 'Error actualizando la interfaz');
     }
 }
@@ -1206,14 +944,12 @@ function actualizarTarjetaAgenda(tarjeta, agenda) {
         }
         
     } catch (error) {
-        console.error('❌ Error actualizando tarjeta de agenda:', error);
+        // Error silencioso
     }
 }
 
 // ✅ VER DETALLE DE CITA
 function verDetalleCita(citaUuid) {
-    console.log('👁️ Viendo detalle de cita:', citaUuid);
-    
     mostrarLoading(true);
     
     fetch(`/cronograma/cita/${citaUuid}`, {
@@ -1226,7 +962,7 @@ function verDetalleCita(citaUuid) {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`HTTP ${response.status}`);
         }
         return response.json();
     })
@@ -1234,11 +970,10 @@ function verDetalleCita(citaUuid) {
         if (data.success) {
             mostrarModalDetalleCita(data.data);
         } else {
-            throw new Error(data.error || 'Error obteniendo detalle de cita');
+            throw new Error(data.error || 'Error obteniendo detalle');
         }
     })
     .catch(error => {
-        console.error('❌ Error cargando detalle:', error);
         mostrarAlerta('error', 'Error cargando detalle de cita');
     })
     .finally(() => {
@@ -1246,7 +981,7 @@ function verDetalleCita(citaUuid) {
     });
 }
 
-// ✅ MOSTRAR MODAL DETALLE CON BOTÓN DE HISTORIA CLÍNICA
+// ✅ MOSTRAR MODAL DETALLE
 function mostrarModalDetalleCita(cita) {
     const modal = new bootstrap.Modal(document.getElementById('modal-detalle-cita'));
     const modalBody = document.getElementById('modal-detalle-cita-body');
@@ -1319,19 +1054,10 @@ function mostrarModalDetalleCita(cita) {
                 <p class="mb-0">${cita.nota}</p>
             </div>
         ` : ''}
-        
-        ${cita.offline ? `
-            <div class="alert alert-warning mt-3">
-                <i class="fas fa-database me-2"></i>
-                Esta información proviene del almacenamiento local
-            </div>
-        ` : ''}
     `;
     
-    // ✅ CONSTRUIR BOTONES DE ESTADO + HISTORIA CLÍNICA
     let botonesHtml = '';
     
-    // Botón de Historia Clínica si la cita está en atención o atendida
     if (cita.estado === 'EN_ATENCION' || cita.estado === 'ATENDIDA') {
         botonesHtml += `
             <button type="button" class="btn btn-success btn-historia-clinica me-2" 
@@ -1341,7 +1067,6 @@ function mostrarModalDetalleCita(cita) {
         `;
     }
     
-    // Botones de estado si no está offline
     if (!isOffline && cita.estado) {
         botonesHtml += generarBotonesEstado(cita.uuid, cita.estado);
     }
@@ -1351,10 +1076,8 @@ function mostrarModalDetalleCita(cita) {
     modal.show();
 }
 
-// ✅ VER CITAS DE AGENDA CON BOTÓN DE HISTORIA CLÍNICA
+// ✅ VER CITAS DE AGENDA
 function verCitasAgenda(agendaUuid) {
-    console.log('📋 Viendo citas de agenda:', agendaUuid);
-    
     const agenda = cronogramaData.agendas?.find(a => a.uuid === agendaUuid);
     if (!agenda) {
         mostrarAlerta('error', 'Agenda no encontrada');
@@ -1376,26 +1099,22 @@ function verCitasAgenda(agendaUuid) {
             const paciente = cita.paciente || {};
             const fila = tabla.insertRow();
             
-            // ✅ GENERAR BOTONES INCLUYENDO HISTORIA CLÍNICA
             let botonesAccion = `
                 <button class="btn btn-sm btn-outline-primary btn-detalle-cita" 
                         data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal">
-                    <i class="fas fa-eye"></i> Ver
+                    <i class="fas fa-eye"></i>
                 </button>
             `;
             
-            // Botón de Historia Clínica
             if (cita.estado === 'EN_ATENCION' || cita.estado === 'ATENDIDA') {
                 botonesAccion += `
                     <button class="btn btn-sm btn-success btn-historia-clinica ms-1" 
-                            data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal"
-                            title="Crear Historia Clínica">
+                            data-cita-uuid="${cita.uuid}" data-bs-dismiss="modal">
                         <i class="fas fa-file-medical"></i>
                     </button>
                 `;
             }
             
-            // Botón de iniciar atención
             if (!isOffline && cita.estado === 'PROGRAMADA') {
                 botonesAccion += `
                     <button class="btn btn-sm btn-warning btn-estado-cita ms-1" 
@@ -1423,7 +1142,7 @@ function verCitasAgenda(agendaUuid) {
             <tr>
                 <td colspan="6" class="text-center text-muted py-4">
                     <i class="fas fa-calendar-times fa-2x mb-2"></i><br>
-                    No hay citas programadas para esta agenda
+                    No hay citas programadas
                 </td>
             </tr>
         `;
@@ -1432,67 +1151,39 @@ function verCitasAgenda(agendaUuid) {
     modal.show();
 }
 
-// ✅ FUNCIÓN CRÍTICA CORREGIDA PARA CAMBIAR ESTADO
+// ✅ CAMBIAR ESTADO DE CITA
 function cambiarEstadoCita(citaUuid, nuevoEstado) {
-    // ✅ VALIDACIÓN CRÍTICA DEL UUID
     if (!citaUuid || typeof citaUuid !== 'string' || citaUuid.trim() === '') {
-        console.error('❌ ERROR CRÍTICO: UUID de cita inválido', {
-            citaUuid: citaUuid,
-            type: typeof citaUuid,
-            length: citaUuid ? citaUuid.length : 0
-        });
         mostrarAlerta('error', 'Error: ID de cita no válido');
         return;
     }
     
-    // ✅ LIMPIAR UUID
     citaUuid = citaUuid.trim();
     
-    // ✅ VALIDAR QUE EL UUID TENGA FORMATO CORRECTO
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(citaUuid)) {
-        console.error('❌ ERROR: UUID con formato inválido', {
-            citaUuid: citaUuid,
-            length: citaUuid.length
-        });
-        mostrarAlerta('error', 'Error: Formato de ID de cita inválido');
+        mostrarAlerta('error', 'Error: Formato de ID inválido');
         return;
     }
     
-    console.log('🔄 Cambiando estado de cita:', {
-        citaUuid: citaUuid,
-        nuevoEstado: nuevoEstado,
-        uuidLength: citaUuid.length
-    });
-    
     mostrarLoading(true);
     
-    // ✅ MODO OFFLINE - VERIFICACIÓN MEJORADA
     const estamosOffline = isOffline || !navigator.onLine;
-    console.log('🔍 Verificación de conectividad:', {
-        isOffline: isOffline,
-        navigatorOnline: navigator.onLine,
-        resultado: estamosOffline ? 'OFFLINE' : 'ONLINE'
-    });
     
     if (estamosOffline) {
-        console.log('📱 MODO OFFLINE DETECTADO: Guardando cambio localmente');
         const guardado = guardarCambioEstadoOffline(citaUuid, nuevoEstado);
         
         if (guardado) {
             actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
-            mostrarAlerta('warning', `✓ Estado cambiado a ${nuevoEstado} (se sincronizará automáticamente)`);
+            mostrarAlerta('info', `Estado actualizado localmente`);
         }
         
         mostrarLoading(false);
         return;
     }
     
-    // ✅ CONSTRUIR URL CORRECTAMENTE
     const url = `/cronograma/cita/${citaUuid}/cambiar-estado`;
-    console.log('🌐 URL construida:', url);
     
-    // ✅ HACER PETICIÓN
     fetch(url, {
         method: 'POST',
         headers: {
@@ -1506,27 +1197,19 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
         })
     })
     .then(response => {
-        console.log('🔍 DEBUG: Status de respuesta:', response.status);
-        console.log('🔍 DEBUG: URL final:', response.url);
-        
         if (!response.ok) {
             return response.text().then(text => {
-                console.log('🔍 DEBUG: Texto de error:', text);
-                throw new Error(`HTTP ${response.status}: ${text}`);
+                throw new Error(`HTTP ${response.status}`);
             });
         }
         return response.json();
     })
     .then(data => {
-        console.log('✅ DEBUG: Respuesta exitosa:', data);
-        
         if (data.success) {
-            console.log('✅ Estado cambiado correctamente');
-            mostrarAlerta('success', `Cita marcada como ${nuevoEstado.toLowerCase()}`);
+            mostrarAlerta('success', `Estado actualizado`);
             
             actualizarCitaEnInterfaz(citaUuid, nuevoEstado, data);
             
-            // Cerrar modales
             const modales = document.querySelectorAll('.modal.show');
             modales.forEach(modal => {
                 bootstrap.Modal.getInstance(modal)?.hide();
@@ -1537,38 +1220,27 @@ function cambiarEstadoCita(citaUuid, nuevoEstado) {
         }
     })
     .catch(error => {
-        console.error('❌ Error cambiando estado:', error);
-        
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            console.log('🔄 Error de red, guardando offline como fallback');
             guardarCambioEstadoOffline(citaUuid, nuevoEstado);
             actualizarCitaEnInterfaz(citaUuid, nuevoEstado, {});
-            mostrarAlerta('warning', `Estado cambiado offline (se sincronizará cuando tengas conexión)`);
+            mostrarAlerta('info', `Estado actualizado localmente`);
         } else {
-            mostrarAlerta('error', 'Error cambiando estado de la cita: ' + error.message);
+            mostrarAlerta('error', 'Error actualizando estado');
         }
     })
     .finally(() => {
         mostrarLoading(false);
-            });
+    });
 }
 
-// ✅ GUARDAR CAMBIO OFFLINE MEJORADO
+// ✅ GUARDAR CAMBIO OFFLINE
 function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
     try {
-        // ✅ VALIDAR LOCALSTORAGE
         if (!localStorageDisponible) {
-            console.error('❌ localStorage no disponible, no se puede guardar offline');
-            mostrarAlerta('error', 'No se puede guardar cambios offline (localStorage no disponible)');
             return false;
         }
         
-        console.log('💾 Guardando cambio offline:', { citaUuid, nuevoEstado });
-        
         const cambiosExistentes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        console.log('📦 Cambios existentes:', cambiosExistentes.length);
-        
-        // ✅ REMOVER CAMBIOS ANTERIORES DE LA MISMA CITA (evitar duplicados)
         const cambiosFiltrados = cambiosExistentes.filter(c => c.cita_uuid !== citaUuid);
         
         const nuevoCambio = {
@@ -1582,1192 +1254,528 @@ function guardarCambioEstadoOffline(citaUuid, nuevoEstado) {
         cambiosFiltrados.push(nuevoCambio);
         localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosFiltrados));
         
-        // ✅ VERIFICAR QUE SE GUARDÓ
-        const verificacion = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        console.log(`✅ Cambio offline guardado correctamente: ${citaUuid} -> ${nuevoEstado}`);
-        console.log('📦 Total cambios pendientes:', verificacion.length);
-        
-        // ✅ ACTUALIZAR INTERFAZ INMEDIATAMENTE
         actualizarCitaEnInterfaz(citaUuid, nuevoEstado, null);
-        
-        // ✅ APLICAR INDICADORES VISUALES
-        aplicarIndicadoresCambiosPendientes([nuevoCambio]);
-        
-        // ✅ ACTUALIZAR CONTADOR EN UI
-        actualizarContadorCambiosPendientes();
         
         return true;
         
     } catch (error) {
-        console.error('❌ Error guardando cambio offline:', error);
-        mostrarAlerta('error', 'Error guardando cambio offline: ' + error.message);
         return false;
     }
 }
 
-// ✅ NUEVA FUNCIÓN: SINCRONIZAR CAMBIOS PENDIENTES
+// ✅ SINCRONIZAR CAMBIOS PENDIENTES
 function sincronizarCambiosPendientes() {
     try {
         if (!localStorageDisponible) {
-            console.log('⚠️ localStorage no disponible, no hay cambios para sincronizar');
             return;
         }
         
         const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
         const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
         
-        console.log('🔄 ============ INICIANDO SINCRONIZACIÓN ============');
-        console.log(`📊 Total cambios en localStorage: ${cambiosPendientes.length}`);
-        console.log(`📊 Cambios sin sincronizar: ${cambiosNoSincronizados.length}`);
-        
         if (cambiosNoSincronizados.length === 0) {
-            console.log('✅ No hay cambios pendientes para sincronizar');
-            // Limpiar cambios ya sincronizados
             localStorage.setItem('cambios_estados_pendientes', JSON.stringify([]));
-            actualizarContadorCambiosPendientes();
-            return;
-        }
-        
-        console.log('🔄 Sincronizando cambios pendientes:', cambiosNoSincronizados);
-        
-        let exitosos = 0;
-        let fallidos = 0;
-        const totalCambios = cambiosNoSincronizados.length;
-        
-        // ✅ SINCRONIZAR CADA CAMBIO SECUENCIALMENTE
-        const sincronizarCambio = (cambio, index) => {
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    console.log(`🔄 [${index + 1}/${totalCambios}] Sincronizando: ${cambio.cita_uuid} -> ${cambio.nuevo_estado}`);
-                    
-                    fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify({
-                            estado: cambio.nuevo_estado
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // ✅ MARCAR COMO SINCRONIZADO
-                            cambio.sincronizado = true;
-                            cambio.fecha_sincronizacion = new Date().toISOString();
-                            exitosos++;
-                            
-                            console.log(`✅ [${index + 1}/${totalCambios}] Sincronizado: ${cambio.cita_uuid}`);
-                            
-                            // Actualizar interfaz
-                            actualizarCitaEnInterfaz(cambio.cita_uuid, cambio.nuevo_estado, data);
-                        } else {
-                            fallidos++;
-                            cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
-                            console.error(`❌ [${index + 1}/${totalCambios}] Error: ${data.error}`);
-                        }
-                        resolve();
-                    })
-                    .catch(error => {
-                        fallidos++;
-                        cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
-                        console.error(`❌ [${index + 1}/${totalCambios}] Error de red:`, error);
-                        resolve();
-                    });
-                }, index * 500); // ✅ DELAY DE 500ms ENTRE PETICIONES
-            });
-        };
-        
-        // Sincronizar todos los cambios
-        Promise.all(cambiosNoSincronizados.map((cambio, index) => sincronizarCambio(cambio, index)))
-            .then(() => {
-                console.log('🏁 ============ SINCRONIZACIÓN COMPLETADA ============');
-                console.log(`✅ Exitosos: ${exitosos}`);
-                console.log(`❌ Fallidos: ${fallidos}`);
-                
-                // ✅ ACTUALIZAR LOCALSTORAGE
-                localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
-                
-                // ✅ LIMPIAR CAMBIOS SINCRONIZADOS
-                const cambiosRestantes = cambiosPendientes.filter(c => !c.sincronizado);
-                localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosRestantes));
-                
-                // Actualizar contador
-                actualizarContadorCambiosPendientes();
-                
-                // ✅ MOSTRAR NOTIFICACIÓN
-                if (exitosos > 0) {
-                    mostrarAlerta('success', `✓ ${exitosos} cambio(s) sincronizado(s) correctamente`);
-                }
-                
-                if (fallidos > 0) {
-                    mostrarAlerta('warning', `⚠ ${fallidos} cambio(s) no se pudieron sincronizar (se intentará después)`);
-                }
-                
-                // Actualizar cronograma después de sincronizar
-                if (exitosos > 0) {
-                    setTimeout(() => {
-                        actualizarCronograma();
-                    }, 1000);
-                }
-            });
-        
-    } catch (error) {
-        console.error('❌ Error crítico en sincronización:', error);
-        mostrarAlerta('error', 'Error en sincronización: ' + error.message);
-    }
-}
+              return;
+          }
+          
+          let exitosos = 0;
+          let fallidos = 0;
+          const totalCambios = cambiosNoSincronizados.length;
+          
+          const sincronizarCambio = (cambio, index) => {
+              return new Promise((resolve) => {
+                  setTimeout(() => {
+                      fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
+                          method: 'POST',
+                          headers: {
+                              'Content-Type': 'application/json',
+                              'Accept': 'application/json',
+                              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
+                              'X-Requested-With': 'XMLHttpRequest'
+                          },
+                          body: JSON.stringify({
+                              estado: cambio.nuevo_estado
+                          })
+                      })
+                      .then(response => response.json())
+                      .then(data => {
+                          if (data.success) {
+                              cambio.sincronizado = true;
+                              cambio.fecha_sincronizacion = new Date().toISOString();
+                              exitosos++;
+                              actualizarCitaEnInterfaz(cambio.cita_uuid, cambio.nuevo_estado, data);
+                          } else {
+                              fallidos++;
+                              cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
+                          }
+                          resolve();
+                      })
+                      .catch(error => {
+                          fallidos++;
+                          cambio.intentos_sincronizacion = (cambio.intentos_sincronizacion || 0) + 1;
+                          resolve();
+                      });
+                  }, index * 500);
+              });
+          };
+          
+          Promise.all(cambiosNoSincronizados.map((cambio, index) => sincronizarCambio(cambio, index)))
+              .then(() => {
+                  localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosPendientes));
+                  
+                  const cambiosRestantes = cambiosPendientes.filter(c => !c.sincronizado);
+                  localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosRestantes));
+                  
+                  if (exitosos > 0) {
+                      mostrarAlerta('success', `${exitosos} cambio(s) sincronizado(s)`);
+                      setTimeout(() => {
+                          actualizarCronograma();
+                      }, 1000);
+                  }
+              });
+          
+      } catch (error) {
+          // Error silencioso
+      }
+  }
 
-function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
-    const citaCard = document.querySelector(`[data-cita-uuid="${citaUuid}"]`);
-    if (!citaCard) {
-        console.log('⚠️ Tarjeta de cita no encontrada en interfaz:', citaUuid);
-        return;
-    }
-    
-    console.log('🔄 Actualizando interfaz de cita:', {
-        citaUuid: citaUuid,
-        nuevoEstado: nuevoEstado
-    });
-    
-    // Actualizar badge de estado
-    const badge = citaCard.querySelector('.badge');
-    if (badge) {
-        const estadoInfo = getEstadoInfo(nuevoEstado);
-        badge.className = `badge bg-${estadoInfo.color} badge-sm`;
-        badge.innerHTML = `<i class="fas fa-${estadoInfo.icon} me-1"></i>${estadoInfo.label}`;
-    }
-    
-    // Actualizar borde de la tarjeta
-    const card = citaCard.querySelector('.card');
-    if (card) {
-        const estadoInfo = getEstadoInfo(nuevoEstado);
-        card.className = card.className.replace(/border-\w+/, `border-${estadoInfo.color}`);
-    }
-    
-    // ✅ ACTUALIZAR BOTONES DE ACCIÓN
-    const botonesContainer = citaCard.querySelector('.d-flex.gap-1');
-    if (botonesContainer) {
-        const nuevosBotones = generarBotonesAccion(citaUuid, nuevoEstado);
-        const botonesDinamicos = botonesContainer.querySelectorAll('.btn-estado-cita, .dropdown, .btn-historia-clinica');
-        botonesDinamicos.forEach(btn => btn.remove());
-        botonesContainer.insertAdjacentHTML('beforeend', nuevosBotones);
-    }
-    
-    // ✅ REMOVER INDICADORES DE CAMBIOS PENDIENTES SI LA CITA ESTÁ ATENDIDA
-    if (nuevoEstado === 'ATENDIDA') {
-        const iconoSync = citaCard.querySelector('.fa-sync-alt');
-        if (iconoSync) {
-            iconoSync.remove();
-        }
-        
-        const textoPendiente = citaCard.querySelector('.cambios-pendientes-text');
-        if (textoPendiente) {
-            textoPendiente.remove();
-        }
-        
-        if (card) {
-            card.classList.remove('cambios-pendientes');
-            card.style.borderLeft = '';
-        }
-    }
-    
-    // Actualizar estadísticas globales si vienen
-    if (datosActualizados && datosActualizados.estadisticas_globales) {
-        actualizarEstadisticasGlobales(datosActualizados.estadisticas_globales);
-    }
-    
-    console.log('✅ Interfaz de cita actualizada correctamente');
-}
+  // ✅ VERIFICAR Y SINCRONIZAR CAMBIOS PENDIENTES
+  function verificarYSincronizarCambiosPendientes() {
+      try {
+          const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
+          const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
+          
+          if (cambiosNoSincronizados.length === 0) {
+              return;
+          }
+          
+          if (window.sincronizacionEnProceso) {
+              return;
+          }
+          
+          window.sincronizacionEnProceso = true;
+          sincronizarCambiosPendientes();
+          
+          setTimeout(() => {
+              window.sincronizacionEnProceso = false;
+          }, 5000);
+          
+      } catch (error) {
+          window.sincronizacionEnProceso = false;
+      }
+  }
 
-// ✅ ESCUCHAR EVENTOS DE GUARDADO DE HISTORIA CLÍNICA
-window.addEventListener('historiaClinicaGuardada', function(event) {
-    const citaUuid = event.detail.cita_uuid;
-    
-    console.log('📋 Historia clínica guardada, actualizando cita:', citaUuid);
-    
-    // ✅ ACTUALIZAR INTERFAZ INMEDIATAMENTE
-    actualizarCitaEnInterfaz(citaUuid, 'ATENDIDA', {});
-    
-    // ✅ MOSTRAR NOTIFICACIÓN
-    mostrarAlerta('success', 'Historia clínica guardada. Cita marcada como atendida.');
-    
-    // ✅ ACTUALIZAR ESTADÍSTICAS GLOBALES
-    setTimeout(() => {
-        actualizarCronograma();
-    }, 1000);
-});
+  // ✅ ACTUALIZAR CITA EN INTERFAZ
+  function actualizarCitaEnInterfaz(citaUuid, nuevoEstado, datosActualizados) {
+      const citaCard = document.querySelector(`[data-cita-uuid="${citaUuid}"]`);
+      if (!citaCard) return;
+      
+      const badge = citaCard.querySelector('.badge');
+      if (badge) {
+          const estadoInfo = getEstadoInfo(nuevoEstado);
+          badge.className = `badge bg-${estadoInfo.color} badge-sm`;
+          badge.innerHTML = `<i class="fas fa-${estadoInfo.icon} me-1"></i>${estadoInfo.label}`;
+      }
+      
+      const card = citaCard.querySelector('.card');
+      if (card) {
+          const estadoInfo = getEstadoInfo(nuevoEstado);
+          card.className = card.className.replace(/border-\w+/, `border-${estadoInfo.color}`);
+      }
+      
+      const botonesContainer = citaCard.querySelector('.d-flex.gap-1');
+      if (botonesContainer) {
+          const nuevosBotones = generarBotonesAccion(citaUuid, nuevoEstado);
+          const botonesDinamicos = botonesContainer.querySelectorAll('.btn-estado-cita, .dropdown, .btn-historia-clinica');
+          botonesDinamicos.forEach(btn => btn.remove());
+          botonesContainer.insertAdjacentHTML('beforeend', nuevosBotones);
+      }
+      
+      if (datosActualizados && datosActualizados.estadisticas_globales) {
+          actualizarEstadisticasGlobales(datosActualizados.estadisticas_globales);
+      }
+  }
 
-// ✅ ACTUALIZAR CONTADOR DE CAMBIOS PENDIENTES
-function actualizarContadorCambiosPendientes() {
-    try {
-        if (!localStorageDisponible) return 0;
-        
-        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        const pendientes = cambiosPendientes.filter(c => !c.sincronizado);
-        
-        console.log(`📊 Cambios pendientes: ${pendientes.length}`);
-        
-        // Actualizar badge en el header si existe
-        const badgeConexion = document.getElementById('badge-conexion');
-        if (badgeConexion && pendientes.length > 0) {
-            badgeConexion.innerHTML = `
-                <i class="fas fa-wifi me-1"></i>
-                ${isOffline ? 'Offline' : 'Online'}
-                ${pendientes.length > 0 ? `<span class="badge bg-danger ms-1">${pendientes.length}</span>` : ''}
-            `;
-        }
-        
-        // ✅ ACTUALIZAR BANNER DE OFFLINE
-        const offlineBanner = document.getElementById('offline-banner');
-        const offlineCount = document.getElementById('offline-pending-count');
-        
-        if (pendientes.length > 0) {
-            if (offlineCount) {
-                offlineCount.textContent = `${pendientes.length} pendiente(s)`;
-                offlineCount.style.display = 'inline-block';
-            }
-        } else {
-            if (offlineCount) {
-                offlineCount.style.display = 'none';
-            }
-        }
-        
-        return pendientes.length;
-    } catch (error) {
-        console.error('❌ Error actualizando contador:', error);
-        return 0;
-    }
-}
+  // ✅ ESCUCHAR EVENTOS DE GUARDADO DE HISTORIA CLÍNICA
+  window.addEventListener('historiaClinicaGuardada', function(event) {
+      const citaUuid = event.detail.cita_uuid;
+      actualizarCitaEnInterfaz(citaUuid, 'ATENDIDA', {});
+      mostrarAlerta('success', 'Historia clínica guardada');
+      
+      setTimeout(() => {
+          actualizarCronograma();
+      }, 1000);
+  });
 
-// ✅ DETECTOR DE CONECTIVIDAD MEJORADO
-function initDetectorConectividad() {
-   window.addEventListener('online', function() {
-    console.log('🟢 ============ CONEXIÓN RESTAURADA ============');
-    isOffline = false;
-    actualizarBadgeConexion(true);
-    
-    // ✅ OCULTAR BANNER OFFLINE
-    const offlineBanner = document.getElementById('offline-banner');
-    if (offlineBanner) {
-        offlineBanner.classList.remove('show');
-        offlineBanner.classList.add('d-none');
-    }
-    
-    const pendientes = actualizarContadorCambiosPendientes();
-    
-    if (pendientes > 0) {
-        mostrarAlerta('success', `Conexión restaurada. Sincronizando ${pendientes} cambio(s) pendiente(s)...`);
-        
-        // ✅ SINCRONIZAR CAMBIOS PENDIENTES
-        setTimeout(() => {
-            sincronizarCambiosPendientes();
-        }, 1500);
-    } else {
-        mostrarAlerta('success', 'Conexión restaurada.');
-        
-        // Actualizar cronograma sin cambios pendientes
-        setTimeout(() => {
-            actualizarCronograma();
-        }, 500);
-    }
-});
-    
-    window.addEventListener('offline', function() {
-        console.log('🔴 ============ CONEXIÓN PERDIDA ============');
-        isOffline = true;
-        actualizarBadgeConexion(false);
-        
-        // ✅ MOSTRAR BANNER OFFLINE
-        const offlineBanner = document.getElementById('offline-banner');
-        if (offlineBanner) {
-            offlineBanner.classList.add('show');
-            offlineBanner.classList.remove('d-none');
-        }
-        
-        actualizarContadorCambiosPendientes();
-        mostrarAlerta('warning', '📱 Modo offline activado. Los cambios se guardarán localmente.');
-    });
-    
-    // Verificar conectividad cada 30 segundos
-    setInterval(verificarConectividad, 30000);
-}
+  // ✅ DETECTOR DE CONECTIVIDAD
+  function initDetectorConectividad() {
+      window.addEventListener('online', function() {
+          isOffline = false;
+          actualizarBadgeConexion(true);
+          
+          setTimeout(() => {
+              sincronizarCambiosPendientes();
+          }, 1500);
+      });
+      
+      window.addEventListener('offline', function() {
+          isOffline = true;
+          actualizarBadgeConexion(false);
+      });
+      
+      setInterval(verificarConectividad, 30000);
+  }
 
-// ✅ NUEVA FUNCIÓN: VERIFICAR Y SINCRONIZAR CAMBIOS PENDIENTES
-function verificarYSincronizarCambiosPendientes() {
-    try {
-        // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES
-        const cambiosPendientes = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        const cambiosNoSincronizados = cambiosPendientes.filter(c => !c.sincronizado);
-        
-        if (cambiosNoSincronizados.length === 0) {
-            console.log('✅ No hay cambios pendientes para sincronizar');
-            return;
-        }
-        
-        console.log(`🔄 Encontrados ${cambiosNoSincronizados.length} cambios pendientes para sincronizar`);
-        
-        // ✅ PROTECCIÓN CONTRA BUCLES: Verificar que no se esté ejecutando ya
-        if (window.sincronizacionEnProceso) {
-            console.log('⚠️ Sincronización ya en proceso, saltando...');
-            return;
-        }
-        
-        // ✅ MARCAR COMO EN PROCESO
-        window.sincronizacionEnProceso = true;
-        
-        // ✅ EJECUTAR SINCRONIZACIÓN
-        sincronizarCambiosPendientesInteligente(cambiosNoSincronizados);
-        
-    } catch (error) {
-        console.error('❌ Error verificando cambios pendientes:', error);
-        window.sincronizacionEnProceso = false;
-    }
-}
+  function verificarConectividad() {
+      if (!navigator.onLine) {
+          if (!isOffline) {
+              isOffline = true;
+              actualizarBadgeConexion(false);
+          }
+          return;
+      }
+      
+      fetch('/api/ping', {
+          method: 'HEAD',
+          cache: 'no-cache'
+      })
+      .then(response => {
+          if (response.ok && isOffline) {
+              isOffline = false;
+              actualizarBadgeConexion(true);
+          }
+      })
+      .catch(() => {
+          if (!isOffline) {
+              isOffline = true;
+              actualizarBadgeConexion(false);
+          }
+      });
+  }
 
-// ✅ SINCRONIZACIÓN INTELIGENTE CON PROTECCIÓN CONTRA BUCLES
-function sincronizarCambiosPendientesInteligente(cambiosNoSincronizados) {
-    let cambiosSincronizados = 0;
-    let errores = 0;
-    
-    console.log(`🔄 Iniciando sincronización de ${cambiosNoSincronizados.length} cambios`);
-    
-    // ✅ PROCESAR CADA CAMBIO CON DELAY PARA EVITAR SATURAR EL SERVIDOR
-    cambiosNoSincronizados.forEach((cambio, index) => {
-        setTimeout(() => {
-            console.log(`📤 Sincronizando cambio ${index + 1}/${cambiosNoSincronizados.length}:`, cambio.cita_uuid);
-            
-            fetch(`/cronograma/cita/${cambio.cita_uuid}/cambiar-estado`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'),
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    estado: cambio.nuevo_estado
-                })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    // ✅ MARCAR COMO SINCRONIZADO EN LOCALSTORAGE
-                    cambio.sincronizado = true;
-                    cambio.fecha_sincronizacion = new Date().toISOString();
-                    cambiosSincronizados++;
-                    
-                    console.log(`✅ Cambio sincronizado: ${cambio.cita_uuid} -> ${cambio.nuevo_estado}`);
-                    
-                    // ✅ ACTUALIZAR LOCALSTORAGE
-                    const todosCambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-                    const indice = todosCambios.findIndex(c => c.cita_uuid === cambio.cita_uuid && c.timestamp === cambio.timestamp);
-                    if (indice >= 0) {
-                        todosCambios[indice] = cambio;
-                        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(todosCambios));
-                    }
-                    
-                    // ✅ REMOVER INDICADORES VISUALES DE CAMBIOS PENDIENTES
-                    const citaCard = document.querySelector(`[data-cita-uuid="${cambio.cita_uuid}"]`);
-                    if (citaCard) {
-                        const card = citaCard.querySelector('.card');
-                        if (card) {
-                            card.classList.remove('cambios-pendientes');
-                        }
-                        
-                        // Remover iconos de sincronización
-                        const iconoSync = citaCard.querySelector('.fa-sync-alt');
-                        if (iconoSync) {
-                            iconoSync.remove();
-                        }
-                        
-                        // Remover texto de cambios pendientes
-                        const textoPendiente = citaCard.querySelector('.cambios-pendientes');
-                        if (textoPendiente && textoPendiente.parentElement) {
-                            textoPendiente.parentElement.remove();
-                        }
-                    }
-                    
-                } else {
-                    throw new Error(data.error || 'Error en respuesta del servidor');
-                }
-            })
-            .catch(error => {
-                console.error(`❌ Error sincronizando cambio ${cambio.cita_uuid}:`, error);
-                errores++;
-            })
-            .finally(() => {
-                // ✅ VERIFICAR SI ES EL ÚLTIMO CAMBIO
-                if (index === cambiosNoSincronizados.length - 1) {
-                    // ✅ FINALIZAR PROCESO
-                    setTimeout(() => {
-                        window.sincronizacionEnProceso = false;
-                        
-                        if (cambiosSincronizados > 0) {
-                            mostrarAlerta('success', `✅ ${cambiosSincronizados} cambios sincronizados correctamente`);
-                        }
-                        
-                        if (errores > 0) {
-                            mostrarAlerta('warning', `⚠️ ${errores} cambios no pudieron sincronizarse`);
-                        }
-                        
-                        console.log(`🏁 Sincronización completada: ${cambiosSincronizados} exitosos, ${errores} errores`);
-                        
-                        // ✅ LIMPIAR CAMBIOS SINCRONIZADOS DEL LOCALSTORAGE
-                        limpiarCambiosSincronizados();
-                        
-                    }, 500);
-                }
-            });
-            
-        }, index * 500); // ✅ DELAY DE 500ms ENTRE CADA PETICIÓN
-    });
-}
+  function actualizarBadgeConexion(online) {
+      const badge = document.getElementById('badge-conexion');
+      
+      if (badge) {
+          if (online) {
+              badge.className = 'badge bg-success connection-indicator online';
+              badge.innerHTML = `<i class="fas fa-wifi me-1"></i>Conectado`;
+          } else {
+              badge.className = 'badge bg-warning connection-indicator offline';
+              badge.innerHTML = `<i class="fas fa-database me-1"></i>Local`;
+          }
+      }
+  }
 
-// ✅ LIMPIAR CAMBIOS SINCRONIZADOS DEL LOCALSTORAGE
-function limpiarCambiosSincronizados() {
-    try {
-        const todosCambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        const cambiosNoSincronizados = todosCambios.filter(c => !c.sincronizado);
-        
-        localStorage.setItem('cambios_estados_pendientes', JSON.stringify(cambiosNoSincronizados));
-        
-        console.log(`🧹 LocalStorage limpiado. Cambios restantes: ${cambiosNoSincronizados.length}`);
-        
-    } catch (error) {
-        console.error('❌ Error limpiando localStorage:', error);
-    }
-}
+  function manejarErrorConexion() {
+      isOffline = true;
+      actualizarBadgeConexion(false);
+  }
 
-// ✅ FUNCIÓN: RESOLVER CONFLICTOS ENTRE API Y CAMBIOS OFFLINE
-function resolverConflictosDatos(citaApi, cambiosOffline) {
-    // Si no hay cambios offline, usar datos de API
-    if (!cambiosOffline || cambiosOffline.length === 0) {
-        return citaApi;
-    }
-    
-    // Buscar cambios pendientes para esta cita
-    const cambiosPendientes = cambiosOffline.filter(c => 
-        c.cita_uuid === citaApi.uuid && !c.sincronizado
-    );
-    
-    if (cambiosPendientes.length === 0) {
-        return citaApi;
-    }
-    
-    // Obtener el cambio más reciente
-    const cambioMasReciente = cambiosPendientes.sort((a, b) => 
-        new Date(b.timestamp) - new Date(a.timestamp)
-    )[0];
-    
-    console.log(`🔄 Aplicando cambio offline pendiente: ${citaApi.uuid} -> ${cambioMasReciente.nuevo_estado}`);
-    
-    // Aplicar el cambio offline sobre los datos de la API
-    const citaConCambios = { ...citaApi };
-    citaConCambios.estado = cambioMasReciente.nuevo_estado;
-    citaConCambios._tiene_cambios_pendientes = true;
-    citaConCambios._cambio_timestamp = cambioMasReciente.timestamp;
-    
-    return citaConCambios;
-}
+  // ✅ FUNCIONES AUXILIARES
+  function getEstadoColor(estado) {
+      const colores = {
+          'PROGRAMADA': 'primary',
+          'EN_ATENCION': 'warning',
+          'ATENDIDA': 'success',
+          'CANCELADA': 'danger',
+          'NO_ASISTIO': 'secondary'
+      };
+      return colores[estado] || 'secondary';
+  }
 
-// ✅ APLICAR INDICADORES VISUALES A CAMBIOS PENDIENTES
-function aplicarIndicadoresCambiosPendientes(cambiosPendientes) {
-    cambiosPendientes.forEach(cambio => {
-        const citaCard = document.querySelector(`[data-cita-uuid="${cambio.cita_uuid}"]`);
-        if (citaCard) {
-            console.log(`🎨 Aplicando indicadores visuales a: ${cambio.cita_uuid}`);
-            
-            // ✅ ACTUALIZAR ESTADO VISUAL
-            actualizarCitaEnInterfaz(cambio.cita_uuid, cambio.nuevo_estado, null);
-            
-            // ✅ AGREGAR INDICADORES DE CAMBIOS PENDIENTES
-            const card = citaCard.querySelector('.card');
-            if (card) {
-                card.classList.add('cambios-pendientes');
-                
-                // Agregar borde especial
-                card.style.borderLeft = '4px solid #17a2b8';
-                
-                // Agregar badge de cambios pendientes
-                const titulo = citaCard.querySelector('.card-title');
-                if (titulo && !titulo.querySelector('.fa-sync-alt')) {
-                    titulo.insertAdjacentHTML('beforeend', `
-                        <i class="fas fa-sync-alt text-info ms-1" 
-                           title="Cambios pendientes de sincronización"></i>
-                    `);
-                }
-                
-                // Agregar texto informativo
-                const infoContainer = citaCard.querySelector('.text-muted.small');
-                if (infoContainer && !infoContainer.querySelector('.cambios-pendientes-text')) {
-                    infoContainer.insertAdjacentHTML('beforeend', `
-                        <div class="mb-1 cambios-pendientes-text">
-                            <i class="fas fa-sync-alt me-1 text-info"></i>
-                            <span class="text-info">Cambios pendientes</span>
-                        </div>
-                    `);
-                }
-            }
-        }
-    });
-}
+  function getEstadoInfo(estado) {
+      const info = {
+          'PROGRAMADA': { color: 'primary', icon: 'calendar', label: 'Programada' },
+          'EN_ATENCION': { color: 'warning', icon: 'clock', label: 'En Atención' },
+          'ATENDIDA': { color: 'success', icon: 'check', label: 'Atendida' },
+          'CANCELADA': { color: 'danger', icon: 'times', label: 'Cancelada' },
+          'NO_ASISTIO': { color: 'secondary', icon: 'user-times', label: 'No Asistió' }
+      };
+      return info[estado] || { color: 'secondary', icon: 'question', label: estado };
+  }
 
-function verificarConectividad() {
-    if (!navigator.onLine) {
-        if (!isOffline) {
-            isOffline = true;
-            actualizarBadgeConexion(false);
-        }
-        return;
-    }
-    
-    fetch('/api/ping', {
-        method: 'HEAD',
-        cache: 'no-cache'
-    })
-    .then(response => {
-        if (response.ok && isOffline) {
-            isOffline = false;
-            actualizarBadgeConexion(true);
-        }
-    })
-    .catch(() => {
-        if (!isOffline) {
-            isOffline = true;
-            actualizarBadgeConexion(false);
-        }
-    });
-}
+  function generarBotonesEstado(citaUuid, estadoActual) {
+      if (isOffline) return '';
+      
+      let botones = '';
+      
+      switch (estadoActual) {
+          case 'PROGRAMADA':
+              botones = `
+                  <button type="button" class="btn btn-success btn-sm btn-estado-cita" 
+                          data-cita-uuid="${citaUuid}" data-estado="EN_ATENCION">
+                      <i class="fas fa-play me-1"></i>Iniciar Atención
+                  </button>
+                  <button type="button" class="btn btn-outline-danger btn-sm btn-estado-cita" 
+                          data-cita-uuid="${citaUuid}" data-estado="CANCELADA">
+                      <i class="fas fa-times me-1"></i>Cancelar
+                  </button>
+              `;
+              break;
+              
+          case 'EN_ATENCION':
+              botones = `
+                  <button type="button" class="btn btn-success btn-sm btn-estado-cita" 
+                          data-cita-uuid="${citaUuid}" data-estado="ATENDIDA">
+                      <i class="fas fa-check me-1"></i>Marcar Atendida
+                  </button>
+              `;
+              break;
+              
+          case 'ATENDIDA':
+              botones = `
+                  <span class="badge bg-success">
+                      <i class="fas fa-check-circle me-1"></i>Completada
+                  </span>
+              `;
+              break;
+              
+          default:
+              botones = `
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-estado-cita" 
+                          data-cita-uuid="${citaUuid}" data-estado="PROGRAMADA">
+                      <i class="fas fa-redo me-1"></i>Reprogramar
+                  </button>
+              `;
+      }
+      
+      return botones;
+  }
 
-function actualizarBadgeConexion(online) {
-    const badge = document.getElementById('badge-conexion');
-    const offlineBanner = document.getElementById('offline-banner');
-    
-    if (badge) {
-        // ✅ CONTAR CAMBIOS PENDIENTES
-        let pendientes = 0;
-        if (localStorageDisponible) {
-            try {
-                const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-                pendientes = cambios.filter(c => !c.sincronizado).length;
-            } catch (e) {
-                console.error('Error contando cambios:', e);
-            }
-        }
-        
-        if (online) {
-            badge.className = 'badge bg-success connection-indicator online';
-            badge.innerHTML = `<i class="fas fa-wifi me-1"></i>Conectado${pendientes > 0 ? ` <span class="badge bg-danger ms-1">${pendientes}</span>` : ''}`;
-            
-            // Ocultar banner
-            if (offlineBanner) {
-                offlineBanner.classList.remove('show');
-                offlineBanner.classList.add('d-none');
-            }
-        } else {
-            badge.className = 'badge bg-warning connection-indicator offline';
-            badge.innerHTML = `<i class="fas fa-database me-1"></i>Offline${pendientes > 0 ? ` <span class="badge bg-danger ms-1">${pendientes}</span>` : ''}`;
-            
-            // Mostrar banner
-            if (offlineBanner) {
-                offlineBanner.classList.add('show');
-                offlineBanner.classList.remove('d-none');
-            }
-        }
-    }
-}
+  function generarBotonesAccion(citaUuid, estado) {
+      let botones = '';
+      
+      if (estado === 'EN_ATENCION' || estado === 'ATENDIDA') {
+          const textoBoton = estado === 'ATENDIDA' ? 'HC' : 'HC';
+          const colorBoton = estado === 'ATENDIDA' ? 'success' : 'info';
+          
+          botones += `
+              <button type="button" class="btn btn-${colorBoton} btn-sm btn-historia-clinica"
+                      data-cita-uuid="${citaUuid}">
+                  <i class="fas fa-file-medical"></i>
+              </button>
+          `;
+      }
+      
+      switch (estado) {
+          case 'PROGRAMADA':
+              botones += `
+                  <button type="button" class="btn btn-warning btn-sm btn-estado-cita"
+                          data-cita-uuid="${citaUuid}" data-estado="EN_ATENCION">
+                      <i class="fas fa-play"></i>
+                  </button>
+                  <div class="dropdown">
+                      <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
+                              data-bs-toggle="dropdown">
+                          <i class="fas fa-ellipsis-v"></i>
+                      </button>
+                      <ul class="dropdown-menu">
+                          <li>
+                              <a class="dropdown-item btn-estado-cita" 
+                                 data-cita-uuid="${citaUuid}" data-estado="CANCELADA">
+                                  <i class="fas fa-times text-danger me-2"></i>Cancelar
+                              </a>
+                          </li>
+                          <li>
+                              <a class="dropdown-item btn-estado-cita" 
+                                 data-cita-uuid="${citaUuid}" data-estado="NO_ASISTIO">
+                                  <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
+                              </a>
+                          </li>
+                      </ul>
+                  </div>
+              `;
+              break;
+              
+          case 'EN_ATENCION':
+              botones += `
+                  <button type="button" class="btn btn-success btn-sm btn-estado-cita"
+                          data-cita-uuid="${citaUuid}" data-estado="ATENDIDA">
+                      <i class="fas fa-check"></i>
+                  </button>
+              `;
+              break;
+              
+          case 'ATENDIDA':
+              // Solo el botón de HC ya está agregado arriba
+              break;
+              
+          default:
+              botones += `
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-estado-cita"
+                          data-cita-uuid="${citaUuid}" data-estado="PROGRAMADA">
+                      <i class="fas fa-redo"></i>
+                  </button>
+              `;
+      }
+      
+      return botones;
+  }
 
-function manejarErrorConexion() {
-    isOffline = true;
-    actualizarBadgeConexion(false);
-}
+  // ✅ UTILIDADES DE INTERFAZ
+  function mostrarLoading(mostrar) {
+      const overlay = document.getElementById('loading-overlay');
+      if (overlay) {
+          if (mostrar) {
+              overlay.classList.remove('d-none');
+          } else {
+              overlay.classList.add('d-none');
+          }
+      }
+  }
 
-// ✅ FUNCIONES AUXILIARES
-function getEstadoColor(estado) {
-    const colores = {
-        'PROGRAMADA': 'primary',
-        'EN_ATENCION': 'warning',
-        'ATENDIDA': 'success',
-        'CANCELADA': 'danger',
-        'NO_ASISTIO': 'secondary'
-    };
-    return colores[estado] || 'secondary';
-}
+  function setButtonLoading(buttonId, loading) {
+      const button = document.getElementById(buttonId);
+      if (!button) return;
+      
+      if (loading) {
+          button.disabled = true;
+          const originalText = button.innerHTML;
+          button.dataset.originalText = originalText;
+          button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Actualizando...';
+      } else {
+          button.disabled = false;
+          if (button.dataset.originalText) {
+              button.innerHTML = button.dataset.originalText;
+              delete button.dataset.originalText;
+          }
+      }
+  }
 
-function getEstadoInfo(estado) {
-    const info = {
-        'PROGRAMADA': { color: 'primary', icon: 'calendar', label: 'Programada' },
-        'EN_ATENCION': { color: 'warning', icon: 'clock', label: 'En Atención' },
-        'ATENDIDA': { color: 'success', icon: 'check', label: 'Atendida' },
-        'CANCELADA': { color: 'danger', icon: 'times', label: 'Cancelada' },
-        'NO_ASISTIO': { color: 'secondary', icon: 'user-times', label: 'No Asistió' }
-    };
-    return info[estado] || { color: 'secondary', icon: 'question', label: estado };
-}
+  function mostrarAlerta(tipo, mensaje) {
+      const alertaId = 'alerta-' + Date.now();
+      const iconos = {
+          'success': 'check-circle',
+          'error': 'exclamation-triangle',
+          'warning': 'exclamation-circle',
+          'info': 'info-circle'
+      };
+      
+      const alertaHtml = `
+          <div id="${alertaId}" class="alert alert-${tipo === 'error' ? 'danger' : tipo} alert-dismissible fade show position-fixed" 
+               style="top: 20px; right: 20px; z-index: 10000; min-width: 300px; max-width: 500px;">
+              <i class="fas fa-${iconos[tipo] || 'info-circle'} me-2"></i>
+              ${mensaje}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', alertaHtml);
+      
+      setTimeout(() => {
+          const alerta = document.getElementById(alertaId);
+          if (alerta) {
+              alerta.remove();
+          }
+      }, 5000);
+  }
 
-function generarBotonesEstado(citaUuid, estadoActual) {
-    if (isOffline) return '';
-    
-    let botones = '';
-    
-    switch (estadoActual) {
-        case 'PROGRAMADA':
-            botones = `
-                <button type="button" class="btn btn-success btn-sm btn-estado-cita" 
-                        data-cita-uuid="${citaUuid}" data-estado="EN_ATENCION">
-                    <i class="fas fa-play me-1"></i>Iniciar Atención
-                </button>
-                <button type="button" class="btn btn-outline-danger btn-sm btn-estado-cita" 
-                        data-cita-uuid="${citaUuid}" data-estado="CANCELADA">
-                    <i class="fas fa-times me-1"></i>Cancelar
-                </button>
-            `;
-            break;
-            
-        case 'EN_ATENCION':
-            botones = `
-                <button type="button" class="btn btn-success btn-sm btn-estado-cita" 
-                        data-cita-uuid="${citaUuid}" data-estado="ATENDIDA">
-                    <i class="fas fa-check me-1"></i>Marcar Atendida
-                </button>
-            `;
-            break;
-            
-        case 'ATENDIDA':
-            botones = `
-                <span class="badge bg-success">
-                    <i class="fas fa-check-circle me-1"></i>Completada
-                </span>
-            `;
-            break;
-            
-        default:
-            botones = `
-                <button type="button" class="btn btn-outline-primary btn-sm btn-estado-cita" 
-                        data-cita-uuid="${citaUuid}" data-estado="PROGRAMADA">
-                    <i class="fas fa-redo me-1"></i>Reprogramar
-                </button>
-            `;
-    }
-    
-    return botones;
-}
+  function actualizarTimestamp() {
+      const timestamp = document.getElementById('ultima-actualizacion');
+      if (timestamp) {
+          const ahora = new Date();
+          timestamp.textContent = ahora.toLocaleTimeString('es-ES');
+      }
+  }
 
+  function animarCambioNumero(elemento, nuevoValor) {
+      if (!elemento) return;
+      
+      const valorActual = parseInt(elemento.textContent) || 0;
+      const valorNuevo = parseInt(nuevoValor) || 0;
+      
+      if (valorActual === valorNuevo) return;
+      
+      elemento.style.transform = 'scale(1.1)';
+      elemento.style.transition = 'transform 0.2s ease';
+      
+      setTimeout(() => {
+          elemento.textContent = nuevoValor;
+          elemento.style.transform = 'scale(1)';
+      }, 100);
+  }
 
-function generarBotonesAccion(citaUuid, estado) {
-    if (isOffline) {
-        return `
-            <div class="alert alert-warning p-1 mb-0 flex-fill text-center">
-                <small><i class="fas fa-database me-1"></i>Modo Offline</small>
-            </div>
-        `;
-    }
-    
-    let botones = '';
-    
-    // ✅ BOTÓN DE HISTORIA CLÍNICA PARA ESTADOS APROPIADOS
-    if (estado === 'EN_ATENCION' || estado === 'ATENDIDA') {
-        const textoBoton = estado === 'ATENDIDA' ? 'Ver HC' : 'Crear HC';
-        const colorBoton = estado === 'ATENDIDA' ? 'success' : 'info';
-        
-        botones += `
-            <button type="button" class="btn btn-${colorBoton} btn-sm btn-historia-clinica"
-                    data-cita-uuid="${citaUuid}" title="${textoBoton}">
-                <i class="fas fa-file-medical"></i> ${textoBoton}
-            </button>
-        `;
-    }
-    
-    switch (estado) {
-        case 'PROGRAMADA':
-            botones += `
-                <button type="button" class="btn btn-warning btn-sm btn-estado-cita"
-                        data-cita-uuid="${citaUuid}" data-estado="EN_ATENCION" title="Iniciar atención">
-                    <i class="fas fa-play"></i>
-                </button>
-                <div class="dropdown">
-                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" 
-                            data-bs-toggle="dropdown">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li>
-                            <a class="dropdown-item btn-estado-cita" 
-                               data-cita-uuid="${citaUuid}" data-estado="CANCELADA">
-                                <i class="fas fa-times text-danger me-2"></i>Cancelar
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item btn-estado-cita" 
-                               data-cita-uuid="${citaUuid}" data-estado="NO_ASISTIO">
-                                <i class="fas fa-user-times text-secondary me-2"></i>No Asistió
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            `;
-            break;
-            
-        case 'EN_ATENCION':
-            botones += `
-                <button type="button" class="btn btn-success btn-sm btn-estado-cita"
-                        data-cita-uuid="${citaUuid}" data-estado="ATENDIDA" title="Marcar como atendida">
-                    <i class="fas fa-check"></i>
-                </button>
-            `;
-            break;
-            
-        case 'ATENDIDA':
-            botones += `
-                <span class="badge bg-success flex-fill text-center py-2">
-                    <i class="fas fa-check-circle"></i> Completada
-                </span>
-            `;
-            break;
-            
-        default:
-            botones += `
-                <button type="button" class="btn btn-outline-primary btn-sm btn-estado-cita"
-                        data-cita-uuid="${citaUuid}" data-estado="PROGRAMADA" title="Reprogramar">
-                    <i class="fas fa-redo"></i>
-                </button>
-            `;
-    }
-    
-    return botones;
-}
+  // ✅ SINCRONIZACIÓN DE HISTORIAS CLÍNICAS
+  async function sincronizarHistorias(pacienteUuid = null) {
+      try {
+          mostrarLoading(true);
+          
+          const url = '{{ route("cronograma.sincronizar-historias") }}';
+          const data = {};
+          
+          if (pacienteUuid) {
+              data.paciente_uuid = pacienteUuid;
+          }
+          
+          const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+              },
+              body: JSON.stringify(data)
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+              const enviadas = result.data.enviadas || 0;
+              const descargadas = result.data.descargadas || 0;
+              
+              if (enviadas > 0 || descargadas > 0) {
+                  mostrarAlerta('success', `Sincronización completa`);
+                  
+                  setTimeout(() => {
+                      actualizarCronograma();
+                  }, 1000);
+              }
+              
+              return result.data;
+          } else {
+              throw new Error(result.error || 'Error en sincronización');
+          }
+      } catch (error) {
+          mostrarAlerta('error', 'Error sincronizando historias');
+          return null;
+      } finally {
+          mostrarLoading(false);
+      }
+  }
 
-// ✅ UTILIDADES DE INTERFAZ
-function mostrarLoading(mostrar) {
-    const overlay = document.getElementById('loading-overlay');
-    if (overlay) {
-        if (mostrar) {
-            overlay.classList.remove('d-none');
-        } else {
-            overlay.classList.add('d-none');
-        }
-    }
-}
+  // ✅ INICIALIZAR SINCRONIZACIÓN AUTOMÁTICA
+  let syncInterval = null;
 
-function setButtonLoading(buttonId, loading) {
-    const button = document.getElementById(buttonId);
-    if (!button) return;
-    
-    if (loading) {
-        button.disabled = true;
-        const originalText = button.innerHTML;
-        button.dataset.originalText = originalText;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Actualizando...';
-    } else {
-        button.disabled = false;
-        if (button.dataset.originalText) {
-            button.innerHTML = button.dataset.originalText;
-            delete button.dataset.originalText;
-        }
-    }
-}
+  function iniciarSincronizacionAutomatica() {
+      syncInterval = setInterval(verificarYSincronizarHistorias, 5 * 60 * 1000);
+      verificarYSincronizarHistorias();
+  }
 
-function mostrarAlerta(tipo, mensaje) {
-    const alertaId = 'alerta-' + Date.now();
-    const alertaHtml = `
-        <div id="${alertaId}" class="alert alert-${tipo === 'error' ? 'danger' : tipo} alert-dismissible fade show position-fixed" 
-             style="top: 20px; right: 20px; z-index: 10000; min-width: 300px;">
-            <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
-            ${mensaje}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', alertaHtml);
-    
-    setTimeout(() => {
-        const alerta = document.getElementById(alertaId);
-        if (alerta) {
-            alerta.remove();
-        }
-    }, 5000);
-}
+  async function verificarYSincronizarHistorias() {
+      try {
+          const response = await fetch('{{ route("cronograma.verificar-nuevas-historias") }}');
+          const result = await response.json();
+          
+          if (result.success && result.data.nuevas > 0) {
+              await sincronizarHistorias();
+          }
+      } catch (error) {
+          // Error silencioso
+      }
+  }
 
-function actualizarTimestamp() {
-    const timestamp = document.getElementById('ultima-actualizacion');
-    if (timestamp) {
-        const ahora = new Date();
-        timestamp.textContent = ahora.toLocaleTimeString('es-ES');
-    }
-}
+  // ✅ INICIALIZAR AL CARGAR
+  document.addEventListener('DOMContentLoaded', function() {
+      if (!isOffline) {
+          iniciarSincronizacionAutomatica();
+      }
+  });
 
-function animarCambioNumero(elemento, nuevoValor) {
-    if (!elemento) return;
-    
-    const valorActual = parseInt(elemento.textContent) || 0;
-    const valorNuevo = parseInt(nuevoValor) || 0;
-    
-    if (valorActual === valorNuevo) return;
-    
-    elemento.style.transform = 'scale(1.1)';
-    elemento.style.transition = 'transform 0.2s ease';
-    
-    setTimeout(() => {
-        elemento.textContent = nuevoValor;
-        elemento.style.transform = 'scale(1)';
-    }, 100);
-}
-
-// ✅ DEBUGGING CON HISTORIA CLÍNICA
-window.cronogramaDebug = {
-    cronogramaData,
-    fechaActual,
-    isOffline,
-    actualizarCronograma,
-    verDetalleCita,
-    cambiarEstadoCita,
-    verificarConectividad,
-    sincronizarCambiosPendientes,
-    guardarCambioEstadoOffline,
-    // ✅ NUEVAS FUNCIONES DE DEBUG
-    testHistoriaClinica: function(citaUuid) {
-        console.log('🧪 Test Historia Clínica:', citaUuid);
-        
-        const url = `/historia-clinica/determinar-vista/${citaUuid}`; // ← NUEVA RUTA
-        console.log('🔗 URL generada:', url);
-        window.open(url, '_blank');
-    },
-    // ✅ FUNCIONES DE DEBUG OFFLINE
-    verCambiosPendientes: function() {
-        if (!localStorageDisponible) {
-            console.log('❌ localStorage no disponible');
-            return;
-        }
-        const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        console.log('📦 Cambios pendientes:', cambios);
-        console.table(cambios);
-        return cambios;
-    },
-    limpiarCambiosPendientes: function() {
-        if (confirm('¿Seguro que quieres limpiar todos los cambios pendientes?')) {
-            localStorage.setItem('cambios_estados_pendientes', JSON.stringify([]));
-            actualizarContadorCambiosPendientes();
-            console.log('✅ Cambios pendientes limpiados');
-        }
-    },
-    forzarModoOffline: function() {
-        isOffline = true;
-        actualizarBadgeConexion(false);
-        console.log('🔴 Modo offline forzado');
-    },
-    forzarModoOnline: function() {
-        isOffline = false;
-        actualizarBadgeConexion(true);
-        console.log('🟢 Modo online forzado');
-    },
-    infoSistema: function() {
-        const cambios = JSON.parse(localStorage.getItem('cambios_estados_pendientes') || '[]');
-        const pendientes = cambios.filter(c => !c.sincronizado);
-        const info = {
-            modo: isOffline ? 'OFFLINE' : 'ONLINE',
-            navigator_online: navigator.onLine,
-            localStorage_disponible: localStorageDisponible,
-            cambios_totales: cambios.length,
-            cambios_pendientes: pendientes.length,
-            cambios_sincronizados: cambios.filter(c => c.sincronizado).length,
-            agendas_cargadas: cronogramaData.agendas?.length || 0,
-            fecha_actual: fechaActual
-        };
-        console.table(info);
-        return info;
-    },
-    // ✅ VERIFICAR AGENDAS EN BASE DE DATOS
-    verificarAgendasOffline: async function() {
-        console.log('🔍 Verificando agendas offline en servidor...');
-        try {
-            const response = await fetch('/cronograma/debug-agendas-offline', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-                }
-            });
-            const data = await response.json();
-            console.log('📊 Agendas offline:', data);
-            return data;
-        } catch (error) {
-            console.error('❌ Error verificando agendas:', error);
-            return null;
-        }
-    },
-    // ✅ SINCRONIZAR AGENDAS MANUALMENTE
-    sincronizarAgendasManual: async function() {
-        console.log('🔄 Sincronizando agendas manualmente...');
-        try {
-            const response = await fetch('/cronograma/sincronizar-agendas', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-                }
-            });
-            const data = await response.json();
-            console.log('✅ Resultado sincronización:', data);
-            if (data.success) {
-                mostrarAlerta('success', `${data.total || 0} agendas sincronizadas`);
-                location.reload();
-            }
-            return data;
-        } catch (error) {
-            console.error('❌ Error sincronizando:', error);
-            return null;
-        }
-    },
-    
-    // ✅ REPARAR UUIDs DE AGENDAS EXISTENTES
-    repararUUIDsAgendas: async function() {
-        console.log('🔧 Reparando UUIDs de agendas existentes...');
-        try {
-            const response = await fetch('/cronograma/reparar-uuids-agendas', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-                }
-            });
-            const data = await response.json();
-            console.log('✅ Resultado reparación:', data);
-            if (data.success) {
-                mostrarAlerta('success', `${data.reparadas || 0} agendas reparadas (${data.errores || 0} errores)`);
-                // Verificar agendas después de reparar
-                await this.verificarAgendasOffline();
-            }
-            return data;
-        } catch (error) {
-            console.error('❌ Error reparando:', error);
-            return null;
-        }
-    }
-};
-
-console.log('✅ Cronograma JavaScript con Historia Clínica cargado completamente');
-
-// ✅ SINCRONIZACIÓN AUTOMÁTICA DE HISTORIAS
-let syncInterval = null;
-
-// ✅ INICIAR SINCRONIZACIÓN AUTOMÁTICA
-function iniciarSincronizacionAutomatica() {
-    // Verificar cada 5 minutos
-    syncInterval = setInterval(verificarYSincronizarHistorias, 5 * 60 * 1000);
-    
-    // Ejecutar inmediatamente
-    verificarYSincronizarHistorias();
-}
-
-// ✅ VERIFICAR Y SINCRONIZAR HISTORIAS
-async function verificarYSincronizarHistorias() {
-    try {
-        // Verificar si hay nuevas historias
-        const response = await fetch('{{ route("cronograma.verificar-nuevas-historias") }}');
-        const result = await response.json();
-        
-        if (result.success && result.data.nuevas > 0) {
-            console.log(`📥 Hay ${result.data.nuevas} historias nuevas para sincronizar`);
-            
-            // Mostrar notificación
-            mostrarNotificacionNuevasHistorias(result.data.nuevas);
-            
-            // Sincronizar automáticamente
-            await sincronizarHistorias();
-        }
-    } catch (error) {
-        console.error('❌ Error verificando nuevas historias:', error);
-    }
-}
-
-// ✅ SINCRONIZAR HISTORIAS
-// ✅ SINCRONIZAR HISTORIAS (BIDIRECCIONAL: ENVIAR + RECIBIR)
-async function sincronizarHistorias(pacienteUuid = null) {
-    try {
-        console.log('🔄 Iniciando sincronización bidireccional de historias');
-        
-        const url = '{{ route("cronograma.sincronizar-historias") }}';
-        const data = {};
-        
-        if (pacienteUuid) {
-            data.paciente_uuid = pacienteUuid;
-        }
-        
-        // ✅ MOSTRAR LOADING
-        mostrarLoading(true);
-        
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            const enviadas = result.data.enviadas || 0;
-            const descargadas = result.data.descargadas || 0;
-            const citasActualizadas = result.data.citas_actualizadas || 0;
-            const errores = result.data.errores || 0;
-            
-            console.log('✅ Sincronización completa:', {
-                enviadas,
-                descargadas,
-                citasActualizadas,
-                errores
-            });
-            
-            // ✅ MENSAJE PERSONALIZADO
-            let mensaje = '';
-            const partes = [];
-            
-            if (enviadas > 0) {
-                partes.push(`📤 ${enviadas} historia${enviadas > 1 ? 's' : ''} enviada${enviadas > 1 ? 's' : ''}`);
-            }
-            if (descargadas > 0) {
-                partes.push(`📥 ${descargadas} historia${descargadas > 1 ? 's' : ''} descargada${descargadas > 1 ? 's' : ''}`);
-            }
-            if (citasActualizadas > 0) {
-                partes.push(`🔄 ${citasActualizadas} cita${citasActualizadas > 1 ? 's' : ''} actualizada${citasActualizadas > 1 ? 's' : ''}`);
-            }
-            
-            if (partes.length > 0) {
-                mensaje = partes.join('<br>');
-            } else {
-                mensaje = '✅ Todo está sincronizado';
-            }
-            
-            if (errores > 0) {
-                mensaje += `<br>⚠️ ${errores} error${errores > 1 ? 'es' : ''} encontrado${errores > 1 ? 's' : ''}`;
-            }
-            
-            Swal.fire({
-                icon: partes.length > 0 ? 'success' : 'info',
-                title: 'Sincronización Completa',
-                html: mensaje,
-                timer: partes.length > 0 ? 5000 : 3000,
-                showConfirmButton: errores > 0
-            });
-            
-            // ✅ ACTUALIZAR CONTADOR DE PENDIENTES
-            actualizarContadorCambiosPendientes();
-            
-            // ✅ RECARGAR CRONOGRAMA SI HUBO CAMBIOS
-            if (citasActualizadas > 0) {
-                setTimeout(() => {
-                    actualizarCronograma();
-                }, 1000);
-            }
-            
-            return result.data;
-        } else {
-            throw new Error(result.error || 'Error en sincronización');
-        }
-    } catch (error) {
-        console.error('❌ Error sincronizando historias:', error);
-        
-        Swal.fire({
-            icon: 'error',
-            title: 'Error en Sincronización',
-            text: 'No se pudieron sincronizar las historias clínicas',
-            footer: error.message
-        });
-        
-        return null;
-    } finally {
-        mostrarLoading(false);
-    }
-}
-
-// ✅ MOSTRAR NOTIFICACIÓN DE NUEVAS HISTORIAS
-function mostrarNotificacionNuevasHistorias(cantidad) {
-    const toast = Swal.mixin({
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: true,
-        confirmButtonText: 'Sincronizar',
-        timer: 10000,
-        timerProgressBar: true
-    });
-    
-    toast.fire({
-        icon: 'info',
-        title: `Hay ${cantidad} historias clínicas nuevas`,
-        text: 'Haz clic en Sincronizar para descargarlas'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            sincronizarHistorias();
-        }
-    });
-}
-
-// ✅ OBTENER HISTORIAS DE UN PACIENTE
-async function obtenerHistoriasPaciente(pacienteUuid) {
-    try {
-        const url = `{{ route("cronograma.historias-clinicas") }}?paciente_uuid=${pacienteUuid}`;
-        
-        const response = await fetch(url);
-        const result = await response.json();
-        
-        if (result.success) {
-            console.log(`✅ ${result.total} historias encontradas para el paciente`);
-            return result.data;
-        } else {
-            throw new Error(result.error || 'Error obteniendo historias');
-        }
-    } catch (error) {
-        console.error('❌ Error obteniendo historias del paciente:', error);
-        return [];
-    }
-}
-
-// ✅ INICIALIZAR AL CARGAR LA PÁGINA
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Iniciando sistema de sincronización de historias clínicas');
-    
-    // Iniciar sincronización automática
-    iniciarSincronizacionAutomatica();
-    
-    // Agregar botón de sincronización manual
-    agregarBotonSincronizacion();
-});
-
-// ✅ AGREGAR BOTÓN DE SINCRONIZACIÓN MANUAL
-function agregarBotonSincronizacion() {
-    const headerActions = document.querySelector('.header-actions') || 
-                         document.querySelector('.d-flex.justify-content-between');
-    
-    if (headerActions) {
-        const btnSync = document.createElement('button');
-        btnSync.className = 'btn btn-outline-primary btn-sm ms-2';
-        btnSync.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Sincronizar Historias';
-        btnSync.onclick = () => sincronizarHistorias();
-        
-        headerActions.appendChild(btnSync);
-    }
-}
-
-// ✅ LIMPIAR INTERVAL AL SALIR
-window.addEventListener('beforeunload', function() {
-    if (syncInterval) {
-        clearInterval(syncInterval);
-    }
-});
-</script>
-@endpush
-
-    
+  // ✅ LIMPIAR INTERVAL AL SALIR
+  window.addEventListener('beforeunload', function() {
+      if (syncInterval) {
+          clearInterval(syncInterval);
+      }
+  });
+  </script>
+  @endpush
