@@ -13,7 +13,8 @@ use App\Http\Controllers\{
     CupsController,
     UsuarioController,
     FirmaQRController,
-    HistoriaClinicaController
+    HistoriaClinicaController,
+    SyncController
 };
 
 // ====================================================================
@@ -209,7 +210,13 @@ Route::get('/agendas/{uuid}/diagnostic', [AgendaController::class, 'diagnosticAg
     
     Route::post('/cups-contratados/sincronizar', [CupsController::class, 'sincronizarCupsContratados'])
     ->name('cups-contratados.sincronizar');
-    // ✅ SINCRONIZACIÓN
+    // ✅ SINCRONIZACIÓN UNIFICADA
+    Route::post('/sync-all', [SyncController::class, 'syncAll'])
+        ->name('sync.all');
+    Route::get('/sync/pending-counts', [SyncController::class, 'getPendingCounts'])
+        ->name('sync.pending-counts');
+
+    // ✅ SINCRONIZACIÓN INDIVIDUAL (mantener para compatibilidad)
     Route::post('/sync-pacientes', [PacienteController::class, 'syncPendingPacientes'])
         ->name('pacientes.sync');
          Route::post('/test-sync-manual', [PacienteController::class, 'testSyncManual'])->name('pacientes.test-sync');

@@ -24,10 +24,19 @@
                         </span>
                     @endif
                     
-                    {{-- ✅ NUEVO: Botón de sincronización de citas --}}
-                    <button type="button" class="btn btn-info me-2" onclick="sincronizarCitas()" id="btnSincronizarCitas">
-                        <i class="fas fa-sync-alt"></i> Sincronizar Citas
+                    {{-- ℹ️ SINCRONIZACIÓN UNIFICADA: Usar el botón del sidebar --}}
+                    {{-- El botón individual de sincronización ha sido reemplazado por un sistema unificado --}}
+                    @if($isOffline ?? false)
+                        <span class="badge bg-info text-white me-2">
+                            <i class="fas fa-info-circle"></i> Use el botón de sincronización del sidebar
+                        </span>
+                    @endif
+                    
+                    {{-- BOTÓN DESACTIVADO - Usar sincronización unificada del sidebar
+                    <button type="button" class="btn btn-info me-2" onclick="sincronizarCitas()" id="btnSincronizarCitas" disabled>
+                        <i class="fas fa-sync-alt"></i> Sincronizar Citas (usar sidebar)
                     </button>
+                    --}}
                     
                     <a href="{{ route('citas.create') }}" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Nueva Cita

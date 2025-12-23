@@ -6198,6 +6198,44 @@ public function getPendingSyncCount(): array
         ];
     }
 }
+
+/**
+ * 📊 CONTAR REGISTROS PENDIENTES POR TABLA
+ * Método genérico para obtener el conteo de registros pendientes de sincronización
+ * 
+ * @param string $tableName Nombre de la tabla (pacientes, agendas, citas, historias_clinicas)
+ * @param int|null $sedeId ID de la sede para filtrar (opcional)
+ * @return int Cantidad de registros pendientes
+ */
+public function countPendingRecords(string $tableName, ?int $sedeId = null): int
+{
+    try {
+        if (!$this->isSQLiteAvailable()) {
+            return 0;
+        }
+
+        $query = DB::connection('offline')
+            ->table($tableName)
+            ->where('sync_status', 'pending');
+
+        // Filtrar por sede si se proporciona
+        if ($sedeId !== null && $tableName !== 'pacientes') {
+            $query->where('sede_id', $sedeId);
+        }
+
+        return $query->count();
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error contando registros pendientes', [
+            'tabla' => $tableName,
+            'sede_id' => $sedeId,
+            'error' => $e->getMessage()
+        ]);
+        
+        return 0;
+    }
+}
+
 /**
  * ✅ OBTENER DATOS DE TEST PARA SINCRONIZACIÓN
  */

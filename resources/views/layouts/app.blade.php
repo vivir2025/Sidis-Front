@@ -1204,6 +1204,22 @@
         @include('layouts.partials.sidebar')
     </div>
 
+    <!-- Script de verificación de funciones del sidebar -->
+    <script>
+    // Verificar que las funciones del sidebar estén cargadas
+    if (typeof ejecutarSincronizacionUnificadaV2 === 'undefined') {
+        console.error('❌ Error: ejecutarSincronizacionUnificadaV2 no está definida. Recarga la página con Ctrl+Shift+R');
+    } else {
+        console.log('✅ Función ejecutarSincronizacionUnificadaV2 cargada correctamente');
+    }
+    
+    if (typeof sincronizarDatosMaestros === 'undefined') {
+        console.error('❌ Error: sincronizarDatosMaestros no está definida');
+    } else {
+        console.log('✅ Función sincronizarDatosMaestros cargada correctamente');
+    }
+    </script>
+
     <!-- Overlay (solo para móvil cuando se abre manualmente) -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
     @endunless

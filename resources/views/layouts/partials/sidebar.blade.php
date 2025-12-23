@@ -131,8 +131,12 @@
 
         <!-- Quick Actions -->
         <div class="quick-actions">
-            <button class="btn btn-sm btn-outline-success" onclick="syncAllPendingData()" title="Sincronizar">
+            <button class="btn btn-sm btn-outline-success" 
+                    id="btnSyncAllUnified" 
+                    onclick="ejecutarSincronizacionUnificadaV2()" 
+                    title="Sincronizar Datos Offline">
                 <i class="fas fa-sync-alt"></i>
+                <span class="sync-text">Sincronizar</span>
             </button>
             <button class="btn btn-sm btn-outline-danger" onclick="confirmLogout()" title="Cerrar sesión">
                 <i class="fas fa-sign-out-alt"></i>
@@ -962,4 +966,497 @@ document.addEventListener('DOMContentLoaded', function() {
         if (themeIcon) themeIcon.className = 'fas fa-sun';
     }
 });
+
+/**
+ * 🔄 SINCRONIZACIÓN UNIFICADA V2 - NUEVA FUNCIÓN
+ * Ejecuta sincronización secuencial: Pacientes → Agendas → Citas → Historias Clínicas
+ * Luego pregunta si desea sincronizar datos maestros
+ */
+async function ejecutarSincronizacionUnificadaV2() {
+    console.log('🔄 Iniciando sincronización unificada V2...');
+    
+    // Preguntar confirmación
+    const result = await Swal.fire({
+        title: '¿Sincronizar Datos Offline?',
+        html: `
+            <div class="text-start">
+                <p class="mb-3">Se sincronizarán los <strong>datos offline pendientes</strong> en el siguiente orden:</p>
+                <ul class="sync-order-list">
+                    <li><i class="fas fa-users text-primary me-2"></i><strong>1. Pacientes</strong></li>
+                    <li><i class="fas fa-calendar-alt text-info me-2"></i><strong>2. Agendas</strong></li>
+                    <li><i class="fas fa-calendar-check text-success me-2"></i><strong>3. Citas</strong></li>
+                    <li><i class="fas fa-file-medical text-danger me-2"></i><strong>4. Historias Clínicas</strong></li>
+                </ul>
+                <div class="alert alert-info mt-3 mb-2">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Después podrá sincronizar los datos maestros si lo desea
+                </div>
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Si un paso falla, la sincronización se detendrá
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-sync-alt me-2"></i>Sincronizar Datos Offline',
+        cancelButtonText: '<i class="fas fa-times me-2"></i>Cancelar',
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d',
+        width: '650px'
+    });
+
+    if (!result.isConfirmed) {
+        return;
+    }
+
+    // Deshabilitar botón
+    const btnSync = document.getElementById('btnSyncAllUnified');
+    if (btnSync) {
+        btnSync.disabled = true;
+        btnSync.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    // Mostrar modal de progreso
+    Swal.fire({
+        title: 'Sincronizando Datos Offline...',
+        html: `
+            <div class="sync-progress-container">
+                <div class="sync-step" id="sync-step-pacientes">
+                    <div class="step-icon"><i class="fas fa-users"></i></div>
+                    <div class="step-content">
+                        <div class="step-title">1. Pacientes</div>
+                        <div class="step-status" id="status-pacientes">
+                            <i class="fas fa-spinner fa-spin text-primary"></i> Procesando...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sync-step" id="sync-step-agendas">
+                    <div class="step-icon"><i class="fas fa-calendar-alt"></i></div>
+                    <div class="step-content">
+                        <div class="step-title">2. Agendas</div>
+                        <div class="step-status" id="status-agendas">
+                            <i class="fas fa-clock text-muted"></i> En espera...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sync-step" id="sync-step-citas">
+                    <div class="step-icon"><i class="fas fa-calendar-check"></i></div>
+                    <div class="step-content">
+                        <div class="step-title">3. Citas</div>
+                        <div class="step-status" id="status-citas">
+                            <i class="fas fa-clock text-muted"></i> En espera...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sync-step" id="sync-step-historias">
+                    <div class="step-icon"><i class="fas fa-file-medical"></i></div>
+                    <div class="step-content">
+                        <div class="step-title">4. Historias Clínicas</div>
+                        <div class="step-status" id="status-historias">
+                            <i class="fas fa-clock text-muted"></i> En espera...
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="progress mt-4" style="height: 25px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                     id="sync-global-progress" 
+                     role="progressbar" 
+                     style="width: 0%">
+                     0%
+                </div>
+            </div>
+            
+            <p class="text-muted mt-3 mb-0" id="sync-message">
+                <i class="fas fa-info-circle me-2"></i>Iniciando sincronización...
+            </p>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        width: '700px',
+        customClass: {
+            popup: 'sync-unified-modal'
+        }
+    });
+
+    try {
+        console.log('📡 Llamando a endpoint /sync-all...');
+        
+        // Ejecutar sincronización
+        const response = await fetch('{{ route("sync.all") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            }
+        });
+
+        console.log('📨 Respuesta recibida:', response.status);
+        
+        const data = await response.json();
+        
+        console.log('📊 Datos recibidos:', data);
+
+        if (data.success) {
+            // Marcar todos como completados
+            actualizarEstadoSincronizacion('pacientes', 'success', data.details?.pacientes);
+            actualizarEstadoSincronizacion('agendas', 'success', data.details?.agendas);
+            actualizarEstadoSincronizacion('citas', 'success', data.details?.citas);
+            actualizarEstadoSincronizacion('historias', 'success', data.details?.historias);
+
+            // Actualizar barra de progreso
+            const progressBar = document.getElementById('sync-global-progress');
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.textContent = '100%';
+            }
+
+            // Mostrar resultado exitoso con opción de sincronizar datos maestros
+            setTimeout(() => {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Sincronización de Datos Offline Completada!',
+                    html: generarResumenSincronizacion(data) + `
+                        <div class="alert alert-info mt-4 mb-0">
+                            <h6><i class="fas fa-database me-2"></i>Sincronizar Datos Maestros</h6>
+                            <p class="mb-2">¿Desea actualizar también los datos maestros del sistema?</p>
+                            <small class="text-muted">
+                                (Departamentos, Municipios, Medicamentos, Diagnósticos, CUPS, etc.)
+                            </small>
+                        </div>
+                    `,
+                    showDenyButton: true,
+                    confirmButtonText: '<i class="fas fa-sync-alt me-2"></i>Sí, sincronizar datos maestros',
+                    denyButtonText: '<i class="fas fa-times me-2"></i>No, terminar',
+                    confirmButtonColor: '#2c5aa0',
+                    denyButtonColor: '#6c757d',
+                    width: '750px'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Usuario quiere sincronizar datos maestros
+                        sincronizarDatosMaestros();
+                    }
+                });
+            }, 1000);
+
+        } else {
+            // Error en algún paso
+            const failedModule = data.module || 'desconocido';
+            const failedStep = data.step || 0;
+            
+            // Marcar pasos completados y el que falló
+            if (failedStep >= 1) {
+                actualizarEstadoSincronizacion('pacientes', 
+                    failedModule === 'pacientes' ? 'error' : 'success', 
+                    data.results?.pacientes);
+            }
+            if (failedStep >= 2) {
+                actualizarEstadoSincronizacion('agendas', 
+                    failedModule === 'agendas' ? 'error' : 'success', 
+                    data.results?.agendas);
+            }
+            if (failedStep >= 3) {
+                actualizarEstadoSincronizacion('citas', 
+                    failedModule === 'citas' ? 'error' : 'success', 
+                    data.results?.citas);
+            }
+            if (failedStep >= 4) {
+                actualizarEstadoSincronizacion('historias', 
+                    failedModule === 'historias' ? 'error' : 'success', 
+                    data.results?.historias);
+            }
+
+            setTimeout(() => {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error en la Sincronización de Datos Offline',
+                    html: `
+                        <div class="alert alert-danger">
+                            <strong>Módulo:</strong> ${getNombreModulo(failedModule)}<br>
+                            <strong>Error:</strong> ${data.error || 'Error desconocido'}
+                        </div>
+                        ${data.results ? generarResumenParcial(data.results) : ''}
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            La sincronización se detuvo. Por favor, corrija el error e intente nuevamente.
+                        </div>
+                    `,
+                    confirmButtonText: 'Cerrar',
+                    confirmButtonColor: '#dc3545',
+                    width: '700px'
+                });
+            }, 500);
+        }
+
+    } catch (error) {
+        console.error('Error en sincronización:', error);
+        
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de Conexión',
+            html: `
+                <p>No se pudo conectar con el servidor</p>
+                <p class="text-muted">Por favor verifique su conexión e intente nuevamente</p>
+                <code class="d-block mt-3 p-2 bg-light text-danger">${error.message}</code>
+            `,
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#dc3545'
+        });
+    } finally {
+        // Rehabilitar botón
+        if (btnSync) {
+            btnSync.disabled = false;
+            btnSync.innerHTML = '<i class="fas fa-sync-alt"></i><span class="sync-text">Sincronizar</span>';
+        }
+    }
+}
+
+/**
+ * Actualizar estado visual de un módulo en el modal de sincronización
+ */
+function actualizarEstadoSincronizacion(modulo, estado, detalles) {
+    const statusElement = document.getElementById(`status-${modulo}`);
+    const stepElement = document.getElementById(`sync-step-${modulo}`);
+    
+    if (!statusElement || !stepElement) return;
+
+    if (estado === 'success') {
+        const synced = detalles?.synced_count || 0;
+        const failed = detalles?.failed_count || 0;
+        
+        statusElement.innerHTML = `
+            <i class="fas fa-check-circle text-success me-2"></i>
+            ${synced} sincronizados${failed > 0 ? `, ${failed} fallidos` : ''}
+        `;
+        stepElement.classList.add('step-completed');
+        
+    } else if (estado === 'error') {
+        statusElement.innerHTML = `
+            <i class="fas fa-times-circle text-danger me-2"></i>
+            Error al sincronizar
+        `;
+        stepElement.classList.add('step-error');
+    } else if (estado === 'processing') {
+        statusElement.innerHTML = `
+            <i class="fas fa-spinner fa-spin text-primary me-2"></i>
+            Procesando...
+        `;
+    }
+
+    // Actualizar progreso global
+    const progressBar = document.getElementById('sync-global-progress');
+    if (progressBar) {
+        const completedSteps = document.querySelectorAll('.step-completed, .step-error').length;
+        const totalSteps = 4;
+        const percentage = (completedSteps / totalSteps) * 100;
+        
+        progressBar.style.width = `${percentage}%`;
+        progressBar.textContent = `${Math.round(percentage)}%`;
+    }
+}
+
+/**
+ * Generar resumen HTML de la sincronización de datos offline
+ */
+function generarResumenSincronizacion(data) {
+    const details = data.details || {};
+    
+    return `
+        <p class="mb-3">${data.message || 'Todos los datos offline fueron sincronizados correctamente'}</p>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-success mb-0">
+                    <h5><i class="fas fa-check-circle me-2"></i>Resumen de Datos Offline Sincronizados</h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-6 text-start">
+                            ${generarItemResumen('Pacientes', 'users', details.pacientes)}
+                            ${generarItemResumen('Agendas', 'calendar-alt', details.agendas)}
+                        </div>
+                        <div class="col-6 text-start">
+                            ${generarItemResumen('Citas', 'calendar-check', details.citas)}
+                            ${generarItemResumen('Historias Clínicas', 'file-medical', details.historias)}
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="text-center">
+                        <strong>Total sincronizado: ${data.total_synced || 0} registros</strong>
+                        ${(data.total_failed || 0) > 0 ? `<br><span class="text-warning">Fallidos: ${data.total_failed}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generar item individual del resumen
+ */
+function generarItemResumen(nombre, icono, detalles) {
+    if (!detalles) return '';
+    
+    const synced = detalles.synced_count || 0;
+    const failed = detalles.failed_count || 0;
+    
+    // Si es Historias Clínicas y tiene detalle de enviadas/descargadas
+    if (nombre === 'Historias Clínicas' && (detalles.enviadas || detalles.descargadas)) {
+        return `
+            <div class="mb-2">
+                <i class="fas fa-${icono} me-2"></i>
+                <strong>${nombre}:</strong><br>
+                <span class="text-success ms-4">↑ ${detalles.enviadas || 0} enviadas</span><br>
+                <span class="text-info ms-4">↓ ${detalles.descargadas || 0} descargadas</span>
+                ${failed > 0 ? `<br><span class="text-danger ms-4">✗ ${failed} errores</span>` : ''}
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="mb-2">
+            <i class="fas fa-${icono} me-2"></i>
+            <strong>${nombre}:</strong> 
+            <span class="text-success">${synced} ✓</span>
+            ${failed > 0 ? `<span class="text-danger"> / ${failed} ✗</span>` : ''}
+        </div>
+    `;
+}
+
+/**
+ * Generar resumen parcial cuando falla
+ */
+function generarResumenParcial(results) {
+    let html = '<div class="alert alert-info mt-3"><h6>Datos sincronizados antes del error:</h6>';
+    
+    if (results.pacientes?.success) {
+        html += generarItemResumen('Pacientes', 'users', results.pacientes);
+    }
+    if (results.agendas?.success) {
+        html += generarItemResumen('Agendas', 'calendar-alt', results.agendas);
+    }
+    if (results.citas?.success) {
+        html += generarItemResumen('Citas', 'calendar-check', results.citas);
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Obtener nombre amigable del módulo
+ */
+function getNombreModulo(modulo) {
+    const nombres = {
+        'pacientes': 'Pacientes',
+        'agendas': 'Agendas',
+        'citas': 'Citas',
+        'historias': 'Historias Clínicas',
+        'conectividad': 'Conectividad',
+        'sistema': 'Sistema'
+    };
+    return nombres[modulo] || modulo;
+}
 </script>
+
+<style>
+/* Estilos para el modal de sincronización unificada */
+.sync-unified-modal {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.sync-progress-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.sync-step {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #dee2e6;
+    transition: all 0.3s ease;
+}
+
+.sync-step.step-completed {
+    background: #d4edda;
+    border-left-color: #28a745;
+}
+
+.sync-step.step-error {
+    background: #f8d7da;
+    border-left-color: #dc3545;
+}
+
+.step-icon {
+    font-size: 1.8rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+    border-radius: 50%;
+    margin-right: 15px;
+    color: #6c757d;
+}
+
+.sync-step.step-completed .step-icon {
+    color: #28a745;
+}
+
+.sync-step.step-error .step-icon {
+    color: #dc3545;
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 5px;
+    color: #2c5aa0;
+}
+
+.step-status {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.sync-order-list {
+    list-style: none;
+    padding-left: 0;
+}
+
+.sync-order-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.sync-order-list li:last-child {
+    border-bottom: none;
+}
+
+.quick-actions .sync-text {
+    margin-left: 5px;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .quick-actions .sync-text {
+        display: none;
+    }
+}
+</style>

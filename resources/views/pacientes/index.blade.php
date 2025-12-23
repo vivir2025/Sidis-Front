@@ -30,16 +30,19 @@
                         </span>
                     @endif
                     
-                    <!-- Botón Sincronizar -->
-                    @if($isOffline)
-                        <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncPacientes()">
-                            <i class="fas fa-sync-alt"></i> Sincronizar
-                        </button>
+                    {{-- ℹ️ SINCRONIZACIÓN UNIFICADA: Usar el botón del sidebar --}}
+                    {{-- Los botones individuales de sincronización han sido reemplazados por un sistema unificado --}}
+                    @if($isOffline && ($pending_sync_count ?? 0) > 0)
+                        <span class="badge bg-warning text-dark me-2">
+                            <i class="fas fa-clock"></i> {{ $pending_sync_count ?? 0 }} pendiente(s) de sincronizar
+                        </span>
                     @endif
-
-                    <button type="button" class="btn btn-success btn-sm" onclick="syncAllPendingData()">
-                    <i class="fas fa-sync-alt"></i> Forzar Sync
+                    
+                    {{-- BOTONES DESACTIVADOS - Usar sincronización unificada del sidebar
+                    <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncPacientes()" disabled>
+                        <i class="fas fa-sync-alt"></i> Sincronizar (usar sidebar)
                     </button>
+                    --}}
                     
                     <!-- Botón Nuevo Paciente -->
                     <a href="{{ route('pacientes.create') }}" class="btn btn-primary">

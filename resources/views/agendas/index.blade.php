@@ -30,24 +30,19 @@
                         </span>
                     @endif
                     
-                    <!-- Botones de Sincronización -->
-                    @if($isOffline)
-                        <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncAgendas()">
-                            <i class="fas fa-sync-alt"></i> Sincronizar
-                        </button>
-                    @endif
-
-                    <button type="button" class="btn btn-success btn-sm me-2" onclick="syncAllPendingAgendasData()">
-                        <i class="fas fa-sync-alt"></i> Forzar Sync
-                    </button>
-                    
-                    <!-- Botón de Sincronización Automática -->
-                    <button type="button" id="btnSincronizar" class="btn btn-outline-warning position-relative me-2" onclick="sincronizarPendientes()" style="display: none;">
-                        <i class="fas fa-sync-alt"></i> Sincronizar
-                        <span id="badgePendientes" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
-                            0
+                    {{-- ℹ️ SINCRONIZACIÓN UNIFICADA: Usar el botón del sidebar --}}
+                    {{-- Los botones individuales de sincronización han sido reemplazados por un sistema unificado --}}
+                    @if($isOffline && ($pending_sync_count ?? 0) > 0)
+                        <span class="badge bg-warning text-dark me-2">
+                            <i class="fas fa-clock"></i> {{ $pending_sync_count ?? 0 }} pendiente(s) de sincronizar
                         </span>
+                    @endif
+                    
+                    {{-- BOTONES DESACTIVADOS - Usar sincronización unificada del sidebar
+                    <button type="button" class="btn btn-outline-info btn-sm me-2" onclick="syncAgendas()" disabled>
+                        <i class="fas fa-sync-alt"></i> Sincronizar (usar sidebar)
                     </button>
+                    --}}
                     
                     <button type="button" class="btn btn-outline-secondary me-2" onclick="refreshAgendas()">
                         <i class="fas fa-sync-alt"></i> Actualizar
