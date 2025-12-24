@@ -1306,14 +1306,14 @@ function generarItemResumen(nombre, icono, detalles) {
     const synced = detalles.synced_count || 0;
     const failed = detalles.failed_count || 0;
     
-    // Si es Historias Clínicas y tiene detalle de enviadas/descargadas
-    if (nombre === 'Historias Clínicas' && (detalles.enviadas || detalles.descargadas)) {
+    // Si tiene detalle de enviados/descargados (aplica a todos los módulos)
+    if (detalles.enviados !== undefined || detalles.descargados !== undefined) {
         return `
             <div class="mb-2">
                 <i class="fas fa-${icono} me-2"></i>
                 <strong>${nombre}:</strong><br>
-                <span class="text-success ms-4">↑ ${detalles.enviadas || 0} enviadas</span><br>
-                <span class="text-info ms-4">↓ ${detalles.descargadas || 0} descargadas</span>
+                <span class="text-success ms-4">↑ ${detalles.enviados || 0} enviados</span><br>
+                <span class="text-info ms-4">↓ ${detalles.descargados || 0} descargados</span>
                 ${failed > 0 ? `<br><span class="text-danger ms-4">✗ ${failed} errores</span>` : ''}
             </div>
         `;

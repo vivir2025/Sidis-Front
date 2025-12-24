@@ -42,6 +42,12 @@ Route::get('/health-check', function() {
 Route::get('/check-connection', [AuthController::class, 'checkConnection'])
     ->name('check-connection');
 
+// ✅ FIX TEMPORAL: Página para corregir UUID de agenda
+Route::get('/fix-agenda-uuid-page', function() {
+    return view('fix-agenda-uuid');
+})->middleware('custom.auth')->name('fix-agenda-uuid-page');
+
+
 
 // ====================================================================
 // 🔐 RUTAS PARA USUARIOS NO AUTENTICADOS (GUEST)
@@ -75,6 +81,9 @@ Route::middleware('custom.auth')->group(function () {
     
     // ✅ NUEVA: Verificar estado de sesión
     Route::get('/session-status', [AuthController::class, 'sessionStatus'])->name('session.status');
+    
+    // ✅ FIX: Corregir UUID de agenda
+    Route::post('/sync/fix-agenda-uuid', [SyncController::class, 'fixAgendaUuid'])->name('sync.fix-agenda-uuid');
     
     // ✅ DASHBOARD
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

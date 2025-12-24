@@ -2104,6 +2104,7 @@ private function updatePacienteUuidInRelatedTables(string $oldUuid, string $newU
                 $data = json_decode(file_get_contents($file), true);
                 
                 if ($data && 
+                    isset($data['sede_id']) &&
                     $data['sede_id'] == $sedeId && 
                     (!isset($data['deleted_at']) || !$data['deleted_at'])) {
                     $pacientes[] = $data;

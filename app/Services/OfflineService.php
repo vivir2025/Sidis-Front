@@ -4763,10 +4763,8 @@ public function syncPendingAgendas(): array
                         'error_message' => null
                     ];
                     
-                    // Si el servidor devolvió un ID, guardarlo
-                    if (isset($serverData['id'])) {
-                        $updateData['id'] = $serverData['id'];
-                    }
+                    // ⚠️ NO actualizar el campo 'id' - SQLite maneja su propio autoincrement
+                    // El 'id' del servidor es irrelevante para el almacenamiento local
                     
                     // Si el servidor devolvió un UUID diferente, actualizarlo
                     if (isset($serverData['uuid'])) {
@@ -4830,15 +4828,92 @@ public function syncPendingAgendas(): array
                         str_contains($errorLower, 'already exists') ||
                         str_contains($errorLower, 'conflicto')) {
                         
-                        // Marcar como sincronizado si ya existe
-                        DB::connection('offline')
-                            ->table('agendas')
-                            ->where('uuid', $agenda->uuid)
-                            ->update([
-                                'sync_status' => 'synced',
-                                'synced_at' => now(),
-                                'error_message' => null
+                        Log::info('🔍 Agenda duplicada detectada, buscando UUID del servidor', [
+                            'uuid_local' => $agenda->uuid,
+                            'fecha' => $agenda->fecha,
+                            'consultorio' => $agenda->consultorio
+                        ]);
+                        
+                        // ✅ BUSCAR LA AGENDA EN EL SERVIDOR PARA OBTENER SU UUID REAL
+                        try {
+                            $sedeId = $agenda->sede_id ?? session('sede_id');
+                            $searchResponse = $apiService->get('/agendas', [
+                                'sede_id' => $sedeId,
+                                'fecha' => $agenda->fecha,
+                                'per_page' => 100
                             ]);
+                            
+                            $serverUuid = null;
+                            if ($searchResponse['success'] ?? false) {
+                                $serverAgendas = $searchResponse['data'] ?? [];
+                                
+                                // Buscar agenda que coincida con fecha, hora y consultorio
+                                foreach ($serverAgendas as $serverAgenda) {
+                                    $fechaMatch = date('Y-m-d', strtotime($serverAgenda['fecha'] ?? '')) === date('Y-m-d', strtotime($agenda->fecha));
+                                    $consultorioMatch = ($serverAgenda['consultorio'] ?? '') === ($agenda->consultorio ?? '');
+                                    $horaMatch = ($serverAgenda['hora_inicio'] ?? '') === ($agenda->hora_inicio ?? '');
+                                    
+                                    if ($fechaMatch && $consultorioMatch && $horaMatch) {
+                                        $serverUuid = $serverAgenda['uuid'] ?? null;
+                                        Log::info('✅ Agenda encontrada en servidor', [
+                                            'uuid_local' => $agenda->uuid,
+                                            'uuid_servidor' => $serverUuid
+                                        ]);
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Actualizar con el UUID del servidor si se encontró
+                            if ($serverUuid && $serverUuid !== $agenda->uuid) {
+                                DB::connection('offline')
+                                    ->table('agendas')
+                                    ->where('uuid', $agenda->uuid)
+                                    ->update([
+                                        'uuid' => $serverUuid,
+                                        'sync_status' => 'synced',
+                                        'synced_at' => now(),
+                                        'error_message' => null
+                                    ]);
+                                
+                                // Actualizar citas que referencian el UUID viejo
+                                $this->updateCitasAgendaUuid($agenda->uuid, $serverUuid);
+                                
+                                Log::info('🔄 UUID de agenda actualizado al UUID del servidor', [
+                                    'uuid_local_viejo' => $agenda->uuid,
+                                    'uuid_servidor_nuevo' => $serverUuid
+                                ]);
+                            } else {
+                                // Si no se pudo obtener el UUID del servidor, solo marcar como synced
+                                DB::connection('offline')
+                                    ->table('agendas')
+                                    ->where('uuid', $agenda->uuid)
+                                    ->update([
+                                        'sync_status' => 'synced',
+                                        'synced_at' => now(),
+                                        'error_message' => null
+                                    ]);
+                                
+                                Log::warning('⚠️ No se pudo obtener UUID del servidor, marcando como synced con UUID local', [
+                                    'uuid' => $agenda->uuid
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            // En caso de error buscando, solo marcar como synced
+                            DB::connection('offline')
+                                ->table('agendas')
+                                ->where('uuid', $agenda->uuid)
+                                ->update([
+                                    'sync_status' => 'synced',
+                                    'synced_at' => now(),
+                                    'error_message' => null
+                                ]);
+                            
+                            Log::error('❌ Error buscando UUID del servidor, marcando como synced de todos modos', [
+                                'uuid' => $agenda->uuid,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
                         
                         $results['success']++;
                         $results['details'][] = [
@@ -12847,6 +12922,390 @@ public function getAgendasOfflineStats(): array
         ]);
         
         return [];
+    }
+}
+
+/**
+ * ✅ DESCARGAR PACIENTES DESDE LA API Y GUARDAR LOCALMENTE
+ */
+public function descargarPacientesDesdeAPI(int $sedeId): array
+{
+    try {
+        Log::info('📥 Descargando pacientes desde API', ['sede_id' => $sedeId]);
+
+        $apiService = app(ApiService::class);
+        
+        // ✅ OBTENER PACIENTES CON TODAS LAS RELACIONES
+        $response = $apiService->get('/pacientes', [
+            'sede_id' => $sedeId,
+            'per_page' => 1000, // Obtener muchos registros
+            'with' => 'empresa,regimen,tipo_documento,tipo_afiliacion,zona_residencia,departamento_nacimiento,departamento_residencia,municipio_nacimiento,municipio_residencia,raza,escolaridad,parentesco,ocupacion,novedad,auxiliar,brigada'
+        ]);
+
+        if (!isset($response['success']) || !$response['success']) {
+            Log::warning('❌ Error obteniendo pacientes del servidor', [
+                'response' => $response
+            ]);
+            return [
+                'success' => false,
+                'descargados' => 0,
+                'errors' => ['Error obteniendo pacientes del servidor']
+            ];
+        }
+
+        // ✅ EXTRAER PACIENTES DESDE ESTRUCTURA PAGINADA
+        $dataResponse = $response['data'] ?? [];
+        
+        // Si la API retorna paginación Laravel: {data: [...], current_page, total, etc}
+        if (is_array($dataResponse) && isset($dataResponse['data']) && is_array($dataResponse['data'])) {
+            $pacientes = $dataResponse['data'];
+        } elseif (is_array($dataResponse)) {
+            $pacientes = $dataResponse;
+        } else {
+            Log::warning('⚠️ API devolvió estructura inesperada', [
+                'data_type' => gettype($dataResponse),
+                'keys' => is_array($dataResponse) ? array_keys($dataResponse) : 'N/A'
+            ]);
+            $pacientes = [];
+        }
+        
+        $descargados = 0;
+        $omitidos = 0;
+        $errors = [];
+
+        foreach ($pacientes as $paciente) {
+            try {
+                // ✅ VALIDAR QUE $paciente SEA UN ARRAY
+                if (!is_array($paciente)) {
+                    continue;
+                }
+                
+                // ✅ VERIFICAR SI YA EXISTE (SINCRONIZACIÓN INCREMENTAL)
+                $filePath = storage_path("app/offline/pacientes/{$paciente['uuid']}.json");
+                if (file_exists($filePath)) {
+                    $omitidos++;
+                    continue;
+                }
+                
+                // Guardar en JSON
+                $paciente['sync_status'] = 'synced';
+                file_put_contents($filePath, json_encode($paciente, JSON_PRETTY_PRINT));
+                $descargados++;
+            } catch (\Exception $e) {
+                Log::error('❌ Error guardando paciente', [
+                    'uuid' => $paciente['uuid'] ?? 'unknown',
+                    'error' => $e->getMessage(),
+                    'line' => $e->getLine()
+                ]);
+                $errors[] = ['uuid' => $paciente['uuid'] ?? 'unknown', 'error' => $e->getMessage()];
+            }
+        }
+
+        Log::info('✅ Pacientes descargados', [
+            'nuevos' => $descargados,
+            'omitidos' => $omitidos,
+            'errores' => count($errors)
+        ]);
+
+        return [
+            'success' => true,
+            'descargados' => $descargados,
+            'errors' => $errors
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error descargando pacientes', ['error' => $e->getMessage()]);
+        return [
+            'success' => false,
+            'descargados' => 0,
+            'errors' => [$e->getMessage()]
+        ];
+    }
+}
+
+/**
+ * ✅ DESCARGAR AGENDAS DESDE LA API Y GUARDAR LOCALMENTE
+ */
+public function descargarAgendasDesdeAPI(int $sedeId): array
+{
+    try {
+        Log::info('📥 Descargando agendas desde API', ['sede_id' => $sedeId]);
+
+        $apiService = app(ApiService::class);
+        
+        // ✅ OBTENER AGENDAS CON TODAS LAS RELACIONES
+        $response = $apiService->get('/agendas', [
+            'sede_id' => $sedeId,
+            'per_page' => 1000,
+            'with' => 'proceso,brigada,usuario_medico,sede'
+        ]);
+
+        if (!isset($response['success']) || !$response['success']) {
+            Log::warning('❌ Error obteniendo agendas del servidor', [
+                'response' => $response
+            ]);
+            return [
+                'success' => false,
+                'descargados' => 0,
+                'errors' => ['Error obteniendo agendas del servidor']
+            ];
+        }
+
+        // ✅ EXTRAER AGENDAS DESDE ESTRUCTURA PAGINADA
+        $dataResponse = $response['data'] ?? [];
+        
+        // Si la API retorna paginación Laravel: {data: [...], current_page, total, etc}
+        if (is_array($dataResponse) && isset($dataResponse['data']) && is_array($dataResponse['data'])) {
+            $agendas = $dataResponse['data'];
+        } elseif (is_array($dataResponse)) {
+            $agendas = $dataResponse;
+        } else {
+            Log::warning('⚠️ API devolvió estructura inesperada', [
+                'data_type' => gettype($dataResponse),
+                'keys' => is_array($dataResponse) ? array_keys($dataResponse) : 'N/A'
+            ]);
+            $agendas = [];
+        }
+        
+        $descargados = 0;
+        $omitidos = 0;
+        $errors = [];
+
+        foreach ($agendas as $agenda) {
+            try {
+                // ✅ VALIDAR QUE $agenda SEA UN ARRAY
+                if (!is_array($agenda)) {
+                    Log::warning('⚠️ Agenda no es un array, saltando', [
+                        'agenda_type' => gettype($agenda),
+                        'agenda_value' => $agenda
+                    ]);
+                    continue;
+                }
+                
+                // 🔄 SINCRONIZACIÓN INCREMENTAL: Verificar si ya existe en SQLite o archivo JSON
+                // Primero verificar en SQLite (fuente de verdad)
+                if ($this->isSQLiteAvailable()) {
+                    $existe = DB::connection('offline')->table('agendas')
+                        ->where('uuid', $agenda['uuid'])
+                        ->where('sync_status', 'synced')
+                        ->exists();
+                    
+                    if ($existe) {
+                        $omitidos++;
+                        continue;
+                    }
+                }
+                
+                // También verificar archivo JSON como fallback
+                $agendasPath = storage_path("app/offline/agendas");
+                if (!is_dir($agendasPath)) {
+                    mkdir($agendasPath, 0755, true);
+                }
+                $filePath = $agendasPath . "/{$agenda['uuid']}.json";
+                
+                if (file_exists($filePath)) {
+                    $omitidos++;
+                    continue;
+                }
+                
+                // Guardar en SQLite
+                if ($this->isSQLiteAvailable()) {
+                    DB::connection('offline')->table('agendas')->updateOrInsert(
+                        ['uuid' => $agenda['uuid']],
+                        [
+                            'fecha' => $agenda['fecha'],
+                            'consultorio' => $agenda['consultorio'] ?? null,
+                            'hora_inicio' => $agenda['hora_inicio'] ?? null,
+                            'hora_fin' => $agenda['hora_fin'] ?? null,
+                            'intervalo' => $agenda['intervalo'] ?? 15,
+                            'etiqueta' => $agenda['etiqueta'] ?? 'general',
+                            'modalidad' => $agenda['modalidad'] ?? null,
+                            'estado' => $agenda['estado'] ?? 'ACTIVO',
+                            'proceso_uuid' => $agenda['proceso_uuid'] ?? null,
+                            'brigada_uuid' => $agenda['brigada_uuid'] ?? null,
+                            'usuario_medico_uuid' => $agenda['usuario_medico_uuid'] ?? $agenda['usuario_medico_id'] ?? null,
+                            'sede_id' => $sedeId,
+                            'sync_status' => 'synced',
+                            'original_data' => json_encode($agenda),
+                            'updated_at' => now()
+                        ]
+                    );
+                }
+                
+                // Guardar en JSON
+                $agenda['sync_status'] = 'synced';
+                file_put_contents($filePath, json_encode($agenda, JSON_PRETTY_PRINT));
+                
+                $descargados++;
+            } catch (\Exception $e) {
+                Log::error('❌ Error guardando agenda', [
+                    'uuid' => $agenda['uuid'] ?? 'unknown',
+                    'error' => $e->getMessage(),
+                    'line' => $e->getLine(),
+                    'file' => $e->getFile()
+                ]);
+                $errors[] = ['uuid' => $agenda['uuid'] ?? 'unknown', 'error' => $e->getMessage()];
+            }
+        }
+
+        Log::info('✅ Agendas descargadas', [
+            'nuevos' => $descargados,
+            'omitidos' => $omitidos,
+            'errores' => count($errors)
+        ]);
+
+        return [
+            'success' => true,
+            'descargados' => $descargados,
+            'errors' => $errors
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error descargando agendas', ['error' => $e->getMessage()]);
+        return [
+            'success' => false,
+            'descargados' => 0,
+            'errors' => [$e->getMessage()]
+        ];
+    }
+}
+
+/**
+ * ✅ DESCARGAR CITAS DESDE LA API Y GUARDAR LOCALMENTE
+ */
+public function descargarCitasDesdeAPI(int $sedeId): array
+{
+    try {
+        Log::info('📥 Descargando citas desde API', ['sede_id' => $sedeId]);
+
+        $apiService = app(ApiService::class);
+        
+        // ✅ OBTENER CITAS CON TODAS LAS RELACIONES
+        $response = $apiService->get('/citas', [
+            'sede_id' => $sedeId,
+            'per_page' => 1000,
+            'with' => 'paciente,agenda,cups_contratado'
+        ]);
+
+        if (!isset($response['success']) || !$response['success']) {
+            return [
+                'success' => false,
+                'descargados' => 0,
+                'errors' => ['Error obteniendo citas del servidor']
+            ];
+        }
+
+        // ✅ EXTRAER CITAS DESDE ESTRUCTURA PAGINADA
+        $dataResponse = $response['data'] ?? [];
+        
+        // Si la API retorna paginación Laravel: {data: [...], current_page, total, etc}
+        if (is_array($dataResponse) && isset($dataResponse['data']) && is_array($dataResponse['data'])) {
+            $citas = $dataResponse['data'];
+        } elseif (is_array($dataResponse)) {
+            $citas = $dataResponse;
+        } else {
+            Log::warning('⚠️ API retornó estructura inesperada en /citas', [
+                'data_type' => gettype($dataResponse),
+                'keys' => is_array($dataResponse) ? array_keys($dataResponse) : 'N/A'
+            ]);
+            $citas = [];
+        }
+        
+        $descargados = 0;
+        $omitidos = 0;
+        $errors = [];
+
+        foreach ($citas as $cita) {
+            // ✅ VALIDAR QUE CADA $cita SEA ARRAY
+            if (!is_array($cita)) {
+                Log::warning('⚠️ Cita no es array', ['type' => gettype($cita)]);
+                continue;
+            }
+            try {
+                // 🔄 SINCRONIZACIÓN INCREMENTAL: Verificar si ya existe en SQLite o archivo JSON
+                // Primero verificar en SQLite (fuente de verdad)
+                if ($this->isSQLiteAvailable()) {
+                    $existe = DB::connection('offline')->table('citas')
+                        ->where('uuid', $cita['uuid'])
+                        ->where('sync_status', 'synced')
+                        ->exists();
+                    
+                    if ($existe) {
+                        $omitidos++;
+                        continue;
+                    }
+                }
+                
+                // También verificar archivo JSON como fallback
+                $citasPath = storage_path("app/offline/citas");
+                if (!is_dir($citasPath)) {
+                    mkdir($citasPath, 0755, true);
+                }
+                $filePath = $citasPath . "/{$cita['uuid']}.json";
+                
+                if (file_exists($filePath)) {
+                    $omitidos++;
+                    continue;
+                }
+                
+                // Guardar en SQLite
+                if ($this->isSQLiteAvailable()) {
+                    DB::connection('offline')->table('citas')->updateOrInsert(
+                        ['uuid' => $cita['uuid']],
+                        [
+                            'fecha' => $cita['fecha'],
+                            'fecha_inicio' => $cita['fecha_inicio'] ?? null,
+                            'fecha_final' => $cita['fecha_final'] ?? null,
+                            'fecha_deseada' => $cita['fecha_deseada'] ?? null,
+                            'motivo' => $cita['motivo'] ?? null,
+                            'nota' => $cita['nota'] ?? null,
+                            'estado' => $cita['estado'] ?? 'PROGRAMADA',
+                            'patologia' => $cita['patologia'] ?? null,
+                            'paciente_uuid' => $cita['paciente_uuid'] ?? null,
+                            'agenda_uuid' => $cita['agenda_uuid'] ?? null,
+                            'cups_contratado_uuid' => $cita['cups_contratado_uuid'] ?? null,
+                            'sede_id' => $sedeId,
+                            'sync_status' => 'synced',
+                            'updated_at' => now()
+                        ]
+                    );
+                }
+                
+                // Guardar en JSON
+                $cita['sync_status'] = 'synced';
+                file_put_contents($filePath, json_encode($cita, JSON_PRETTY_PRINT));
+                
+                $descargados++;
+            } catch (\Exception $e) {
+                Log::error('❌ Error guardando cita', [
+                    'uuid' => $cita['uuid'] ?? 'unknown',
+                    'error' => $e->getMessage(),
+                    'line' => $e->getLine(),
+                    'file' => $e->getFile()
+                ]);
+                $errors[] = ['uuid' => $cita['uuid'] ?? 'unknown', 'error' => $e->getMessage()];
+            }
+        }
+
+        Log::info('✅ Citas descargadas', [
+            'nuevos' => $descargados,
+            'omitidos' => $omitidos,
+            'errores' => count($errors)
+        ]);
+
+        return [
+            'success' => true,
+            'descargados' => $descargados,
+            'errors' => $errors
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('❌ Error descargando citas', ['error' => $e->getMessage()]);
+        return [
+            'success' => false,
+            'descargados' => 0,
+            'errors' => [$e->getMessage()]
+        ];
     }
 }
 
