@@ -1289,12 +1289,26 @@ private function searchPacientesOfflineByDocument(string $documento, int $sedeId
                 $result = $this->syncSinglePacienteToApi($paciente);
                 
                 if ($result['success']) {
-                    // ✅ USAR EL NUEVO MÉTODO PARA MARCAR COMO SINCRONIZADO
-                    $this->markPacienteAsSynced($paciente['uuid'], $result['data'] ?? []);
-                    $results['synced'][] = $paciente['uuid'];
+                    // ✅ VERIFICAR SI EL UUID CAMBIÓ
+                    $oldUuid = $paciente['uuid'];
+                    $newUuid = $result['data']['uuid'] ?? $oldUuid;
+                    
+                    if ($oldUuid !== $newUuid) {
+                        Log::info('🔄 UUID de paciente cambió durante sincronización', [
+                            'old_uuid' => $oldUuid,
+                            'new_uuid' => $newUuid
+                        ]);
+                        
+                        // ✅ ACTUALIZAR REFERENCIAS EN CITAS E HISTORIAS CLÍNICAS
+                        $this->updatePacienteUuidInRelatedTables($oldUuid, $newUuid);
+                    }
+                    
+                    // ✅ MARCAR COMO SINCRONIZADO
+                    $this->markPacienteAsSynced($oldUuid, $newUuid, $result['data'] ?? []);
+                    $results['synced'][] = $newUuid;
                     
                     Log::info('✅ Paciente sincronizado', [
-                        'uuid' => $paciente['uuid'],
+                        'uuid' => $newUuid,
                         'documento' => $paciente['documento']
                     ]);
                 } else {
@@ -1757,32 +1771,169 @@ private function storePacienteOffline(array $pacienteData, bool $needsSync = fal
 /**
  * ✅ NUEVO MÉTODO: Marcar paciente como sincronizado después de sync exitoso
  */
-private function markPacienteAsSynced(string $uuid, array $apiData = []): void
+private function markPacienteAsSynced(string $oldUuid, string $newUuid, array $apiData = []): void
 {
     try {
-        $filePath = $this->offlineService->getStoragePath() . "/pacientes/{$uuid}.json";
+        $oldFilePath = $this->offlineService->getStoragePath() . "/pacientes/{$oldUuid}.json";
+        $newFilePath = $this->offlineService->getStoragePath() . "/pacientes/{$newUuid}.json";
         
-        if (file_exists($filePath)) {
-            $currentData = json_decode(file_get_contents($filePath), true);
+        if (file_exists($oldFilePath)) {
+            $currentData = json_decode(file_get_contents($oldFilePath), true);
             
             // ✅ ACTUALIZAR CON DATOS DE LA API SI ESTÁN DISPONIBLES
             if (!empty($apiData)) {
                 $currentData = array_merge($currentData, $apiData);
             }
             
+            // ✅ ACTUALIZAR UUID
+            $currentData['uuid'] = $newUuid;
+            
             // ✅ MARCAR COMO SINCRONIZADO
             $currentData['sync_status'] = 'synced';
             $currentData['synced_at'] = now()->toISOString();
             
-            file_put_contents($filePath, json_encode($currentData, JSON_PRETTY_PRINT));
+            // ✅ GUARDAR CON EL NUEVO UUID
+            file_put_contents($newFilePath, json_encode($currentData, JSON_PRETTY_PRINT));
+            
+            // ✅ ELIMINAR ARCHIVO VIEJO SI EL UUID CAMBIÓ
+            if ($oldUuid !== $newUuid && file_exists($oldFilePath)) {
+                unlink($oldFilePath);
+                Log::info('🗑️ Archivo antiguo eliminado', ['old_uuid' => $oldUuid]);
+            }
             
             Log::info('✅ Paciente marcado como sincronizado', [
-                'uuid' => $uuid
+                'old_uuid' => $oldUuid,
+                'new_uuid' => $newUuid
             ]);
         }
     } catch (\Exception $e) {
         Log::error('Error marcando paciente como sincronizado', [
-            'uuid' => $uuid,
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid,
+            'error' => $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Actualizar el UUID del paciente en todas las tablas relacionadas
+ */
+private function updatePacienteUuidInRelatedTables(string $oldUuid, string $newUuid): void
+{
+    try {
+        Log::info('🔄 Actualizando paciente_uuid en tablas relacionadas', [
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+        
+        $sedeId = $this->authService->usuario()['sede_id'];
+        
+        // ✅ ACTUALIZAR EN CITAS (SQLite)
+        $citasUpdated = \DB::connection('offline')->table('citas')
+            ->where('paciente_uuid', $oldUuid)
+            ->where('sede_id', $sedeId)
+            ->update(['paciente_uuid' => $newUuid]);
+        
+        Log::info('✅ Citas actualizadas en SQLite', [
+            'updated_count' => $citasUpdated,
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+        
+        // ✅ ACTUALIZAR EN CITAS (JSON)
+        $citasDir = storage_path('app/offline/citas/');
+        if (is_dir($citasDir)) {
+            $files = glob($citasDir . '*.json');
+            $jsonUpdated = 0;
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                
+                if (isset($data['paciente_uuid']) && $data['paciente_uuid'] === $oldUuid) {
+                    $data['paciente_uuid'] = $newUuid;
+                    
+                    // Actualizar también el objeto paciente si existe
+                    if (isset($data['paciente']['uuid'])) {
+                        $data['paciente']['uuid'] = $newUuid;
+                    }
+                    
+                    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+                    $jsonUpdated++;
+                    
+                    Log::info('✅ Archivo JSON de cita actualizado', [
+                        'file' => basename($file),
+                        'cita_uuid' => $data['uuid'] ?? 'unknown',
+                        'old_paciente_uuid' => $oldUuid,
+                        'new_paciente_uuid' => $newUuid
+                    ]);
+                }
+            }
+            
+            if ($jsonUpdated > 0) {
+                Log::info('✅ Archivos JSON de citas actualizados', ['count' => $jsonUpdated]);
+            }
+        }
+        
+        // ✅ ACTUALIZAR EN HISTORIAS CLÍNICAS (SQLite)
+        $historiasUpdated = \DB::connection('offline')->table('historias_clinicas')
+            ->where('paciente_uuid', $oldUuid)
+            ->where('sede_id', $sedeId)
+            ->update(['paciente_uuid' => $newUuid]);
+        
+        Log::info('✅ Historias clínicas actualizadas en SQLite', [
+            'updated_count' => $historiasUpdated,
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid
+        ]);
+        
+        // ✅ ACTUALIZAR EN HISTORIAS CLÍNICAS (JSON)
+        $historiasDir = storage_path('app/offline/historias_clinicas/');
+        if (is_dir($historiasDir)) {
+            $files = glob($historiasDir . '*.json');
+            $jsonUpdated = 0;
+            
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                
+                if (isset($data['paciente_uuid']) && $data['paciente_uuid'] === $oldUuid) {
+                    $data['paciente_uuid'] = $newUuid;
+                    
+                    // Actualizar también campos relacionados
+                    if (isset($data['cita']['paciente_uuid'])) {
+                        $data['cita']['paciente_uuid'] = $newUuid;
+                    }
+                    if (isset($data['cita']['paciente']['uuid'])) {
+                        $data['cita']['paciente']['uuid'] = $newUuid;
+                    }
+                    
+                    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
+                    $jsonUpdated++;
+                    
+                    Log::info('✅ Archivo JSON de historia actualizado', [
+                        'file' => basename($file),
+                        'historia_uuid' => $data['uuid'] ?? 'unknown',
+                        'old_paciente_uuid' => $oldUuid,
+                        'new_paciente_uuid' => $newUuid
+                    ]);
+                }
+            }
+            
+            if ($jsonUpdated > 0) {
+                Log::info('✅ Archivos JSON de historias actualizados', ['count' => $jsonUpdated]);
+            }
+        }
+        
+        Log::info('✅ Actualización de UUIDs completada', [
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid,
+            'citas_sqlite' => $citasUpdated,
+            'historias_sqlite' => $historiasUpdated
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error actualizando paciente_uuid en tablas relacionadas', [
+            'old_uuid' => $oldUuid,
+            'new_uuid' => $newUuid,
             'error' => $e->getMessage()
         ]);
     }
