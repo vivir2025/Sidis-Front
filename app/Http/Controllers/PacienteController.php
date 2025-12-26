@@ -368,12 +368,12 @@ public function update(Request $request, string $uuid)
 
         if ($result['success']) {
             if ($result['offline']) {
-                // ✅ MODO OFFLINE - No redirigir, mantener en la página
-                return back()
+                // ✅ MODO OFFLINE - Redirigir al index con mensaje de éxito
+                return redirect()->route('pacientes.index')
                     ->with('success', $result['message'])
                     ->with('offline_update', true);
             } else {
-                // ✅ MODO ONLINE - Redirigir normalmente
+                // ✅ MODO ONLINE - Redirigir a la vista del paciente
                 return redirect()->route('pacientes.show', $uuid)
                     ->with('success', $result['message'] ?? 'Paciente actualizado exitosamente');
             }

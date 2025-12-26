@@ -895,6 +895,46 @@ const masterData = @json($masterData ?? []);
 const originalData = @json($paciente);
 let hasChanges = false;
 
+// ✅ FUNCIÓN PARA MOSTRAR ALERTAS
+function showAlert(type, message, title = '') {
+    // Mapear tipos a clases de Bootstrap
+    const typeMap = {
+        'success': 'success',
+        'error': 'danger',
+        'warning': 'warning',
+        'info': 'info'
+    };
+    
+    const alertClass = typeMap[type] || 'info';
+    const icon = type === 'success' ? 'check-circle' : 
+                 type === 'error' ? 'exclamation-circle' : 
+                 type === 'warning' ? 'exclamation-triangle' : 'info-circle';
+    
+    const alertHtml = `
+        <div class="alert alert-${alertClass} alert-dismissible fade show" role="alert">
+            <i class="fas fa-${icon} me-2"></i>
+            ${title ? '<strong>' + title + '</strong><br>' : ''}
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Insertar al inicio del contenedor
+    const container = document.querySelector('.container-fluid');
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = alertHtml;
+    container.insertBefore(tempDiv.firstElementChild, container.firstChild);
+    
+    // Auto-cerrar después de 5 segundos
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+        }
+    }, 5000);
+}
+
 // Inicialización cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', function() {
     loadInitialMunicipios();
@@ -983,20 +1023,24 @@ function setupChangeDetectors() {
 
 // ✅ MANEJAR ENVÍO DEL FORMULARIO - VERSIÓN MEJORADA PARA OFFLINE
 document.getElementById('pacienteEditForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
     const submitBtn = document.getElementById('submitBtn');
     const originalText = submitBtn.innerHTML;
     const isOffline = {{ $isOffline ? 'true' : 'false' }};
     
+    // ✅ SI ESTÁ OFFLINE, DEJAR QUE EL SUBMIT TRADICIONAL MANEJE TODO
+    if (isOffline) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando Offline...';
+        // NO prevenir default - dejar que Laravel redirija
+        return true;
+    }
+    
+    // ✅ SI ESTÁ ONLINE, USAR AJAX
+    e.preventDefault();
+    
     // Deshabilitar botón y mostrar loading
     submitBtn.disabled = true;
-    
-    if (isOffline) {
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando Offline...';
-    } else {
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando...';
-    }
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando...';
     
     // Obtener datos del formulario
     const formData = new FormData(this);
@@ -1019,25 +1063,19 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
     .then(data => {
         if (data.success) {
             if (data.offline) {
-                // ✅ MODO OFFLINE - Cambios guardados localmente
-                showAlert('success', 'Paciente actualizado y guardado localmente', 'Guardado Offline');
-                showAlert('info', 'Los cambios se sincronizarán automáticamente cuando vuelva la conexión.', 'Sincronización Pendiente');
+                // ✅ MODO OFFLINE - Cambios guardados localmente, REDIRIGIR AL INDEX
+                showAlert('success', 'Paciente actualizado y guardado localmente. Los cambios se sincronizarán cuando vuelva la conexión.', 'Guardado Offline');
                 
-                // Actualizar el botón para mostrar estado offline
-                updateOfflineButton(submitBtn);
-                
-                // Actualizar historial
-                addToHistorial('Información actualizada (offline)', 'warning');
-                
-                // Mostrar badge de sincronización pendiente
-                showSyncPendingBadge();
+                // Redirigir al index después de mostrar el mensaje
+                setTimeout(() => {
+                    window.location.href = '/pacientes';
+                }, 1500);
                 
             } else {
                 // ✅ MODO ONLINE - Cambios guardados en servidor
                 showAlert('success', data.message || 'Paciente actualizado exitosamente');
-                addToHistorial('Información actualizada y sincronizada', 'success');
                 
-                // Redirigir después de 2 segundos
+                // Redirigir a la vista del paciente después de 2 segundos
                 setTimeout(() => {
                     window.location.href = `/pacientes/{{ $paciente['uuid'] }}`;
                 }, 2000);
@@ -1049,26 +1087,27 @@ document.getElementById('pacienteEditForm').addEventListener('submit', function(
         } else {
             showAlert('error', data.error || 'Error al actualizar paciente');
             
-            // Limpiar errores previos
-            clearValidationErrors();
-            
-            // Mostrar errores de validación si existen
-            if (data.errors) {
-                showValidationErrors(data.errors);
-            }
+            // Restaurar botón
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     })
     .catch(error => {
         console.error('Error:', error);
         
         if (isOffline) {
-            // En modo offline, el error es esperado, mostrar mensaje apropiado
-            showAlert('warning', 'Sin conexión - Los cambios se guardarán cuando vuelva el internet', 'Modo Offline');
-            addToHistorial('Cambios guardados localmente (sin conexión)', 'warning');
-            updateOfflineButton(submitBtn);
-            showSyncPendingBadge();
+            // En modo offline, el error puede ser esperado si no hay AJAX response
+            // Esto significa que el submit tradicional tomó control
+            showAlert('info', 'Guardando cambios offline...', 'Modo Offline');
+            
+            // Esperar un poco y redirigir al index
+            setTimeout(() => {
+                window.location.href = '/pacientes';
+            }, 1500);
         } else {
             showAlert('error', 'Error de conexión al actualizar paciente');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     })
     .finally(() => {

@@ -2356,6 +2356,31 @@ public function getAllUsuariosOffline(array $filters = []): array
     }
 
     /**
+     * ✅ NUEVO: Obtener cambios pendientes de un paciente específico
+     */
+    public function getPendingChangeForPaciente(string $uuid): ?array
+    {
+        $changes = $this->getPendingChanges();
+        
+        foreach ($changes as $index => $change) {
+            // Verificar si el endpoint contiene el UUID del paciente
+            if (isset($change['endpoint']) && strpos($change['endpoint'], $uuid) !== false) {
+                return array_merge($change, ['index' => $index]);
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * ✅ NUEVO: Verificar si un paciente tiene cambios pendientes
+     */
+    public function hasPendingChangesForPaciente(string $uuid): bool
+    {
+        return $this->getPendingChangeForPaciente($uuid) !== null;
+    }
+
+    /**
      * Sincronizar cambios pendientes
      */
     public function syncPendingChanges(): array
@@ -2403,6 +2428,80 @@ public function getAllUsuariosOffline(array $filters = []): array
         $this->storeData('pending_changes.json', array_values($changes));
 
         return $results;
+    }
+
+    /**
+     * ✅ NUEVO: Sincronizar cambios pendientes de un paciente específico
+     */
+    public function syncPendingChangesForPaciente(string $uuid): array
+    {
+        $pendingChange = $this->getPendingChangeForPaciente($uuid);
+        
+        if (!$pendingChange) {
+            Log::info('✅ No hay cambios pendientes para este paciente', ['uuid' => $uuid]);
+            return [
+                'success' => true,
+                'message' => 'No hay cambios pendientes',
+                'had_changes' => false
+            ];
+        }
+
+        Log::info('🔄 Sincronizando cambios pendientes de paciente', [
+            'uuid' => $uuid,
+            'action' => $pendingChange['action'],
+            'endpoint' => $pendingChange['endpoint']
+        ]);
+
+        try {
+            $apiService = app(ApiService::class);
+            
+            $response = $apiService->{$pendingChange['action']}(
+                $pendingChange['endpoint'],
+                $pendingChange['data']
+            );
+
+            if ($response['success']) {
+                // ✅ Remover cambio pendiente
+                $allChanges = $this->getPendingChanges();
+                unset($allChanges[$pendingChange['index']]);
+                $this->storeData('pending_changes.json', array_values($allChanges));
+                
+                Log::info('✅ Cambios pendientes sincronizados exitosamente', [
+                    'uuid' => $uuid,
+                    'changes_remaining' => count($allChanges) - 1
+                ]);
+                
+                return [
+                    'success' => true,
+                    'message' => 'Cambios sincronizados exitosamente',
+                    'had_changes' => true,
+                    'data' => $response['data'] ?? null
+                ];
+            } else {
+                Log::warning('⚠️ Error sincronizando cambios pendientes', [
+                    'uuid' => $uuid,
+                    'error' => $response['error'] ?? 'Error desconocido'
+                ]);
+                
+                return [
+                    'success' => false,
+                    'error' => $response['error'] ?? 'Error desconocido',
+                    'had_changes' => true
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::error('💥 Excepción sincronizando cambios pendientes', [
+                'uuid' => $uuid,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'had_changes' => true
+            ];
+        }
     }
 
     /**

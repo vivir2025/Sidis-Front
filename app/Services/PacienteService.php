@@ -624,6 +624,42 @@ public function show(string $uuid): array
                     // ✅ ÉXITO - Extraer TODAS las relaciones y actualizar datos locales
                     $apiData = $response['data'];
                     
+                    // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES ANTES DE SOBRESCRIBIR
+                    if ($this->offlineService->hasPendingChangesForPaciente($uuid)) {
+                        Log::warning('⚠️ Paciente tiene cambios pendientes, sincronizando primero', [
+                            'uuid' => $uuid
+                        ]);
+                        
+                        // Sincronizar cambios pendientes ANTES de sobrescribir
+                        $syncResult = $this->offlineService->syncPendingChangesForPaciente($uuid);
+                        
+                        if ($syncResult['success']) {
+                            Log::info('✅ Cambios pendientes sincronizados antes de actualizar', [
+                                'uuid' => $uuid
+                            ]);
+                            
+                            // Si la sincronización devolvió datos actualizados, usarlos
+                            if (isset($syncResult['data'])) {
+                                $apiData = $syncResult['data'];
+                            }
+                        } else {
+                            Log::error('❌ Error sincronizando cambios pendientes', [
+                                'uuid' => $uuid,
+                                'error' => $syncResult['error'] ?? 'Error desconocido'
+                            ]);
+                            
+                            // NO sobrescribir si falló la sincronización
+                            // Devolver datos locales en su lugar
+                            $localData = $this->getPacienteOffline($uuid);
+                            return [
+                                'success' => true,
+                                'data' => $localData,
+                                'offline' => true,
+                                'warning' => 'Hay cambios pendientes que no se pudieron sincronizar'
+                            ];
+                        }
+                    }
+                    
                     // ✅ EXTRAER TODAS LAS RELACIONES ANTES DE GUARDAR
                     $this->extractAllRelations($apiData);
                     
@@ -2191,8 +2227,64 @@ private function updatePacienteUuidInRelatedTables(string $oldUuid, string $newU
      */
     private function syncPacientesFromApi(array $pacientes): void
     {
+        $pendingCount = 0;
+        $syncedCount = 0;
+        
         foreach ($pacientes as $paciente) {
+            $uuid = $paciente['uuid'] ?? null;
+            
+            if (!$uuid) {
+                Log::warning('⚠️ Paciente sin UUID, saltando', [
+                    'documento' => $paciente['documento'] ?? 'sin-documento'
+                ]);
+                continue;
+            }
+            
+            // ✅ VERIFICAR SI HAY CAMBIOS PENDIENTES ANTES DE SOBRESCRIBIR
+            if ($this->offlineService->hasPendingChangesForPaciente($uuid)) {
+                $pendingCount++;
+                
+                Log::warning('⚠️ Paciente tiene cambios pendientes, sincronizando primero', [
+                    'uuid' => $uuid,
+                    'documento' => $paciente['documento'] ?? 'sin-documento'
+                ]);
+                
+                // Sincronizar cambios pendientes ANTES de sobrescribir
+                $syncResult = $this->offlineService->syncPendingChangesForPaciente($uuid);
+                
+                if ($syncResult['success']) {
+                    Log::info('✅ Cambios pendientes sincronizados exitosamente', [
+                        'uuid' => $uuid
+                    ]);
+                    
+                    // Si la sincronización devolvió datos actualizados, usarlos
+                    if (isset($syncResult['data'])) {
+                        $paciente = $syncResult['data'];
+                    }
+                    
+                    $syncedCount++;
+                } else {
+                    Log::error('❌ Error sincronizando cambios pendientes, NO sobrescribiendo', [
+                        'uuid' => $uuid,
+                        'error' => $syncResult['error'] ?? 'Error desconocido'
+                    ]);
+                    
+                    // NO sobrescribir si falló la sincronización
+                    continue;
+                }
+            }
+            
+            // ✅ AHORA SÍ GUARDAR (sin cambios pendientes o después de sincronizar)
             $this->storePacienteOffline($paciente, false);
+        }
+        
+        if ($pendingCount > 0) {
+            Log::info('📊 Resumen de sincronización de cambios pendientes', [
+                'total_pacientes' => count($pacientes),
+                'con_cambios_pendientes' => $pendingCount,
+                'sincronizados_exitosamente' => $syncedCount,
+                'fallidos' => $pendingCount - $syncedCount
+            ]);
         }
     }
 
