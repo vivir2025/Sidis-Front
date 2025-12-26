@@ -13030,14 +13030,18 @@ public function getAgendasOfflineStats(): array
 public function descargarPacientesDesdeAPI(int $sedeId): array
 {
     try {
-        Log::info('📥 Descargando pacientes desde API', ['sede_id' => $sedeId]);
+        // ✅ AUMENTAR LÍMITE DE TIEMPO Y MEMORIA PARA GRANDES VOLÚMENES
+        set_time_limit(600); // 10 minutos
+        ini_set('memory_limit', '1024M'); // 1GB de memoria
+        
+        Log::info('📥 Descargando TODOS los pacientes desde API', ['sede_id' => $sedeId]);
 
         $apiService = app(ApiService::class);
         
-        // ✅ OBTENER PACIENTES CON TODAS LAS RELACIONES
+        // ✅ OBTENER **TODOS** LOS PACIENTES SIN PAGINACIÓN (all=true)
         $response = $apiService->get('/pacientes', [
             'sede_id' => $sedeId,
-            'per_page' => 1000, // Obtener muchos registros
+            'all' => true, // ✅ CAMBIO CRÍTICO: Obtener TODOS sin paginación
             'with' => 'empresa,regimen,tipo_documento,tipo_afiliacion,zona_residencia,departamento_nacimiento,departamento_residencia,municipio_nacimiento,municipio_residencia,raza,escolaridad,parentesco,ocupacion,novedad,auxiliar,brigada'
         ]);
 
@@ -13052,13 +13056,11 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
             ];
         }
 
-        // ✅ EXTRAER PACIENTES DESDE ESTRUCTURA PAGINADA
+        // ✅ EXTRAER PACIENTES (con all=true NO hay paginación)
         $dataResponse = $response['data'] ?? [];
         
-        // Si la API retorna paginación Laravel: {data: [...], current_page, total, etc}
-        if (is_array($dataResponse) && isset($dataResponse['data']) && is_array($dataResponse['data'])) {
-            $pacientes = $dataResponse['data'];
-        } elseif (is_array($dataResponse)) {
+        // Con all=true, la API retorna directamente el array de pacientes
+        if (is_array($dataResponse)) {
             $pacientes = $dataResponse;
         } else {
             Log::warning('⚠️ API devolvió estructura inesperada', [
@@ -13068,7 +13070,21 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
             $pacientes = [];
         }
         
+        // ✅ LOG DEL TOTAL RECIBIDO
+        Log::info('📊 Total de pacientes recibidos desde API', [
+            'total' => count($pacientes),
+            'total_en_response' => $response['total'] ?? 'N/A'
+        ]);
+        
+        // ✅ CREAR DIRECTORIO DE PACIENTES SI NO EXISTE
+        $pacientesDir = storage_path('app/offline/pacientes');
+        if (!is_dir($pacientesDir)) {
+            mkdir($pacientesDir, 0755, true);
+            Log::info('📁 Directorio de pacientes creado', ['path' => $pacientesDir]);
+        }
+        
         $descargados = 0;
+        $actualizados = 0;
         $omitidos = 0;
         $errors = [];
 
@@ -13079,17 +13095,36 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
                     continue;
                 }
                 
-                // ✅ VERIFICAR SI YA EXISTE (SINCRONIZACIÓN INCREMENTAL)
-                $filePath = storage_path("app/offline/pacientes/{$paciente['uuid']}.json");
-                if (file_exists($filePath)) {
-                    $omitidos++;
+                $uuid = $paciente['uuid'] ?? null;
+                if (!$uuid) {
+                    Log::warning('⚠️ Paciente sin UUID', ['documento' => $paciente['documento'] ?? 'sin-doc']);
                     continue;
                 }
                 
-                // Guardar en JSON
-                $paciente['sync_status'] = 'synced';
-                file_put_contents($filePath, json_encode($paciente, JSON_PRETTY_PRINT));
-                $descargados++;
+                // ✅ VERIFICAR SI YA EXISTE Y SI TIENE CAMBIOS PENDIENTES
+                $filePath = storage_path("app/offline/pacientes/{$uuid}.json");
+                
+                if (file_exists($filePath)) {
+                    // Leer el paciente existente
+                    $existingPaciente = json_decode(file_get_contents($filePath), true);
+                    
+                    // ✅ NO SOBRESCRIBIR SI TIENE CAMBIOS PENDIENTES (PRIORIDAD LOCAL)
+                    if (isset($existingPaciente['sync_status']) && $existingPaciente['sync_status'] === 'pending') {
+                        $omitidos++;
+                        Log::debug('⏭️ Paciente omitido (tiene cambios pendientes)', ['uuid' => $uuid]);
+                        continue;
+                    }
+                    
+                    // Actualizar con datos del servidor
+                    $paciente['sync_status'] = 'synced';
+                    file_put_contents($filePath, json_encode($paciente, JSON_PRETTY_PRINT));
+                    $actualizados++;
+                } else {
+                    // Guardar nuevo paciente
+                    $paciente['sync_status'] = 'synced';
+                    file_put_contents($filePath, json_encode($paciente, JSON_PRETTY_PRINT));
+                    $descargados++;
+                }
             } catch (\Exception $e) {
                 Log::error('❌ Error guardando paciente', [
                     'uuid' => $paciente['uuid'] ?? 'unknown',
@@ -13100,8 +13135,10 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
             }
         }
 
-        Log::info('✅ Pacientes descargados', [
+        Log::info('✅ Pacientes descargados/actualizados', [
+            'total_recibidos' => count($pacientes),
             'nuevos' => $descargados,
+            'actualizados' => $actualizados,
             'omitidos' => $omitidos,
             'errores' => count($errors)
         ]);
@@ -13109,6 +13146,9 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
         return [
             'success' => true,
             'descargados' => $descargados,
+            'actualizados' => $actualizados,
+            'omitidos' => $omitidos,
+            'total_procesados' => $descargados + $actualizados,
             'errors' => $errors
         ];
 
@@ -13128,14 +13168,14 @@ public function descargarPacientesDesdeAPI(int $sedeId): array
 public function descargarAgendasDesdeAPI(int $sedeId): array
 {
     try {
-        Log::info('📥 Descargando agendas desde API', ['sede_id' => $sedeId]);
+        Log::info('📥 Descargando TODAS las agendas desde API', ['sede_id' => $sedeId]);
 
         $apiService = app(ApiService::class);
         
-        // ✅ OBTENER AGENDAS CON TODAS LAS RELACIONES
+        // ✅ OBTENER **TODAS** LAS AGENDAS SIN PAGINACIÓN (all=true)
         $response = $apiService->get('/agendas', [
             'sede_id' => $sedeId,
-            'per_page' => 1000,
+            'all' => true, // ✅ USAR all=true AHORA QUE EL BACKEND LO SOPORTA
             'with' => 'proceso,brigada,usuario_medico,sede'
         ]);
 
@@ -13150,13 +13190,11 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
             ];
         }
 
-        // ✅ EXTRAER AGENDAS DESDE ESTRUCTURA PAGINADA
+        // ✅ EXTRAER AGENDAS (con all=true viene directamente el array)
         $dataResponse = $response['data'] ?? [];
         
-        // Si la API retorna paginación Laravel: {data: [...], current_page, total, etc}
-        if (is_array($dataResponse) && isset($dataResponse['data']) && is_array($dataResponse['data'])) {
-            $agendas = $dataResponse['data'];
-        } elseif (is_array($dataResponse)) {
+        // Con all=true, la API retorna directamente el array de agendas
+        if (is_array($dataResponse)) {
             $agendas = $dataResponse;
         } else {
             Log::warning('⚠️ API devolvió estructura inesperada', [
@@ -13166,7 +13204,14 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
             $agendas = [];
         }
         
+        // ✅ LOG DEL TOTAL RECIBIDO
+        Log::info('📊 Total de agendas recibidas desde API', [
+            'total' => count($agendas),
+            'total_en_response' => $response['total'] ?? 'N/A'
+        ]);
+        
         $descargados = 0;
+        $actualizados = 0;
         $omitidos = 0;
         $errors = [];
 
@@ -13181,29 +13226,38 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
                     continue;
                 }
                 
-                // 🔄 SINCRONIZACIÓN INCREMENTAL: Verificar si ya existe en SQLite o archivo JSON
-                // Primero verificar en SQLite (fuente de verdad)
-                if ($this->isSQLiteAvailable()) {
-                    $existe = DB::connection('offline')->table('agendas')
-                        ->where('uuid', $agenda['uuid'])
-                        ->where('sync_status', 'synced')
-                        ->exists();
-                    
-                    if ($existe) {
-                        $omitidos++;
-                        continue;
-                    }
+                $uuid = $agenda['uuid'] ?? null;
+                if (!$uuid) {
+                    Log::warning('⚠️ Agenda sin UUID', ['fecha' => $agenda['fecha'] ?? 'sin-fecha']);
+                    continue;
                 }
                 
-                // También verificar archivo JSON como fallback
+                // 🔄 VERIFICAR SI YA EXISTE Y SI TIENE CAMBIOS PENDIENTES
                 $agendasPath = storage_path("app/offline/agendas");
                 if (!is_dir($agendasPath)) {
                     mkdir($agendasPath, 0755, true);
                 }
-                $filePath = $agendasPath . "/{$agenda['uuid']}.json";
+                $filePath = $agendasPath . "/{$uuid}.json";
                 
-                if (file_exists($filePath)) {
+                $isNew = true;
+                $hasPendingChanges = false;
+                
+                // Verificar en SQLite primero
+                if ($this->isSQLiteAvailable()) {
+                    $existingAgenda = DB::connection('offline')->table('agendas')
+                        ->where('uuid', $uuid)
+                        ->first();
+                    
+                    if ($existingAgenda) {
+                        $isNew = false;
+                        $hasPendingChanges = ($existingAgenda->sync_status === 'pending');
+                    }
+                }
+                
+                // ✅ NO SOBRESCRIBIR SI TIENE CAMBIOS PENDIENTES
+                if ($hasPendingChanges) {
                     $omitidos++;
+                    Log::debug('⏭️ Agenda omitida (tiene cambios pendientes)', ['uuid' => $uuid]);
                     continue;
                 }
                 
@@ -13235,7 +13289,11 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
                 $agenda['sync_status'] = 'synced';
                 file_put_contents($filePath, json_encode($agenda, JSON_PRETTY_PRINT));
                 
-                $descargados++;
+                if ($isNew) {
+                    $descargados++;
+                } else {
+                    $actualizados++;
+                }
             } catch (\Exception $e) {
                 Log::error('❌ Error guardando agenda', [
                     'uuid' => $agenda['uuid'] ?? 'unknown',
@@ -13247,15 +13305,20 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
             }
         }
 
-        Log::info('✅ Agendas descargadas', [
-            'nuevos' => $descargados,
-            'omitidos' => $omitidos,
+        Log::info('✅ Agendas descargadas/actualizadas', [
+            'total_recibidas' => count($agendas),
+            'nuevas' => $descargados,
+            'actualizadas' => $actualizados,
+            'omitidas' => $omitidos,
             'errores' => count($errors)
         ]);
 
         return [
             'success' => true,
             'descargados' => $descargados,
+            'actualizados' => $actualizados,
+            'omitidos' => $omitidos,
+            'total_procesados' => $descargados + $actualizados,
             'errors' => $errors
         ];
 
@@ -13275,14 +13338,14 @@ public function descargarAgendasDesdeAPI(int $sedeId): array
 public function descargarCitasDesdeAPI(int $sedeId): array
 {
     try {
-        Log::info('📥 Descargando citas desde API', ['sede_id' => $sedeId]);
+        Log::info('📥 Descargando TODAS las citas desde API', ['sede_id' => $sedeId]);
 
         $apiService = app(ApiService::class);
         
-        // ✅ OBTENER CITAS CON TODAS LAS RELACIONES
+        // ✅ OBTENER **TODAS** LAS CITAS SIN PAGINACIÓN (all=true)
         $response = $apiService->get('/citas', [
             'sede_id' => $sedeId,
-            'per_page' => 1000,
+            'all' => true, // ✅ USAR all=true AHORA QUE EL BACKEND LO SOPORTA
             'with' => 'paciente,agenda,cups_contratado'
         ]);
 
