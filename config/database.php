@@ -28,7 +28,12 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
-      
+        'offline' => [
+            'driver' => 'sqlite',
+            'database' => storage_path('app/offline/offline_data.sqlite'),
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ],
 
         'mysql' => [
             'driver' => 'mysql',
