@@ -167,26 +167,29 @@
 .user-profile-section {
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
     color: white;
-    padding: 20px;
+    padding: 10px 15px 15px 15px;
     text-align: center;
+    margin-bottom: 5px;
+    margin-top: 0;
+    padding-top: 10px; /* Muy reducido para que ocupe desde arriba */
 }
 
 .user-avatar-container {
     position: relative;
     display: inline-block;
-    margin-bottom: 15px;
+    margin-bottom: 6px; /* Reducido de 10px */
 }
 
 .user-avatar {
-    width: 70px;
-    height: 70px;
+    width: 55px; /* Reducido de 65px */
+    height: 55px;
     border-radius: 50%;
     background: rgba(255,255,255,0.2);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2.5rem;
-    border: 3px solid rgba(255,255,255,0.3);
+    font-size: 2rem; /* Reducido de 2.3rem */
+    border: 2px solid rgba(255,255,255,0.3); /* Reducido de 3px */
     transition: var(--transition);
 }
 
@@ -227,55 +230,58 @@
 }
 
 .user-details {
-    margin-top: 10px;
+    margin-top: 5px; /* Reducido de 8px */
 }
 
 .user-name {
-    font-size: 1.1rem;
+    font-size: 0.95rem; /* Reducido de 1.05rem */
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 4px; /* Reducido de 6px */
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    line-height: 1.2;
 }
 
 .user-role,
 .user-location {
-    font-size: 0.85rem;
+    font-size: 0.8rem; /* Reducido de 0.85rem */
     opacity: 0.9;
-    margin-bottom: 4px;
+    margin-bottom: 2px; /* Reducido de 3px */
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 5px; /* Reducido de 6px */
+    line-height: 1.2;
 }
 
 /* ===== NAVIGATION ===== */
 .sidebar-nav {
     flex-grow: 1;
-    padding: 15px 10px;
+    padding: 20px 15px; /* Aumentado de 15px 10px */
     overflow-y: auto;
 }
 
 .nav-section-title {
-    font-size: 0.75rem;
+    font-size: 0.8rem; /* Aumentado de 0.75rem */
     font-weight: 700;
     text-transform: uppercase;
     color: #6c757d;
-    padding: 15px 15px 8px;
+    padding: 20px 15px 10px; /* Aumentado espaciado */
     letter-spacing: 0.5px;
 }
 
 .nav-link {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 15px;
-    margin: 3px 0;
+    gap: 14px; /* Aumentado de 12px */
+    padding: 14px 18px; /* Aumentado de 12px 15px */
+    margin: 5px 0; /* Aumentado de 3px */
     border-radius: 10px;
     color: #495057;
     text-decoration: none;
     transition: var(--transition);
     font-weight: 500;
     position: relative;
+    font-size: 0.95rem; /* Añadido tamaño de fuente */
 }
 
 .nav-link i {
@@ -388,12 +394,12 @@
     border: none;
     height: 1px;
     background: linear-gradient(to right, transparent, #dee2e6, transparent);
-    margin: 15px 0;
+    margin: 20px 0; /* Aumentado de 15px */
 }
 
 /* ===== BOTTOM SECTION ===== */
 .sidebar-bottom {
-    padding: 15px;
+    padding: 20px; /* Aumentado de 15px */
     border-top: 1px solid #e9ecef;
     background: rgba(0,0,0,0.02);
 }
@@ -401,12 +407,12 @@
 .sync-status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px;
+    gap: 10px; /* Aumentado de 8px */
+    padding: 12px; /* Aumentado de 10px */
     border-radius: 8px;
-    font-size: 0.85rem;
+    font-size: 0.9rem; /* Aumentado de 0.85rem */
     font-weight: 500;
-    margin-bottom: 10px;
+    margin-bottom: 12px; /* Aumentado de 10px */
 }
 
 .sync-status.online {
@@ -422,35 +428,36 @@
 }
 
 .pending-changes {
-    font-size: 0.75rem;
+    font-size: 0.8rem; /* Aumentado de 0.75rem */
     color: #856404;
-    padding: 6px 10px;
+    padding: 8px 12px; /* Aumentado de 6px 10px */
     background: rgba(255, 193, 7, 0.1);
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: 8px; /* Aumentado de 6px */
+    margin-bottom: 12px; /* Aumentado de 10px */
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px; /* Aumentado de 6px */
 }
 
 .quick-actions {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 10px; /* Aumentado de 8px */
+    margin-bottom: 15px; /* Aumentado de 12px */
 }
 
 .quick-actions .btn {
     flex: 1;
-    padding: 8px;
-    border-radius: 6px;
+    padding: 10px; /* Aumentado de 8px */
+    border-radius: 8px; /* Aumentado de 6px */
+    font-size: 0.95rem; /* Añadido para mejor legibilidad */
 }
 
 .version-info {
     text-align: center;
-    padding: 10px;
+    padding: 12px; /* Aumentado de 10px */
     background: rgba(0,0,0,0.03);
-    border-radius: 6px;
-    font-size: 0.75rem;
+    border-radius: 8px; /* Aumentado de 6px */
+    font-size: 0.8rem; /* Aumentado de 0.75rem */
 }
 
 /* ===== SCROLLBAR ===== */

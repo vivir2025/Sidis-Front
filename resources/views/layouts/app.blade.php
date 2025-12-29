@@ -54,6 +54,77 @@
             border-bottom: 1px solid #e9ecef;
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             padding: 0.75rem 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1049;
+            transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .navbar .container-fluid {
+            padding-left: 0.5rem;
+            padding-right: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+        
+        .navbar-brand {
+            margin-left: 0;
+            margin-right: auto;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* ===== BOTÓN TOGGLE SIDEBAR ===== */
+        .btn-toggle-sidebar {
+            width: 42px;
+            height: 42px;
+            border: none;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            color: white;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.3);
+            margin-right: 12px; /* Aumentado de 8px a 12px para mejor espaciado */
+            padding: 0;
+            outline: none;
+            flex-shrink: 0;
+        }
+        
+        .btn-toggle-sidebar:focus {
+            outline: none;
+            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.5);
+        }
+
+        .btn-toggle-sidebar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(44, 90, 160, 0.5);
+        }
+
+        .btn-toggle-sidebar i {
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        
+        /* Estilo minimalista para el ícono */
+        .btn-toggle-sidebar i.fa-bars::before {
+            content: "\f0c9";
+        }
+        
+        .btn-toggle-sidebar i.fa-times::before {
+            content: "\f00d";
+        }
+
+        .btn-toggle-sidebar.active i {
+            transform: rotate(90deg);
         }
 
         
@@ -381,6 +452,8 @@
             padding: 25px;
             background-color: var(--secondary-color);
             min-height: calc(100vh - 76px);
+            margin-top: 76px; /* Altura del navbar fixed */
+            transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* ===== CARDS ===== */
@@ -767,6 +840,15 @@
             background: linear-gradient(135deg, var(--dark-card), #374151) !important;
             border-bottom-color: var(--dark-border);
         }
+        
+        .dark-theme .btn-toggle-sidebar {
+            background: linear-gradient(135deg, #4b5563, #374151);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+        
+        .dark-theme .btn-toggle-sidebar:hover {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+        }
 
         .dark-theme .sidebar {
             background: linear-gradient(180deg, var(--dark-card), #374151);
@@ -856,6 +938,16 @@
                 font-size: 1.25rem;
             }
             
+            .btn-toggle-sidebar {
+                width: 38px;
+                height: 38px;
+                margin-right: 8px;
+            }
+            
+            .btn-toggle-sidebar i {
+                font-size: 1rem;
+            }
+            
             .main-content {
                 padding: 10px;
             }
@@ -928,58 +1020,42 @@
             animation: spin 1s linear infinite;
         }
 
-                /* ===== SIDEBAR TRIGGER ZONE (Zona invisible para activar hover) ===== */
+                /* ===== SIDEBAR TRIGGER ZONE (DESACTIVADA - Ahora se usa botón) ===== */
         .sidebar-trigger-zone {
-            position: fixed;
-            left: 0;
-            top: 70px; /* Altura del navbar */
-            width: 20px;
-            height: calc(100vh - 70px);
-            z-index: 1040;
-            background: transparent;
+            display: none; /* Ocultada porque ahora se controla con botón */
         }
 
-        /* Indicador visual opcional (línea de color en el borde) */
+        /* Indicador visual desactivado */
         .sidebar-trigger-zone::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 3px;
-            height: 60px;
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-            border-radius: 0 3px 3px 0;
-            opacity: 0.6;
-            transition: var(--transition);
-        }
-
-        .sidebar-trigger-zone:hover::after {
-            opacity: 1;
-            height: 100px;
+            display: none;
         }
 
         /* ===== SIDEBAR CONTAINER ===== */
         .sidebar-container {
             position: fixed;
-            left: -280px;
-            top: 70px; /* Altura del navbar */
-            width: 280px;
-            height: calc(100vh - 70px);
+            left: -300px; /* Aumentado de -280px para mejor ocultamiento */
+            top: 0; /* Full height desde arriba */
+            width: 300px; /* Aumentado de 280px para más espacio */
+            height: 100vh;
             background: linear-gradient(180deg, #ffffff, #f8f9fa);
-            box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
             border-right: 1px solid #e9ecef;
             z-index: 1050;
             overflow-y: auto;
             overflow-x: hidden;
-            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* Mostrar sidebar al hacer hover en la zona trigger o en el sidebar mismo */
-        .sidebar-trigger-zone:hover ~ .sidebar-container,
-        .sidebar-container:hover {
+        /* Mostrar sidebar cuando tiene clase active */
+        .sidebar-container.active {
             left: 0;
         }
+
+        /* Hover desactivado - ahora se controla con el botón */
+        /* .sidebar-trigger-zone:hover ~ .sidebar-container,
+        .sidebar-container:hover {
+            left: 0;
+        } */
 
         /* ===== SIDEBAR NAVIGATION ===== */
         .sidebar-container .nav {
@@ -1084,14 +1160,9 @@
                 left: 0;
             }
             
-            /* Desactivar hover en móvil */
-            .sidebar-trigger-zone:hover ~ .sidebar-container,
-            .sidebar-container:hover {
-                left: -100%;
-            }
-            
-            .sidebar-container.active:hover {
-                left: 0;
+            /* Ajustar navbar cuando sidebar está abierto en móvil */
+            .navbar {
+                padding-left: 0 !important;
             }
         }
 
@@ -1113,8 +1184,6 @@
 
     </style>
 
-    </style>
-
     @stack('styles')
 </head>
 <body class="{{ request()->routeIs('login') ? 'login-page' : '' }}">
@@ -1122,12 +1191,16 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
         <div class="container-fluid">
+            <!-- Botón Toggle Sidebar (fuera del enlace) -->
+            <button class="btn-toggle-sidebar" id="btnToggleSidebar" onclick="toggleSidebar()" title="Abrir/Cerrar Menú">
+                <i class="fas fa-grip-lines" id="iconToggleSidebar"></i>
+            </button>
+            
             <!-- Logo -->
             <a class="navbar-brand d-flex align-items-center" href="{{ route('dashboard') }}">
                 <img src="{{ asset('images/listo.png') }}" alt="SIDIS Logo" style="height: 40px;" class="me-2">
                 <span class="fw-bold text-primary">SIDS</span>
             </a>
-
 
             <!-- Right Side -->
             <div class="d-flex align-items-center gap-3">
@@ -1287,28 +1360,80 @@
         let checkInterval;
         let syncInProgress = false;
 
-        // ===== FUNCIONES DE SIDEBAR (Solo para móvil) =====
+        // ===== FUNCIONES DE SIDEBAR =====
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebarContainer');
+            const overlay = document.getElementById('sidebarOverlay');
+            const btnToggle = document.getElementById('btnToggleSidebar');
+            const iconToggle = document.getElementById('iconToggleSidebar');
+            const navbar = document.querySelector('.navbar');
+            
+            if (sidebar && overlay && btnToggle && iconToggle) {
+                // Toggle clase active
+                sidebar.classList.toggle('active');
+                overlay.classList.toggle('active');
+                btnToggle.classList.toggle('active');
+                
+                // Cambiar icono
+                if (sidebar.classList.contains('active')) {
+                    iconToggle.className = 'fas fa-times';
+                    document.body.style.overflow = 'hidden'; // Prevenir scroll en móvil
+                    
+                    // En desktop, empujar navbar
+                    if (window.innerWidth > 768 && navbar) {
+                        navbar.style.paddingLeft = '300px';
+                    }
+                } else {
+                    iconToggle.className = 'fas fa-grip-lines';
+                    document.body.style.overflow = '';
+                    
+                    // Restaurar navbar
+                    if (navbar) {
+                        navbar.style.paddingLeft = '0';
+                    }
+                }
+            }
+        }
+        
         function closeSidebar() {
             const sidebar = document.getElementById('sidebarContainer');
             const overlay = document.getElementById('sidebarOverlay');
+            const btnToggle = document.getElementById('btnToggleSidebar');
+            const iconToggle = document.getElementById('iconToggleSidebar');
+            const navbar = document.querySelector('.navbar');
             
             if (sidebar && overlay) {
                 sidebar.classList.remove('active');
                 overlay.classList.remove('active');
+                if (btnToggle) btnToggle.classList.remove('active');
+                if (iconToggle) iconToggle.className = 'fas fa-grip-lines';
                 document.body.style.overflow = '';
+                
+                // Restaurar navbar
+                if (navbar) {
+                    navbar.style.paddingLeft = '0';
+                }
             }
         }
 
-        // Para abrir manualmente en móvil (si lo necesitas desde algún botón)
-        function openSidebarMobile() {
-            if (window.innerWidth <= 768) {
-                const sidebar = document.getElementById('sidebarContainer');
-                const overlay = document.getElementById('sidebarOverlay');
+        // Para abrir manualmente (si lo necesitas desde algún botón)
+        function openSidebar() {
+            const sidebar = document.getElementById('sidebarContainer');
+            const overlay = document.getElementById('sidebarOverlay');
+            const btnToggle = document.getElementById('btnToggleSidebar');
+            const iconToggle = document.getElementById('iconToggleSidebar');
+            const navbar = document.querySelector('.navbar');
+            
+            if (sidebar && overlay) {
+                sidebar.classList.add('active');
+                overlay.classList.add('active');
+                if (btnToggle) btnToggle.classList.add('active');
+                if (iconToggle) iconToggle.className = 'fas fa-times';
+                document.body.style.overflow = 'hidden';
                 
-                if (sidebar && overlay) {
-                    sidebar.classList.add('active');
-                    overlay.classList.add('active');
-                    document.body.style.overflow = 'hidden';
+                // En desktop, empujar navbar
+                if (window.innerWidth > 768 && navbar) {
+                    navbar.style.paddingLeft = '300px';
                 }
             }
         }
@@ -1716,6 +1841,20 @@
                 document.addEventListener('keydown', function(e) {
                     if (e.key === 'Escape' && window.innerWidth <= 768) {
                         closeSidebar();
+                    }
+                });
+
+                // Click fuera del sidebar para cerrarlo
+                document.addEventListener('click', function(e) {
+                    const sidebar = document.getElementById('sidebarContainer');
+                    const btnToggle = document.getElementById('btnToggleSidebar');
+                    const overlay = document.getElementById('sidebarOverlay');
+                    
+                    if (sidebar && sidebar.classList.contains('active')) {
+                        // Si el click fue fuera del sidebar y no en el botón toggle
+                        if (!sidebar.contains(e.target) && !btnToggle.contains(e.target)) {
+                            closeSidebar();
+                        }
                     }
                 });
                 
