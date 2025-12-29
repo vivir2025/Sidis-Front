@@ -161,8 +161,14 @@ $(document).ready(function() {
                 'X-Requested-With': 'XMLHttpRequest'
             },
             success: function(response) {
+                console.log('📦 Respuesta recibida:', response);
+                
                 if (response.success) {
-                    renderHistorias(response.data.data);
+                    // ✅ SOPORTAR ESTRUCTURA ONLINE Y OFFLINE
+                    const historias = response.data?.data || response.data || [];
+                    console.log('📄 Historias a renderizar:', historias);
+                    
+                    renderHistorias(historias);
                     renderPaginacion(response.data);
                 } else {
                     mostrarError('Error cargando historias');
@@ -184,6 +190,8 @@ $(document).ready(function() {
         const tbody = $('#tbodyHistorias');
         tbody.empty();
 
+        console.log('🎨 Renderizando historias:', historias);
+
         if (!historias || historias.length === 0) {
             tbody.html(`
                 <tr>
@@ -197,18 +205,24 @@ $(document).ready(function() {
         }
 
         historias.forEach((historia) => {
-            if (!historia.cita || !historia.cita.paciente) {
+            // ✅ SOPORTAR ESTRUCTURA ONLINE Y OFFLINE
+            const paciente = historia.paciente || historia.cita?.paciente;
+            
+            if (!paciente) {
+                console.warn('⚠️ Historia sin paciente:', historia);
                 return;
             }
 
-            const paciente = historia.cita.paciente;
-            const agenda = historia.cita.agenda || {};
-            const profesional = agenda.usuario_medico || { nombre_completo: 'N/A' };
+            // Online: historia.cita.agenda / Offline: historia directamente
+            const agenda = historia.cita?.agenda || {};
+            const profesional = historia.profesional || agenda.usuario_medico || { nombre_completo: 'N/A' };
             
-            // ✅ FORMATEAR FECHA SIN USAR new Date()
+            // ✅ FORMATEAR FECHA (ONLINE: historia.cita.fecha / OFFLINE: historia.fecha_atencion)
             let fecha = 'N/A';
-            if (historia.cita.fecha) {
-                const fechaCompleta = String(historia.cita.fecha);
+            const fechaRaw = historia.fecha_atencion || historia.cita?.fecha || historia.created_at;
+            
+            if (fechaRaw) {
+                const fechaCompleta = String(fechaRaw);
                 const fechaSolo = fechaCompleta.split(' ')[0];
                 const partes = fechaSolo.split('-');
                 
@@ -220,10 +234,13 @@ $(document).ready(function() {
             
             // ✅ MOSTRAR RANGO DE HORAS
             let horario = '';
-            if (historia.cita.hora_inicio && historia.cita.hora_final) {
-                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${historia.cita.hora_inicio} - ${historia.cita.hora_final}</small>`;
-            } else if (historia.cita.hora_inicio) {
-                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${historia.cita.hora_inicio}</small>`;
+            const horaInicio = historia.hora_inicio || historia.cita?.hora_inicio;
+            const horaFinal = historia.hora_final || historia.cita?.hora_final;
+            
+            if (horaInicio && horaFinal) {
+                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${horaInicio} - ${horaFinal}</small>`;
+            } else if (horaInicio) {
+                horario = `<br><small class="text-muted"><i class="far fa-clock"></i> ${horaInicio}</small>`;
             }
             
             const tipoBadge = historia.tipo_consulta === 'PRIMERA VEZ' ? 'primary' : 'info';

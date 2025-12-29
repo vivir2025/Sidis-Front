@@ -11103,6 +11103,92 @@ private function procesarHistoriaJSONParaFrontend(array $historia): array
     }
 }
 
+/**
+ * ✅ OBTENER UNA HISTORIA CLÍNICA POR UUID (OFFLINE)
+ * Busca en JSON y SQLite
+ */
+public function getHistoriaClinicaOffline(string $uuid): ?array
+{
+    Log::info('🔍 [OFFLINESERVICE] Buscando historia por UUID offline', [
+        'historia_uuid' => $uuid
+    ]);
+
+    try {
+        // ✅ 1. BUSCAR EN JSON (DATOS COMPLETOS)
+        $posiblesRutas = [
+            storage_path('app/offline/historias-clinicas'),
+            storage_path('app/offline/historias_clinicas'),
+        ];
+
+        foreach ($posiblesRutas as $historiasPath) {
+            if (!is_dir($historiasPath)) {
+                continue;
+            }
+
+            $filePath = "{$historiasPath}/{$uuid}.json";
+            
+            if (file_exists($filePath)) {
+                $historia = json_decode(file_get_contents($filePath), true);
+                
+                if ($historia && json_last_error() === JSON_ERROR_NONE) {
+                    Log::info('✅ Historia encontrada en JSON offline', [
+                        'historia_uuid' => $uuid,
+                        'path' => $filePath
+                    ]);
+                    
+                    return $historia;
+                }
+            }
+        }
+
+        // ✅ 2. BUSCAR EN SQLITE (FALLBACK)
+        try {
+            $historiaRow = $this->getDbConnection()
+                ->table('historias_clinicas')
+                ->where('uuid', $uuid)
+                ->first();
+            
+            if ($historiaRow) {
+                Log::info('✅ Historia encontrada en SQLite offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                
+                // ✅ CONVERTIR STDCLASS A ARRAY Y DECODIFICAR JSON
+                $historia = json_decode(json_encode($historiaRow), true);
+                
+                // ✅ DECODIFICAR CAMPOS JSON SI EXISTEN
+                if (isset($historia['data']) && is_string($historia['data'])) {
+                    $dataDecoded = json_decode($historia['data'], true);
+                    if ($dataDecoded) {
+                        $historia = array_merge($historia, $dataDecoded);
+                    }
+                }
+                
+                return $historia;
+            }
+        } catch (\Exception $sqliteError) {
+            Log::debug('ℹ️ No se pudo buscar en SQLite', [
+                'error' => $sqliteError->getMessage()
+            ]);
+        }
+
+        Log::warning('⚠️ Historia no encontrada offline', [
+            'historia_uuid' => $uuid
+        ]);
+
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error buscando historia offline', [
+            'error' => $e->getMessage(),
+            'uuid' => $uuid,
+            'line' => $e->getLine()
+        ]);
+        
+        return null;
+    }
+}
+
 public function obtenerTodasLasHistoriasOffline(string $pacienteUuid, ?string $especialidad = null): array
 {
     Log::info('🔥🔥🔥 [OFFLINESERVICE] obtenerTodasLasHistoriasOffline', [
@@ -11900,7 +11986,61 @@ private function normalizarHistoriaClinica(array $historia): array
         }
     }
 
+        // ✅ OBTENER DATOS COMPLEMENTARIOS COMPLETOS SI SOLO VIENE EL UUID
         $complementaria = $historia['complementaria'] ?? null;
+        
+        if ($complementaria && is_array($complementaria) && count($complementaria) === 1 && isset($complementaria['uuid'])) {
+            // Solo tiene UUID, necesitamos los datos completos
+            $complementariaUuid = $complementaria['uuid'];
+            
+            try {
+                Log::info('🔍 Complementaria solo tiene UUID, obteniendo datos completos', [
+                    'historia_uuid' => $historia['uuid'],
+                    'complementaria_uuid' => $complementariaUuid
+                ]);
+                
+                // Hacer petición a la API para obtener datos completos según especialidad
+                $especialidad = strtoupper($historia['especialidad'] ?? '');
+                $endpoint = null;
+                
+                // Determinar endpoint según especialidad
+                switch ($especialidad) {
+                    case 'PSICOLOGIA':
+                        $endpoint = "/historia-psicologia/{$complementariaUuid}";
+                        break;
+                    case 'NUTRICION':
+                        $endpoint = "/historia-nutricion/{$complementariaUuid}";
+                        break;
+                    case 'FISIOTERAPIA':
+                        $endpoint = "/historia-fisioterapia/{$complementariaUuid}";
+                        break;
+                    case 'INTERNISTA':
+                        $endpoint = "/historia-internista/{$complementariaUuid}";
+                        break;
+                    // Agregar más especialidades según necesites
+                }
+                
+                if ($endpoint) {
+                    $response = app(ApiService::class)->get($endpoint);
+                    
+                    if ($response['success'] && !empty($response['data'])) {
+                        $complementaria = $response['data'];
+                        
+                        Log::info('✅ Datos complementarios completos obtenidos', [
+                            'historia_uuid' => $historia['uuid'],
+                            'especialidad' => $especialidad,
+                            'campos_obtenidos' => count($complementaria)
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudieron obtener datos complementarios completos', [
+                    'historia_uuid' => $historia['uuid'],
+                    'error' => $e->getMessage()
+                ]);
+                // Mantener el UUID si falla
+            }
+        }
 
         Log::info('🔍 Datos extraídos de historia CON ARRAYS ESTRUCTURADOS', [
             'historia_uuid' => $historia['uuid'],

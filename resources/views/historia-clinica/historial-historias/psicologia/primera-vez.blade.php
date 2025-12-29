@@ -65,8 +65,11 @@
                 $sexo = ($paciente['sexo'] ?? '') == 'M' ? 'MASCULINO' : (($paciente['sexo'] ?? '') == 'F' ? 'FEMENINO' : 'N/A');
                 $estadoCivil = $paciente['estado_civil'] ?? 'N/A';
                 $telefono = $paciente['telefono'] ?? 'N/A';
-                $ocupacion = $paciente['ocupacion'] ?? 'N/A';
-                $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
+                
+                // Manejar tipo_documento como string o array (offline/online)
+                $tipoDoc = $paciente['tipo_documento'] ?? 'CC';
+                $tipoDocumento = is_array($tipoDoc) ? ($tipoDoc['abreviacion'] ?? $tipoDoc['nombre'] ?? 'CC') : $tipoDoc;
+                
                 $documento = $paciente['documento'] ?? 'N/A';
                 $nombreCompleto = $paciente['nombre_completo'] ?? 'N/A';
                 
@@ -158,10 +161,19 @@
         {{-- ✅ HISTORIA CLÍNICA - PRIMERA VEZ --}}
         @php
             $complementaria = $historia['complementaria'] ?? null;
+            $complementariaCompleta = $complementaria && is_array($complementaria) && count($complementaria) > 1;
         @endphp
 
         <fieldset>
             <legend>HISTORIA CLÍNICA - PRIMERA VEZ PSICOLOGÍA</legend>
+
+            @if(!$complementariaCompleta)
+            <div class="alert alert-warning no-print" style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 20px;">
+                <i class="fas fa-exclamation-triangle" style="color: #856404; margin-right: 10px;"></i>
+                <strong>Datos complementarios no disponibles offline.</strong>
+                Los campos específicos de psicología no se guardaron localmente. Por favor, conéctese a internet para ver la historia completa.
+            </div>
+            @endif
 
             <div style="display: flex; gap: 20px;">
                 {{-- 1. MOTIVO DE CONSULTA --}}

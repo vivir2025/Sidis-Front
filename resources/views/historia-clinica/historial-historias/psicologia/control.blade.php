@@ -66,7 +66,11 @@
                 $estadoCivil = $paciente['estado_civil'] ?? 'N/A';
                 $telefono = $paciente['telefono'] ?? 'N/A';
                 $ocupacion = $paciente['ocupacion'] ?? 'N/A';
-                $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
+                
+                // Manejar tipo_documento como string o array (offline/online)
+                $tipoDoc = $paciente['tipo_documento'] ?? 'CC';
+                $tipoDocumento = is_array($tipoDoc) ? ($tipoDoc['abreviacion'] ?? $tipoDoc['nombre'] ?? 'CC') : $tipoDoc;
+                
                 $documento = $paciente['documento'] ?? 'N/A';
                 $nombreCompleto = $paciente['nombre_completo'] ?? 'N/A';
                 

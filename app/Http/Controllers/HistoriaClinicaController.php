@@ -122,20 +122,46 @@ public function show(string $uuid)
 
         Log::info('👁️ Mostrando historia clínica guardada', [
             'historia_uuid' => $uuid,
-            'usuario' => $usuario['nombre_completo']
+            'usuario' => $usuario['nombre_completo'],
+            'is_offline' => $isOffline
         ]);
 
-        // ✅ 1. OBTENER DATOS DE LA HISTORIA DESDE EL BACKEND (API)
         $historia = null;
         
-        if ($this->apiService->isOnline()) {
+        // ✅ 1. PRIORIZAR BÚSQUEDA OFFLINE SI NO HAY CONEXIÓN
+        if (!$this->apiService->isOnline()) {
+            Log::info('🔌 Modo offline detectado, buscando en almacenamiento local', [
+                'historia_uuid' => $uuid
+            ]);
+            
+            $historia = $this->obtenerHistoriaOffline($uuid);
+            
+            if ($historia) {
+                // ✅ FORMATEAR DATOS OFFLINE
+                $historia = $this->formatearHistoriaParaVista($historia);
+                
+                Log::info('✅ Historia obtenida y formateada desde offline', [
+                    'historia_uuid' => $uuid,
+                    'medicamentos_count' => count($historia['medicamentos'] ?? []),
+                    'remisiones_count' => count($historia['remisiones'] ?? []),
+                    'diagnosticos_count' => count($historia['diagnosticos'] ?? [])
+                ]);
+            } else {
+                Log::error('❌ Historia no encontrada en modo offline', [
+                    'historia_uuid' => $uuid
+                ]);
+                
+                return back()->with('error', 'Historia clínica no encontrada (modo offline)');
+            }
+        } else {
+            // ✅ 2. SI HAY CONEXIÓN, INTENTAR API PRIMERO
             try {
                 $response = $this->apiService->get("/historias-clinicas/{$uuid}");
                 
                 if ($response['success']) {
                     $historia = $response['data'];
                     
-                    // ✅✅✅ FORMATEAR ARRAYS ANTES DE USAR ✅✅✅
+                    // ✅ FORMATEAR ARRAYS ANTES DE USAR
                     $historia = $this->formatearHistoriaParaVista($historia);
                     
                     Log::info('✅ Historia obtenida y formateada desde API', [
@@ -149,27 +175,27 @@ public function show(string $uuid)
                 Log::warning('⚠️ Error obteniendo historia desde API, intentando offline', [
                     'error' => $e->getMessage()
                 ]);
+                
+                // ✅ FALLBACK OFFLINE SI API FALLA
+                $historia = $this->obtenerHistoriaOffline($uuid);
+                
+                if ($historia) {
+                    $historia = $this->formatearHistoriaParaVista($historia);
+                    
+                    Log::info('✅ Historia obtenida desde offline (fallback)', [
+                        'historia_uuid' => $uuid
+                    ]);
+                }
             }
         }
-
-        // ✅ 2. FALLBACK OFFLINE SI NO SE OBTUVO ONLINE
+        
+        // ✅ 3. VALIDAR QUE SE ENCONTRÓ LA HISTORIA
         if (!$historia) {
-            $historia = $this->obtenerHistoriaOffline($uuid);
-            
-            if (!$historia) {
-                Log::error('❌ Historia no encontrada ni online ni offline', [
-                    'historia_uuid' => $uuid
-                ]);
-                
-                return back()->with('error', 'Historia clínica no encontrada');
-            }
-            
-            // ✅ FORMATEAR TAMBIÉN OFFLINE
-            $historia = $this->formatearHistoriaParaVista($historia);
-            
-            Log::info('✅ Historia obtenida y formateada desde offline', [
+            Log::error('❌ Historia no encontrada ni online ni offline', [
                 'historia_uuid' => $uuid
             ]);
+            
+            return back()->with('error', 'Historia clínica no encontrada');
         }
 
         // ✅ 3. EXTRAER ESPECIALIDAD Y TIPO DE CONSULTA
@@ -496,7 +522,7 @@ private function obtenerHistoriaOffline(string $uuid): ?array
         ]);
 
         // ✅ 1. BUSCAR EN JSON
-        $historiasPath = storage_path('app/offline/historias-clinicas');
+        $historiasPath = storage_path('app/offline/historias_clinicas');
         $filePath = "{$historiasPath}/{$uuid}.json";
         
         if (file_exists($filePath)) {
@@ -506,6 +532,47 @@ private function obtenerHistoriaOffline(string $uuid): ?array
                 Log::info('✅ Historia encontrada en JSON offline', [
                     'historia_uuid' => $uuid
                 ]);
+                
+                // ✅ ENRIQUECER DATOS COMPLETOS DEL PACIENTE
+                $pacienteUuid = $data['paciente_uuid'] ?? $data['cita']['paciente_uuid'] ?? $data['cita']['paciente']['uuid'] ?? null;
+                
+                if ($pacienteUuid) {
+                    $pacientePath = storage_path("app/offline/pacientes/{$pacienteUuid}.json");
+                    
+                    if (file_exists($pacientePath)) {
+                        $pacienteData = json_decode(file_get_contents($pacientePath), true);
+                        
+                        if ($pacienteData) {
+                            // ✅ ESTRUCTURAR OBJETOS ANIDADOS QUE ESPERAN LAS VISTAS
+                            $pacienteData['regimen'] = ['nombre' => $pacienteData['regimen_nombre'] ?? 'N/A'];
+                            $pacienteData['ocupacion'] = [
+                                'nombre' => $pacienteData['ocupacion_nombre'] ?? 'N/A',
+                                'codigo' => $pacienteData['ocupacion_codigo'] ?? 'N/A'
+                            ];
+                            $pacienteData['brigada'] = ['nombre' => $pacienteData['brigada_nombre'] ?? 'N/A'];
+                            $pacienteData['departamento'] = ['nombre' => $pacienteData['departamento_nombre'] ?? 'N/A'];
+                            $pacienteData['municipio'] = ['nombre' => $pacienteData['municipio_nombre'] ?? 'N/A'];
+                            $pacienteData['empresa'] = ['nombre' => $pacienteData['empresa_nombre'] ?? $pacienteData['regimen_nombre'] ?? 'N/A'];
+                            
+                            // ✅ REEMPLAZAR DATOS DEL PACIENTE EN CITA CON DATOS COMPLETOS
+                            $data['cita']['paciente'] = $pacienteData;
+                            
+                            // ✅ TAMBIÉN ACTUALIZAR data['paciente'] SI EXISTE
+                            if (isset($data['paciente'])) {
+                                $data['paciente'] = $pacienteData;
+                            }
+                            
+                            Log::info('✅ Datos completos del paciente cargados en historia offline', [
+                                'historia_uuid' => $uuid,
+                                'paciente_uuid' => $pacienteUuid,
+                                'paciente_nombre' => $pacienteData['primer_nombre'] . ' ' . $pacienteData['primer_apellido'],
+                                'regimen' => $pacienteData['regimen']['nombre'],
+                                'ocupacion' => $pacienteData['ocupacion']['nombre']
+                            ]);
+                        }
+                    }
+                }
+                
                 return $data;
             }
         }
@@ -1572,17 +1639,17 @@ private function validateHistoriaClinica(Request $request): array
         'diagnostico_nutri' => 'nullable|string|max:2000',
 
         'medicamentos' => 'nullable|array',
-        'medicamentos.*.idMedicamento' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'medicamentos.*.idMedicamento' => 'required|string', // ✅ CAMBIO: acepta ID o UUID, conversión después
         'medicamentos.*.cantidad' => 'required|string|max:50',
         'medicamentos.*.dosis' => 'required|string|max:200',
         
         'remisiones' => 'nullable|array',
-        'remisiones.*.idRemision' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'remisiones.*.idRemision' => 'required|string', // ✅ CAMBIO: acepta ID o UUID, conversión después
         'remisiones.*.remObservacion' => 'nullable|string|max:500',
         
         
         'cups' => 'nullable|array',
-        'cups.*.idCups' => 'required|string|uuid', // ✅ CAMBIO: string|uuid
+        'cups.*.idCups' => 'required|string', // ✅ CAMBIO: acepta ID o UUID, conversión después
         'cups.*.cupObservacion' => 'nullable|string|max:500',
         
         'diagnosticos_adicionales' => 'nullable|array',
@@ -4345,7 +4412,7 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
     }
 
     /**
-     * ✅ OBTENER HISTORIAS CLÍNICAS CON FILTROS
+     * ✅ OBTENER HISTORIAS CLÍNICAS CON FILTROS (OFFLINE-FIRST)
      */
     private function obtenerHistoriasClinicas(array $filters, int $page = 1, int $perPage = 15): array
     {
@@ -4353,37 +4420,42 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
             Log::info('🔍 Obteniendo historias clínicas', [
                 'filters' => $filters,
                 'page' => $page,
-                'per_page' => $perPage
+                'per_page' => $perPage,
+                'is_online' => $this->apiService->isOnline()
             ]);
 
-            // ✅ INTENTAR ONLINE PRIMERO
-            if ($this->apiService->isOnline()) {
-                try {
-                    $response = $this->apiService->get('/historias-clinicas', array_merge($filters, [
-                        'page' => $page,
-                        'per_page' => $perPage
-                    ]));
-                    
-                    if ($response['success']) {
-                        Log::info('✅ Historias obtenidas desde API', [
-                            'count' => count($response['data'] ?? [])
-                        ]);
-                        
-                        return [
-                            'success' => true,
-                            'data' => $response['data'],
-                            'pagination' => $response['pagination'] ?? null,
-                            'offline' => false
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('⚠️ Error API, usando offline', [
-                        'error' => $e->getMessage()
-                    ]);
-                }
+            // ✅ SI ESTÁ OFFLINE, IR DIRECTO A DATOS LOCALES
+            if (!$this->apiService->isOnline()) {
+                Log::info('🔌 Modo offline, usando almacenamiento local');
+                return $this->obtenerHistoriasOffline($filters, $page, $perPage);
             }
 
-            // ✅ FALLBACK OFFLINE
+            // ✅ SI HAY CONEXIÓN, INTENTAR API PRIMERO
+            try {
+                $response = $this->apiService->get('/historias-clinicas', array_merge($filters, [
+                    'page' => $page,
+                    'per_page' => $perPage
+                ]));
+                
+                if ($response['success']) {
+                    Log::info('✅ Historias obtenidas desde API', [
+                        'count' => count($response['data'] ?? [])
+                    ]);
+                    
+                    return [
+                        'success' => true,
+                        'data' => $response['data'],
+                        'pagination' => $response['pagination'] ?? null,
+                        'offline' => false
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ Error API, usando offline', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            // ✅ FALLBACK OFFLINE SI API FALLA
             return $this->obtenerHistoriasOffline($filters, $page, $perPage);
             
         } catch (\Exception $e) {
@@ -4400,48 +4472,300 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
     }
 
     /**
-     * ✅ OBTENER HISTORIAS OFFLINE
+     * ✅ OBTENER HISTORIAS OFFLINE (MEJORADO CON SQLITE + JSON)
      */
     private function obtenerHistoriasOffline(array $filters, int $page = 1, int $perPage = 15): array
     {
         try {
-            $historias = [];
-            $historiasPath = $this->offlineService->getStoragePath() . '/historias-clinicas';
-            
-            if (!is_dir($historiasPath)) {
-                return [
-                    'success' => true,
-                    'data' => [],
-                    'pagination' => null,
-                    'offline' => true
-                ];
-            }
+            Log::info('📂 Buscando historias offline', [
+                'filters' => $filters,
+                'page' => $page,
+                'per_page' => $perPage
+            ]);
 
-            $files = glob($historiasPath . '/*.json');
+            $historias = [];
             
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
+            // ✅ 1. BUSCAR EN CARPETA DE HISTORIAS JSON (CON GUION BAJO)
+            $historiasPath = $this->offlineService->getStoragePath() . '/historias_clinicas';
+            
+            Log::info('📁 Verificando carpeta de historias JSON', [
+                'path' => $historiasPath,
+                'exists' => is_dir($historiasPath)
+            ]);
+            
+            if (is_dir($historiasPath)) {
+                $files = glob($historiasPath . '/*.json');
                 
-                if (!$data) continue;
+                Log::info('📄 Archivos JSON de historias encontrados', [
+                    'count' => count($files)
+                ]);
                 
-                // ✅ APLICAR FILTROS
-                if (!$this->aplicarFiltrosHistoria($data, $filters)) {
-                    continue;
+                foreach ($files as $file) {
+                    $data = json_decode(file_get_contents($file), true);
+                    
+                    if (!$data) {
+                        Log::warning('⚠️ Archivo JSON corrupto o vacío', [
+                            'file' => basename($file)
+                        ]);
+                        continue;
+                    }
+                    
+                    Log::debug('🔍 Procesando historia JSON', [
+                        'file' => basename($file),
+                        'uuid' => $data['uuid'] ?? 'N/A',
+                        'paciente_documento' => $data['paciente']['documento'] ?? 'N/A'
+                    ]);
+                    
+                    // ✅ APLICAR FILTROS
+                    if (!$this->aplicarFiltrosHistoria($data, $filters)) {
+                        continue;
+                    }
+                    
+                    Log::info('✅ Historia cumple filtros (JSON historias)', [
+                        'uuid' => $data['uuid'] ?? 'N/A',
+                        'documento' => $data['paciente']['documento'] ?? 'N/A'
+                    ]);
+                    
+                    // ✅ ENRIQUECER DATOS
+                    $historias[] = $this->enrichHistoriaForList($data);
                 }
+            }
+            
+            // ✅ 1.5. BUSCAR EN CARPETA DE PACIENTES JSON (SI HAY FILTRO DE DOCUMENTO)
+            if (!empty($filters['documento'])) {
+                $pacientesPath = $this->offlineService->getStoragePath() . '/pacientes';
                 
-                // ✅ ENRIQUECER DATOS
-                $historias[] = $this->enrichHistoriaForList($data);
+                Log::info('📁 Verificando carpeta de pacientes JSON', [
+                    'path' => $pacientesPath,
+                    'exists' => is_dir($pacientesPath)
+                ]);
+                
+                if (is_dir($pacientesPath)) {
+                    $pacientesFiles = glob($pacientesPath . '/*.json');
+                    
+                    Log::info('📄 Archivos JSON de pacientes encontrados', [
+                        'count' => count($pacientesFiles)
+                    ]);
+                    
+                    foreach ($pacientesFiles as $pacienteFile) {
+                        $pacienteData = json_decode(file_get_contents($pacienteFile), true);
+                        
+                        if (!$pacienteData) continue;
+                        
+                        // Verificar si el documento coincide
+                        $documentoPaciente = $pacienteData['documento'] ?? '';
+                        
+                        if (stripos($documentoPaciente, $filters['documento']) !== false) {
+                            $pacienteUuid = $pacienteData['uuid'] ?? null;
+                            
+                            Log::info('✅ Paciente encontrado en JSON', [
+                                'documento' => $documentoPaciente,
+                                'uuid' => $pacienteUuid,
+                                'nombre' => ($pacienteData['primer_nombre'] ?? '') . ' ' . ($pacienteData['primer_apellido'] ?? '')
+                            ]);
+                            
+                            // ✅ BUSCAR HISTORIAS DIRECTAMENTE EN LA CARPETA DE HISTORIAS POR UUID
+                            if ($pacienteUuid && is_dir($historiasPath)) {
+                                $historiasFiles = glob($historiasPath . '/*.json');
+                                
+                                Log::info('🔍 Buscando historias del paciente en carpeta historias_clinicas', [
+                                    'paciente_uuid' => $pacienteUuid,
+                                    'total_historias' => count($historiasFiles)
+                                ]);
+                                
+                                foreach ($historiasFiles as $historiaFile) {
+                                    $historiaData = json_decode(file_get_contents($historiaFile), true);
+                                    
+                                    if (!$historiaData) continue;
+                                    
+                                    // Verificar si la historia es de este paciente
+                                    if ($this->aplicarFiltrosHistoria($historiaData, $filters, $pacienteUuid)) {
+                                        Log::info('✅ Historia del paciente encontrada', [
+                                            'historia_uuid' => $historiaData['uuid'] ?? 'N/A',
+                                            'paciente_uuid' => $pacienteUuid
+                                        ]);
+                                        
+                                        $historias[] = $this->enrichHistoriaForList($historiaData);
+                                    }
+                                }
+                            }
+                            
+                            // Buscar historias de este paciente en citas
+                            $citasPath = $this->offlineService->getStoragePath() . '/citas';
+                            
+                            if (is_dir($citasPath)) {
+                                $citasFiles = glob($citasPath . '/*.json');
+                                
+                                Log::info('🔍 Buscando citas del paciente', [
+                                    'paciente_uuid' => $pacienteUuid,
+                                    'total_citas' => count($citasFiles)
+                                ]);
+                                
+                                foreach ($citasFiles as $citaFile) {
+                                    $citaData = json_decode(file_get_contents($citaFile), true);
+                                    
+                                    if (!$citaData) continue;
+                                    
+                                    // Verificar si la cita es de este paciente
+                                    $citaPacienteUuid = $citaData['paciente_uuid'] ?? 
+                                                       $citaData['paciente']['uuid'] ?? null;
+                                    
+                                    if ($citaPacienteUuid === $pacienteUuid) {
+                                        // Verificar si la cita tiene historia clínica
+                                        $historiaUuid = $citaData['historia_clinica_uuid'] ?? null;
+                                        
+                                        if ($historiaUuid) {
+                                            Log::info('✅ Cita con historia encontrada', [
+                                                'cita_uuid' => $citaData['uuid'] ?? 'N/A',
+                                                'historia_uuid' => $historiaUuid
+                                            ]);
+                                            
+                                            // Buscar el archivo de la historia
+                                            $historiaFilePath = $historiasPath . '/' . $historiaUuid . '.json';
+                                            
+                                            if (file_exists($historiaFilePath)) {
+                                                $historiaData = json_decode(file_get_contents($historiaFilePath), true);
+                                                
+                                                if ($historiaData && $this->aplicarFiltrosHistoria($historiaData, $filters, $pacienteUuid)) {
+                                                    $historias[] = $this->enrichHistoriaForList($historiaData);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            break; // Ya encontramos al paciente
+                        }
+                    }
+                }
+            }
+            
+            // ✅ 2. BUSCAR EN SQLITE (SI HAY FILTRO DE DOCUMENTO Y NO SE ENCONTRÓ EN JSON)
+            if (!empty($filters['documento']) && empty($historias)) {
+                Log::info('🔍 Buscando en SQLite por documento', [
+                    'documento' => $filters['documento']
+                ]);
+                
+                try {
+                    // ✅ VERIFICAR SI EXISTEN PACIENTES EN SQLITE
+                    $totalPacientes = DB::connection('offline')
+                        ->table('pacientes')
+                        ->count();
+                    
+                    Log::info('📊 Estado de tabla pacientes en SQLite', [
+                        'total_pacientes' => $totalPacientes
+                    ]);
+                    
+                    // ✅ MOSTRAR ALGUNOS DOCUMENTOS DE EJEMPLO
+                    if ($totalPacientes > 0) {
+                        $documentosEjemplo = DB::connection('offline')
+                            ->table('pacientes')
+                            ->select('documento', 'primer_nombre', 'primer_apellido')
+                            ->limit(5)
+                            ->get()
+                            ->map(function($p) {
+                                return $p->documento . ' - ' . $p->primer_nombre . ' ' . $p->primer_apellido;
+                            })
+                            ->toArray();
+                        
+                        Log::info('📋 Ejemplos de pacientes en SQLite', [
+                            'documentos' => $documentosEjemplo
+                        ]);
+                    }
+                    
+                    // Buscar paciente por documento en SQLite
+                    $paciente = DB::connection('offline')
+                        ->table('pacientes')
+                        ->where('documento', 'LIKE', '%' . $filters['documento'] . '%')
+                        ->first();
+                    
+                    if ($paciente) {
+                        Log::info('✅ Paciente encontrado en SQLite', [
+                            'uuid' => $paciente->uuid,
+                            'documento' => $paciente->documento
+                        ]);
+                        
+                        // Buscar historias de ese paciente
+                        $historiasRows = DB::connection('offline')
+                            ->table('historias_clinicas')
+                            ->where('paciente_uuid', $paciente->uuid)
+                            ->get();
+                        
+                        Log::info('📊 Historias encontradas en SQLite', [
+                            'count' => $historiasRows->count()
+                        ]);
+                        
+                        foreach ($historiasRows as $row) {
+                            // Intentar obtener datos completos del JSON si existe
+                            $jsonPath = $historiasPath . '/' . $row->uuid . '.json';
+                            
+                            if (file_exists($jsonPath)) {
+                                $data = json_decode(file_get_contents($jsonPath), true);
+                            } else {
+                                // Usar datos de SQLite
+                                $data = json_decode(json_encode($row), true);
+                                
+                                // Decodificar campo data si existe
+                                if (!empty($data['data']) && is_string($data['data'])) {
+                                    $dataDecoded = json_decode($data['data'], true);
+                                    if ($dataDecoded) {
+                                        $data = array_merge($data, $dataDecoded);
+                                    }
+                                }
+                            }
+                            
+                            if ($data) {
+                                $historias[] = $this->enrichHistoriaForList($data);
+                            }
+                        }
+                    } else {
+                        Log::warning('⚠️ Paciente no encontrado en SQLite', [
+                            'documento_buscado' => $filters['documento'],
+                            'total_pacientes_en_db' => $totalPacientes
+                        ]);
+                    }
+                } catch (\Exception $sqliteError) {
+                    Log::error('❌ Error buscando en SQLite', [
+                        'error' => $sqliteError->getMessage(),
+                        'line' => $sqliteError->getLine()
+                    ]);
+                }
+            }
+            
+            Log::info('📊 Resultados finales de búsqueda offline', [
+                'total_encontradas' => count($historias),
+                'filters_aplicados' => $filters
+            ]);
+            
+            // ✅ LOG DETALLADO DE LAS HISTORIAS ENCONTRADAS
+            if (!empty($historias)) {
+                foreach ($historias as $index => $historia) {
+                    Log::info("📄 Historia #{$index}", [
+                        'uuid' => $historia['uuid'] ?? 'N/A',
+                        'paciente' => $historia['paciente'] ?? 'N/A',
+                        'especialidad' => $historia['especialidad'] ?? 'N/A',
+                        'fecha' => $historia['created_at'] ?? $historia['fecha'] ?? 'N/A'
+                    ]);
+                }
             }
             
             // ✅ ORDENAR POR FECHA (MÁS RECIENTE PRIMERO)
             usort($historias, function($a, $b) {
-                return strtotime($b['created_at']) - strtotime($a['created_at']);
+                return strtotime($b['created_at'] ?? '1970-01-01') - strtotime($a['created_at'] ?? '1970-01-01');
             });
             
             // ✅ PAGINAR
             $total = count($historias);
             $offset = ($page - 1) * $perPage;
             $paginatedData = array_slice($historias, $offset, $perPage);
+            
+            Log::info('📦 Datos paginados a retornar', [
+                'total' => $total,
+                'offset' => $offset,
+                'per_page' => $perPage,
+                'paginated_count' => count($paginatedData)
+            ]);
             
             return [
                 'success' => true,
@@ -4459,7 +4783,9 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
             
         } catch (\Exception $e) {
             Log::error('❌ Error obteniendo historias offline', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
             ]);
             
             return [
@@ -4471,14 +4797,49 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
     }
 
     /**
-     * ✅ APLICAR FILTROS A HISTORIA (CORREGIDO)
+     * ✅ APLICAR FILTROS A HISTORIA (MEJORADO CON LOGS Y BÚSQUEDA POR UUID)
      */
-    private function aplicarFiltrosHistoria(array $historia, array $filters): bool
+    private function aplicarFiltrosHistoria(array $historia, array $filters, ?string $pacienteUuidBuscado = null): bool
     {
-        // Filtro por documento
-        if (!empty($filters['documento'])) {
-            $documento = $historia['paciente']['documento'] ?? '';
-            if (strpos($documento, $filters['documento']) === false) {
+        // Filtro por documento o UUID de paciente
+        if (!empty($filters['documento']) || $pacienteUuidBuscado) {
+            // Intentar obtener documento de diferentes estructuras posibles
+            $documento = $historia['paciente']['documento'] ?? 
+                        $historia['documento'] ?? 
+                        '';
+            
+            // Intentar obtener UUID del paciente
+            $pacienteUuid = $historia['paciente_uuid'] ??
+                           $historia['paciente']['uuid'] ??
+                           $historia['cita']['paciente_uuid'] ??
+                           $historia['cita']['paciente']['uuid'] ??
+                           '';
+            
+            $encontrado = false;
+            
+            // Buscar por UUID si se proporcionó
+            if ($pacienteUuidBuscado && $pacienteUuid === $pacienteUuidBuscado) {
+                $encontrado = true;
+            }
+            
+            // Buscar por documento si se proporcionó
+            if (!empty($filters['documento']) && !empty($documento)) {
+                $documentoBuscado = $filters['documento'];
+                if (stripos($documento, $documentoBuscado) !== false) {
+                    $encontrado = true;
+                }
+            }
+            
+            Log::debug('🔍 Comparando paciente', [
+                'historia_documento' => $documento,
+                'historia_paciente_uuid' => $pacienteUuid,
+                'filtro_documento' => $filters['documento'] ?? null,
+                'paciente_uuid_buscado' => $pacienteUuidBuscado,
+                'encontrado' => $encontrado,
+                'historia_uuid' => $historia['uuid'] ?? 'N/A'
+            ]);
+            
+            if (!$encontrado) {
                 return false;
             }
         }
@@ -4528,17 +4889,57 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
 
 
     /**
-     * ✅ ENRIQUECER DATOS DE HISTORIA PARA LISTA
+     * ✅ ENRIQUECER DATOS DE HISTORIA PARA LISTA (MEJORADO CON BÚSQUEDA DE PACIENTE)
      */
     private function enrichHistoriaForList(array $historia): array
     {
+        // ✅ INTENTAR OBTENER DATOS DEL PACIENTE
+        $pacienteData = [
+            'nombre_completo' => $historia['paciente']['nombre_completo'] ?? 'N/A',
+            'documento' => $historia['paciente']['documento'] ?? 'N/A',
+            'tipo_documento' => $historia['paciente']['tipo_documento'] ?? 'CC'
+        ];
+        
+        // ✅ SI NO HAY DATOS COMPLETOS, BUSCAR POR UUID
+        if ($pacienteData['nombre_completo'] === 'N/A' || $pacienteData['documento'] === 'N/A') {
+            $pacienteUuid = $historia['paciente_uuid'] ?? 
+                           $historia['paciente']['uuid'] ?? 
+                           $historia['cita']['paciente_uuid'] ?? null;
+            
+            if ($pacienteUuid) {
+                $pacientesPath = $this->offlineService->getStoragePath() . '/pacientes';
+                $pacienteFile = $pacientesPath . '/' . $pacienteUuid . '.json';
+                
+                if (file_exists($pacienteFile)) {
+                    $pacienteCompleto = json_decode(file_get_contents($pacienteFile), true);
+                    
+                    if ($pacienteCompleto) {
+                        $pacienteData = [
+                            'nombre_completo' => ($pacienteCompleto['primer_nombre'] ?? '') . ' ' . 
+                                               ($pacienteCompleto['segundo_nombre'] ?? '') . ' ' . 
+                                               ($pacienteCompleto['primer_apellido'] ?? '') . ' ' . 
+                                               ($pacienteCompleto['segundo_apellido'] ?? ''),
+                            'documento' => $pacienteCompleto['documento'] ?? 'N/A',
+                            'tipo_documento' => $pacienteCompleto['tipo_documento']['codigo'] ?? 
+                                               $pacienteCompleto['tipo_documento'] ?? 'CC'
+                        ];
+                        
+                        // Limpiar espacios extra del nombre
+                        $pacienteData['nombre_completo'] = trim(preg_replace('/\s+/', ' ', $pacienteData['nombre_completo']));
+                        
+                        Log::debug('✅ Datos de paciente enriquecidos desde archivo', [
+                            'paciente_uuid' => $pacienteUuid,
+                            'nombre' => $pacienteData['nombre_completo'],
+                            'documento' => $pacienteData['documento']
+                        ]);
+                    }
+                }
+            }
+        }
+        
         return [
             'uuid' => $historia['uuid'],
-            'paciente' => [
-                'nombre_completo' => $historia['paciente']['nombre_completo'] ?? 'N/A',
-                'documento' => $historia['paciente']['documento'] ?? 'N/A',
-                'tipo_documento' => $historia['paciente']['tipo_documento'] ?? 'CC'
-            ],
+            'paciente' => $pacienteData,
             'especialidad' => $historia['especialidad'] ?? 'MEDICINA GENERAL',
             'tipo_consulta' => $historia['tipo_consulta'] ?? 'PRIMERA VEZ',
             'profesional' => [
@@ -4573,7 +4974,7 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
     }
 
     /**
-     * ✅ BUSCAR HISTORIAS POR DOCUMENTO DE PACIENTE
+     * ✅ BUSCAR HISTORIAS POR DOCUMENTO DE PACIENTE (OFFLINE-FIRST)
      */
     public function buscarPorDocumento(Request $request)
     {
@@ -4585,11 +4986,64 @@ private function obtenerUltimaHistoriaOffline(string $pacienteUuid, string $espe
             $documento = $request->documento;
             
             Log::info('🔍 Buscando historias por documento', [
-                'documento' => $documento
+                'documento' => $documento,
+                'is_online' => $this->apiService->isOnline()
             ]);
 
+            // ✅ PRIORIZAR BÚSQUEDA OFFLINE SI NO HAY CONEXIÓN
+            if (!$this->apiService->isOnline()) {
+                Log::info('🔌 Modo offline, buscando historias en almacenamiento local');
+                
+                $filters = ['documento' => $documento];
+                $result = $this->obtenerHistoriasOffline($filters, 1, 50);
+                
+                // ✅ DEBUG: Ver qué retorna obtenerHistoriasOffline()
+                Log::info('🔍 DEBUG - Resultado de obtenerHistoriasOffline()', [
+                    'success' => $result['success'] ?? false,
+                    'data_count' => isset($result['data']) ? count($result['data']) : 0,
+                    'data_empty' => empty($result['data']),
+                    'tiene_data' => isset($result['data']),
+                    'primer_historia' => isset($result['data'][0]) ? $result['data'][0]['uuid'] ?? 'sin-uuid' : 'no-hay-data'
+                ]);
+                
+                // ✅ FORMATEAR RESPUESTA PARA COMPATIBILIDAD
+                if ($result['success'] && !empty($result['data'])) {
+                    Log::info('✅ Historias encontradas en modo offline', [
+                        'documento' => $documento,
+                        'count' => count($result['data'])
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'historias' => $result['data'],
+                        'offline' => true
+                    ]);
+                } else {
+                    Log::info('ℹ️ No se encontraron historias en modo offline', [
+                        'documento' => $documento,
+                        'result_keys' => array_keys($result)
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'historias' => [],
+                        'offline' => true
+                    ]);
+                }
+            }
+            
+            // ✅ SI HAY CONEXIÓN, INTENTAR API PRIMERO
             $filters = ['documento' => $documento];
             $result = $this->obtenerHistoriasClinicas($filters, 1, 50);
+            
+            // ✅ FORMATEAR RESPUESTA PARA SIDEBAR
+            if ($result['success']) {
+                return response()->json([
+                    'success' => true,
+                    'historias' => $result['data'],
+                    'offline' => $result['offline'] ?? false
+                ]);
+            }
 
             return response()->json($result);
             

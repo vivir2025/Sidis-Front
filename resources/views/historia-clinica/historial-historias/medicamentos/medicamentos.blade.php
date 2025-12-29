@@ -55,7 +55,10 @@
                     $fechaNacimiento = $paciente['fecha_nacimiento'];
                 }
                 
-                $tipoDocumento = $paciente['tipo_documento'] ?? 'CC';
+                // Manejar tipo_documento como string o array (offline/online)
+                $tipoDoc = $paciente['tipo_documento'] ?? 'CC';
+                $tipoDocumento = is_array($tipoDoc) ? ($tipoDoc['abreviacion'] ?? $tipoDoc['nombre'] ?? 'CC') : $tipoDoc;
+                
                 $documento = $paciente['documento'] ?? 'N/A';
                 $nombreCompleto = $paciente['nombre_completo'] ?? 'N/A';
                 $direccion = $paciente['direccion'] ?? 'N/A';
