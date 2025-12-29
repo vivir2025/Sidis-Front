@@ -1,7 +1,7 @@
 {{-- resources/views/agendas/index.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Agendas - SIDIS')
+@section('title', 'Agendas - SIDS')
 
 @section('content')
 <div class="container-fluid">

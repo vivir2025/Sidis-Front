@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Iniciar Sesión - SIDIS')
+@section('title', 'Iniciar Sesión - SIDS')
 
 @push('styles')
 <style>
@@ -839,7 +839,7 @@
                 <img src="{{ asset('images/logo-fundacion.png') }}" alt="Fundación Nacer Para Vivir">
             </div>
             <div class="brand-content">
-                <h1>SIDIS</h1>
+                <h1>SIDS</h1>
                 <p class="subtitle">Organización Comunitaria Llegando a Tu Vida </p>
                 
                 <div class="brand-features">

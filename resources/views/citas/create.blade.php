@@ -4,7 +4,7 @@
 @extends('layouts.app')
 
 
-@section('title', 'Nueva Cita - SIDIS')
+@section('title', 'Nueva Cita - SIDS')
 
 @section('content')
 <div class="container-fluid">

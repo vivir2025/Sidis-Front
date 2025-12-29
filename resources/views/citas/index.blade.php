@@ -1,7 +1,7 @@
 {{-- resources/views/citas/index.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Citas - SIDIS')
+@section('title', 'Citas - SIDS')
 
 @section('content')
 <div class="container-fluid">

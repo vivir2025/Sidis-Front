@@ -232,7 +232,7 @@
                 <!-- Version Info -->
                 <div class="version-info">
                     <small class="text-muted">
-                        SIDIS v2.1.0
+                        SIDS v2.1.0
                         <br>
                         <i class="fas fa-calendar"></i> {{ date('d/m/Y') }}
                     </small>

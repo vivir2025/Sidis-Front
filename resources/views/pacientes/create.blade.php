@@ -1,7 +1,7 @@
 {{-- resources/views/pacientes/create.blade.php (VERSIÓN MEJORADA CON NAVEGACIÓN) --}}
 @extends('layouts.app')
 
-@section('title', 'Crear Paciente - SIDIS')
+@section('title', 'Crear Paciente - SIDS')
 
 @section('content')
 <div class="container-fluid">

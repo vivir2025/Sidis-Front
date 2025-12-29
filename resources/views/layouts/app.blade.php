@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'SIDIS - Sistema de Información')</title>
+    <title>@yield('title', 'SIDS - Sistema de Información')</title>
 
     <!-- Bootstrap 5 CSS (Local para modo offline) -->
     <link href="{{ asset('css/vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
@@ -1276,7 +1276,7 @@
             
             <!-- Logo -->
             <a class="navbar-brand d-flex align-items-center" href="{{ route('dashboard') }}">
-                <img src="{{ asset('images/listo.png') }}" alt="SIDIS Logo" style="height: 40px;" class="me-2">
+                <img src="{{ asset('images/listo.png') }}" alt="SIDS Logo" style="height: 40px;" class="me-2">
                 <span class="fw-bold text-primary">SIDS</span>
             </a>
 

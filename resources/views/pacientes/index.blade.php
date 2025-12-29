@@ -1,7 +1,7 @@
 {{-- resources/views/pacientes/index.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Pacientes - SIDIS')
+@section('title', 'Pacientes - SIDS')
 
 @section('content')
 <div class="container-fluid">
