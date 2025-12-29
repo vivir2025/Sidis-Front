@@ -79,29 +79,33 @@
             gap: 10px;
         }
 
-        /* ===== BOTÓN TOGGLE SIDEBAR ===== */
+        /* ===== BOTÓN TOGGLE SIDEBAR (Moderno sin fondo) ===== */
         .btn-toggle-sidebar {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border: none;
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-            color: white;
-            border-radius: 10px;
+            background: transparent;
+            color: var(--primary-color);
+            border-radius: 8px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.3);
-            margin-right: 12px; /* Aumentado de 8px a 12px para mejor espaciado */
+            margin-right: 12px;
             padding: 0;
             outline: none;
             flex-shrink: 0;
+            position: relative;
+        }
+        
+        .btn-toggle-sidebar:hover {
+            background: rgba(44, 90, 160, 0.1);
+            transform: scale(1.05);
         }
         
         .btn-toggle-sidebar:focus {
             outline: none;
-            box-shadow: 0 2px 8px rgba(44, 90, 160, 0.5);
         }
 
         .btn-toggle-sidebar:hover {
@@ -110,17 +114,54 @@
         }
 
         .btn-toggle-sidebar i {
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             transition: all 0.3s ease;
         }
         
-        /* Estilo minimalista para el ícono */
-        .btn-toggle-sidebar i.fa-bars::before {
-            content: "\f0c9";
+        /* Ícono hamburguesa moderno personalizado */
+        .btn-toggle-sidebar .menu-icon {
+            width: 24px;
+            height: 18px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            cursor: pointer;
         }
         
-        .btn-toggle-sidebar i.fa-times::before {
-            content: "\f00d";
+        .btn-toggle-sidebar .menu-icon span {
+            display: block;
+            height: 2.5px;
+            width: 100%;
+            background: var(--primary-color);
+            border-radius: 3px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-toggle-sidebar .menu-icon span:nth-child(2) {
+            width: 80%;
+        }
+        
+        .btn-toggle-sidebar:hover .menu-icon span {
+            background: var(--primary-dark);
+        }
+        
+        .btn-toggle-sidebar:hover .menu-icon span:nth-child(2) {
+            width: 100%;
+        }
+        
+        /* Cuando está activo (abierto) */
+        .btn-toggle-sidebar.active .menu-icon span:nth-child(1) {
+            transform: rotate(45deg) translate(6px, 6px);
+        }
+        
+        .btn-toggle-sidebar.active .menu-icon span:nth-child(2) {
+            opacity: 0;
+            width: 0;
+        }
+        
+        .btn-toggle-sidebar.active .menu-icon span:nth-child(3) {
+            transform: rotate(-45deg) translate(6px, -6px);
         }
 
         .btn-toggle-sidebar.active i {
@@ -1193,7 +1234,11 @@
         <div class="container-fluid">
             <!-- Botón Toggle Sidebar (fuera del enlace) -->
             <button class="btn-toggle-sidebar" id="btnToggleSidebar" onclick="toggleSidebar()" title="Abrir/Cerrar Menú">
-                <i class="fas fa-grip-lines" id="iconToggleSidebar"></i>
+                <div class="menu-icon">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
             </button>
             
             <!-- Logo -->
@@ -1365,26 +1410,23 @@
             const sidebar = document.getElementById('sidebarContainer');
             const overlay = document.getElementById('sidebarOverlay');
             const btnToggle = document.getElementById('btnToggleSidebar');
-            const iconToggle = document.getElementById('iconToggleSidebar');
             const navbar = document.querySelector('.navbar');
             
-            if (sidebar && overlay && btnToggle && iconToggle) {
+            if (sidebar && overlay && btnToggle) {
                 // Toggle clase active
                 sidebar.classList.toggle('active');
                 overlay.classList.toggle('active');
                 btnToggle.classList.toggle('active');
                 
-                // Cambiar icono
+                // Control de scroll y navbar
                 if (sidebar.classList.contains('active')) {
-                    iconToggle.className = 'fas fa-times';
-                    document.body.style.overflow = 'hidden'; // Prevenir scroll en móvil
+                    document.body.style.overflow = 'hidden';
                     
                     // En desktop, empujar navbar
                     if (window.innerWidth > 768 && navbar) {
                         navbar.style.paddingLeft = '300px';
                     }
                 } else {
-                    iconToggle.className = 'fas fa-grip-lines';
                     document.body.style.overflow = '';
                     
                     // Restaurar navbar
@@ -1399,14 +1441,12 @@
             const sidebar = document.getElementById('sidebarContainer');
             const overlay = document.getElementById('sidebarOverlay');
             const btnToggle = document.getElementById('btnToggleSidebar');
-            const iconToggle = document.getElementById('iconToggleSidebar');
             const navbar = document.querySelector('.navbar');
             
             if (sidebar && overlay) {
                 sidebar.classList.remove('active');
                 overlay.classList.remove('active');
                 if (btnToggle) btnToggle.classList.remove('active');
-                if (iconToggle) iconToggle.className = 'fas fa-grip-lines';
                 document.body.style.overflow = '';
                 
                 // Restaurar navbar
@@ -1421,14 +1461,12 @@
             const sidebar = document.getElementById('sidebarContainer');
             const overlay = document.getElementById('sidebarOverlay');
             const btnToggle = document.getElementById('btnToggleSidebar');
-            const iconToggle = document.getElementById('iconToggleSidebar');
             const navbar = document.querySelector('.navbar');
             
             if (sidebar && overlay) {
                 sidebar.classList.add('active');
                 overlay.classList.add('active');
                 if (btnToggle) btnToggle.classList.add('active');
-                if (iconToggle) iconToggle.className = 'fas fa-times';
                 document.body.style.overflow = 'hidden';
                 
                 // En desktop, empujar navbar
