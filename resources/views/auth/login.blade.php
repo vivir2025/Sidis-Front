@@ -12,34 +12,107 @@
         --npv-light-blue: #4A7BC8;
     }
 
-    body {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        height: 100vh;
+    /* Forzar que body ocupe toda la pantalla sin navbar */
+    html, body {
+        height: 100%;
         margin: 0;
         padding: 0;
-        overflow: hidden;
-        position: relative;
+        overflow-x: hidden;
     }
 
-    body::before {
+    body.login-page {
+        background: linear-gradient(135deg, #e8f0f7 0%, #d4dfe9 50%, #c5d4e3 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* Fondo decorativo con patrón */
+    body.login-page::before {
         content: '';
-        position: absolute;
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
         background-image: 
-            radial-gradient(circle at 20% 50%, rgba(109, 179, 63, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(44, 90, 160, 0.1) 0%, transparent 50%);
+            repeating-linear-gradient(90deg, rgba(44, 90, 160, 0.02) 0px, transparent 1px, transparent 50px, rgba(44, 90, 160, 0.02) 51px),
+            repeating-linear-gradient(0deg, rgba(44, 90, 160, 0.02) 0px, transparent 1px, transparent 50px, rgba(44, 90, 160, 0.02) 51px),
+            radial-gradient(circle at 15% 20%, rgba(109, 179, 63, 0.15) 0%, transparent 40%),
+            radial-gradient(circle at 85% 80%, rgba(44, 90, 160, 0.15) 0%, transparent 40%),
+            radial-gradient(circle at 50% 50%, rgba(109, 179, 63, 0.08) 0%, transparent 60%);
         pointer-events: none;
+        z-index: 0;
+    }
+
+    /* Elementos decorativos flotantes */
+    body.login-page::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232C5AA0' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        opacity: 0.4;
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* Círculos decorativos animados */
+    .login-container::before,
+    .login-container::after {
+        content: '';
+        position: fixed;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .login-container::before {
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, rgba(109, 179, 63, 0.1) 0%, transparent 70%);
+        top: -200px;
+        left: -200px;
+        animation: float-circle 20s ease-in-out infinite;
+    }
+
+    .login-container::after {
+        width: 350px;
+        height: 350px;
+        background: radial-gradient(circle, rgba(44, 90, 160, 0.1) 0%, transparent 70%);
+        bottom: -175px;
+        right: -175px;
+        animation: float-circle 25s ease-in-out infinite reverse;
+    }
+
+    @keyframes float-circle {
+        0%, 100% {
+            transform: translate(0, 0) scale(1);
+        }
+        25% {
+            transform: translate(30px, 30px) scale(1.1);
+        }
+        50% {
+            transform: translate(-20px, 40px) scale(0.95);
+        }
+        75% {
+            transform: translate(40px, -30px) scale(1.05);
+        }
     }
 
     .login-container {
+        width: 100%;
         height: 100vh;
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: center;
-        padding: 20px;
+        padding: 0;
         position: relative;
         z-index: 1;
     }
@@ -47,25 +120,20 @@
     .login-wrapper {
         display: flex;
         background: white;
-        border-radius: 20px;
-        box-shadow: 
-            0 20px 60px rgba(0,0,0,0.1),
-            0 0 0 1px rgba(0,0,0,0.05);
+        border-radius: 0;
+        box-shadow: none;
         overflow: hidden;
-        max-width: 1100px;
         width: 100%;
-        max-height: 90vh;
-        animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        height: 100%;
+        animation: fadeIn 0.6s ease-out;
     }
 
-    @keyframes slideUp {
+    @keyframes fadeIn {
         from {
             opacity: 0;
-            transform: translateY(40px);
         }
         to {
             opacity: 1;
-            transform: translateY(0);
         }
     }
 
@@ -73,7 +141,7 @@
     .login-brand {
         flex: 0 0 45%;
         background: linear-gradient(135deg, var(--npv-blue) 0%, var(--npv-dark-blue) 100%);
-        padding: 40px 35px;
+        padding: 60px 50px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -102,14 +170,14 @@
     .brand-logo {
         width: 140px;
         height: 140px;
-        margin-bottom: 25px;
+        margin-bottom: 30px;
         position: relative;
         z-index: 1;
         animation: float 3s ease-in-out infinite;
         background: white;
-        border-radius: 16px;
+        border-radius: 20px;
         padding: 15px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.3);
     }
 
     .brand-logo img {
@@ -130,73 +198,84 @@
     }
 
     .brand-content h1 {
-        font-size: 2.2rem;
+        font-size: 2.8rem;
         font-weight: 700;
-        margin-bottom: 12px;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        margin-bottom: 15px;
+        text-shadow: 0 3px 15px rgba(0,0,0,0.3);
+        letter-spacing: 2px;
     }
 
     .brand-content .subtitle {
-        font-size: 1rem;
+        font-size: 1.1rem;
         opacity: 0.95;
         font-weight: 400;
         line-height: 1.5;
-        margin-bottom: 25px;
+        margin-bottom: 40px;
     }
 
     .brand-features {
-        margin-top: 30px;
+        margin-top: 40px;
         text-align: left;
+        width: 100%;
+        max-width: 350px;
     }
 
     .feature-item {
         display: flex;
         align-items: center;
-        margin-bottom: 16px;
+        margin-bottom: 20px;
         opacity: 0.9;
+        transition: all 0.3s ease;
+    }
+
+    .feature-item:hover {
+        opacity: 1;
+        transform: translateX(5px);
     }
 
     .feature-item i {
-        font-size: 1.3rem;
-        margin-right: 12px;
+        font-size: 1.5rem;
+        margin-right: 15px;
         color: var(--npv-green);
         background: rgba(255,255,255,0.2);
-        width: 40px;
-        height: 40px;
+        width: 50px;
+        height: 50px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 10px;
+        border-radius: 12px;
     }
 
     .feature-item span {
-        font-size: 0.95rem;
+        font-size: 1rem;
+        font-weight: 500;
     }
 
     /* Right Panel - Form */
     .login-form-panel {
         flex: 0 0 55%;
-        padding: 50px 60px;
+        padding: 60px 80px;
         background: white;
         display: flex;
         flex-direction: column;
         justify-content: center;
+        overflow-y: auto;
     }
 
     .form-header {
-        margin-bottom: 22px;
+        margin-bottom: 30px;
     }
 
     .form-header h2 {
-        font-size: 1.6rem;
+        font-size: 2rem;
         font-weight: 700;
         color: var(--npv-dark-blue);
-        margin-bottom: 6px;
+        margin-bottom: 8px;
     }
 
     .form-header p {
         color: #6c757d;
-        font-size: 0.85rem;
+        font-size: 1rem;
         margin-bottom: 0;
     }
 
@@ -204,11 +283,11 @@
     .connection-indicator {
         display: inline-flex;
         align-items: center;
-        padding: 7px 14px;
+        padding: 10px 18px;
         border-radius: 50px;
-        font-size: 0.75rem;
+        font-size: 0.9rem;
         font-weight: 600;
-        margin-bottom: 18px;
+        margin-bottom: 25px;
         transition: all 0.3s ease;
     }
 
@@ -236,7 +315,7 @@
 
     /* Form Styles */
     .form-group {
-        margin-bottom: 16px;
+        margin-bottom: 20px;
         position: relative;
     }
 
@@ -244,23 +323,23 @@
         display: block;
         font-weight: 600;
         color: var(--npv-dark-blue);
-        margin-bottom: 7px;
-        font-size: 0.8rem;
+        margin-bottom: 10px;
+        font-size: 0.95rem;
     }
 
     .form-label i {
-        margin-right: 5px;
+        margin-right: 8px;
         color: var(--npv-green);
-        font-size: 0.8rem;
+        font-size: 0.95rem;
     }
 
     .form-control,
     .form-select {
         width: 100%;
-        padding: 10px 14px;
+        padding: 14px 18px;
         border: 2px solid #e9ecef;
-        border-radius: 10px;
-        font-size: 0.85rem;
+        border-radius: 12px;
+        font-size: 1rem;
         transition: all 0.3s ease;
         background-color: #f8f9fa;
     }
@@ -357,18 +436,18 @@
     /* Submit Button */
     .btn-login {
         width: 100%;
-        padding: 12px;
+        padding: 16px;
         background: linear-gradient(135deg, var(--npv-green), var(--npv-dark-green));
         border: none;
-        border-radius: 10px;
+        border-radius: 12px;
         color: white;
-        font-size: 0.9rem;
+        font-size: 1.1rem;
         font-weight: 700;
         cursor: pointer;
         transition: all 0.3s ease;
         position: relative;
         overflow: hidden;
-        box-shadow: 0 4px 15px rgba(109, 179, 63, 0.3);
+        box-shadow: 0 6px 20px rgba(109, 179, 63, 0.4);
     }
 
     .btn-login::before {
@@ -448,22 +527,92 @@
     }
 
     /* Responsive Design */
+    /* Tablet (md y lg) */
     @media (max-width: 992px) {
         .login-wrapper {
             flex-direction: column;
-            max-width: 500px;
-            max-height: 95vh;
-            overflow-y: auto;
         }
 
         .login-brand {
             flex: 0 0 auto;
-            padding: 30px 25px;
+            min-height: 40vh;
+            padding: 40px 30px;
         }
 
         .brand-logo {
             width: 100px;
             height: 100px;
+            margin-bottom: 20px;
+        }
+
+        .brand-content h1 {
+            font-size: 2.2rem;
+        }
+
+        .brand-content .subtitle {
+            font-size: 1rem;
+            margin-bottom: 25px;
+        }
+
+        .brand-features {
+            margin-top: 20px;
+        }
+
+        .feature-item {
+            margin-bottom: 15px;
+            font-size: 0.95rem;
+        }
+
+        .feature-item i {
+            width: 42px;
+            height: 42px;
+            font-size: 1.3rem;
+        }
+
+        .login-form-panel {
+            flex: 1;
+            padding: 40px 35px;
+        }
+
+        .form-header h2 {
+            font-size: 1.8rem;
+        }
+
+        .form-header p {
+            font-size: 0.95rem;
+        }
+
+        .form-control,
+        .form-select {
+            padding: 12px 16px;
+            font-size: 0.95rem;
+        }
+    }
+
+    /* Móviles pequeños */
+    @media (max-width: 576px) {
+        body.login-page {
+            align-items: stretch;
+        }
+
+        .login-container {
+            padding: 0;
+            height: 100vh;
+        }
+
+        .login-wrapper {
+            border-radius: 0;
+            flex-direction: column;
+        }
+
+        .login-brand {
+            min-height: 35vh;
+            padding: 30px 25px;
+        }
+
+        .brand-logo {
+            width: 85px;
+            height: 85px;
             margin-bottom: 15px;
         }
 
@@ -480,35 +629,65 @@
         }
 
         .login-form-panel {
-            flex: 0 0 auto;
             padding: 30px 25px;
         }
 
+        .form-header {
+            margin-bottom: 25px;
+        }
+
         .form-header h2 {
-            font-size: 1.5rem;
+            font-size: 1.6rem;
+        }
+
+        .form-header p {
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+        }
+
+        .form-control,
+        .form-select {
+            padding: 12px 14px;
+            font-size: 0.9rem;
+        }
+
+        .connection-indicator {
+            font-size: 0.8rem;
+            padding: 8px 14px;
+            margin-bottom: 20px;
+        }
+
+        .btn-login {
+            padding: 14px;
+            font-size: 1rem;
         }
     }
 
-    @media (max-width: 576px) {
-        .login-container {
-            padding: 10px;
-        }
-
-        .login-wrapper {
-            border-radius: 16px;
-        }
-
+    /* Pantallas extra pequeñas */
+    @media (max-width: 380px) {
         .login-brand {
+            min-height: 30vh;
             padding: 25px 20px;
         }
 
         .brand-logo {
-            width: 90px;
-            height: 90px;
+            width: 75px;
+            height: 75px;
         }
 
         .brand-content h1 {
             font-size: 1.6rem;
+        }
+
+        .brand-content .subtitle {
+            font-size: 0.85rem;
         }
 
         .login-form-panel {
@@ -518,47 +697,140 @@
         .form-header h2 {
             font-size: 1.4rem;
         }
-
-        .form-group {
-            margin-bottom: 14px;
-        }
     }
 
     /* Altura mínima para pantallas muy pequeñas */
-    @media (max-height: 700px) {
-        .login-wrapper {
-            max-height: 95vh;
+    @media (max-height: 700px) and (min-width: 993px) {
+        .login-brand {
+            padding: 40px 45px;
         }
 
         .brand-logo {
-            width: 100px;
-            height: 100px;
+            width: 110px;
+            height: 110px;
+            margin-bottom: 20px;
+        }
+
+        .brand-content h1 {
+            font-size: 2.2rem;
         }
 
         .brand-features {
-            margin-top: 20px;
+            margin-top: 25px;
         }
 
         .feature-item {
-            margin-bottom: 12px;
+            margin-bottom: 15px;
+            font-size: 0.95rem;
         }
 
         .form-group {
-            margin-bottom: 14px;
+            margin-bottom: 16px;
+        }
+
+        .form-header {
+            margin-bottom: 25px;
+        }
+
+        .login-form-panel {
+            padding: 40px 60px;
+        }
+    }
+
+    /* Iconos médicos decorativos en los laterales */
+    .medical-decoration {
+        position: fixed;
+        color: rgba(44, 90, 160, 0.08);
+        pointer-events: none;
+        z-index: 0;
+        font-size: 3rem;
+        animation: float 4s ease-in-out infinite;
+    }
+
+    .medical-decoration:nth-child(1) { top: 10%; left: 5%; animation-delay: 0s; font-size: 4rem; }
+    .medical-decoration:nth-child(2) { top: 25%; right: 8%; animation-delay: 1s; font-size: 3.5rem; }
+    .medical-decoration:nth-child(3) { top: 45%; left: 3%; animation-delay: 2s; font-size: 3rem; }
+    .medical-decoration:nth-child(4) { top: 60%; right: 5%; animation-delay: 1.5s; font-size: 3.8rem; }
+    .medical-decoration:nth-child(5) { top: 80%; left: 7%; animation-delay: 0.5s; font-size: 3.2rem; color: rgba(109, 179, 63, 0.08); }
+    .medical-decoration:nth-child(6) { top: 70%; right: 10%; animation-delay: 2.5s; font-size: 3.5rem; color: rgba(109, 179, 63, 0.08); }
+
+    /* Ocultar decoraciones en pantallas pequeñas */
+    @media (max-width: 1400px) {
+        .medical-decoration {
+            display: none;
+        }
+    }
+
+    /* Landscape en móviles */
+    @media (max-height: 500px) and (max-width: 992px) {
+        .login-wrapper {
+            flex-direction: row;
+        }
+
+        .login-brand {
+            flex: 0 0 40%;
+            min-height: 100vh;
+            padding: 30px 25px;
+        }
+
+        .brand-logo {
+            width: 70px;
+            height: 70px;
+            margin-bottom: 12px;
+        }
+
+        .brand-content h1 {
+            font-size: 1.5rem;
+        }
+
+        .brand-content .subtitle {
+            font-size: 0.8rem;
+        }
+
+        .brand-features {
+            display: none;
+        }
+
+        .login-form-panel {
+            flex: 0 0 60%;
+            padding: 25px 30px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
         }
 
         .form-header {
             margin-bottom: 18px;
         }
 
-        .login-form-panel {
-            padding: 40px 50px;
+        .form-header h2 {
+            font-size: 1.4rem;
+        }
+
+        .form-control,
+        .form-select {
+            padding: 10px 14px;
+            font-size: 0.85rem;
+        }
+
+        .btn-login {
+            padding: 12px;
+            font-size: 0.95rem;
         }
     }
 </style>
 @endpush
 
 @section('content')
+<!-- Iconos médicos decorativos flotantes -->
+<i class="fas fa-heartbeat medical-decoration"></i>
+<i class="fas fa-stethoscope medical-decoration"></i>
+<i class="fas fa-user-md medical-decoration"></i>
+<i class="fas fa-hospital medical-decoration"></i>
+<i class="fas fa-notes-medical medical-decoration"></i>
+<i class="fas fa-hand-holding-heart medical-decoration"></i>
+
 <div class="login-container">
     <div class="login-wrapper">
         <!-- Left Panel - Branding -->

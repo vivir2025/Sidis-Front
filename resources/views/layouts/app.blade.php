@@ -21,7 +21,7 @@
 
     <!-- Estilos personalizados -->
     <style>
-                :root {
+        :root {
             --primary-color: #2c5aa0;
             --primary-dark: #1e3d6f;
             --secondary-color: #f8f9fa;
@@ -46,6 +46,21 @@
             background-color: var(--secondary-color);
             line-height: 1.6;
             transition: var(--transition);
+        }
+
+        /* ===== ESTILOS PARA PÁGINA DE LOGIN ===== */
+        body.login-page {
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow-x: hidden !important;
+        }
+
+        /* Ocultar navbar y sidebar en login */
+        body.login-page .navbar,
+        body.login-page .sidebar-container,
+        body.login-page .sidebar-overlay,
+        body.login-page .sidebar-trigger-zone {
+            display: none !important;
         }
 
         /* ===== NAVBAR ===== */
@@ -495,6 +510,14 @@
             min-height: calc(100vh - 76px);
             margin-top: 76px; /* Altura del navbar fixed */
             transition: padding-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Main content para página de login (sin navbar) */
+        body.login-page .main-content {
+            padding: 0;
+            margin: 0;
+            min-height: 100vh;
+            background-color: transparent;
         }
 
         /* ===== CARDS ===== */
@@ -955,6 +978,11 @@
             .main-content {
                 padding: 15px;
             }
+
+            /* Login page responsive */
+            body.login-page .main-content {
+                padding: 0;
+            }
             
             .sede-selector-container {
                 padding: 15px;
@@ -991,6 +1019,11 @@
             
             .main-content {
                 padding: 10px;
+            }
+
+            /* Login page responsive */
+            body.login-page .main-content {
+                padding: 0;
             }
             
             .sede-selector-container {
