@@ -476,7 +476,7 @@ private function normalizarEspecialidad(string $especialidad): string
     $mapeo = [
         'PSICOLOGIA' => 'psicologia',
         'PSICOLOGÍA' => 'psicologia',
-        'MEDICINA GENERAL' => 'medicina-general',
+        'MEDICINA GENERAL' => 'especial-control',
         'NUTRICIONISTA' => 'nutricionista',
         'NUTRICIÓN' => 'nutricionista',
         'ENFERMERIA' => 'enfermeria',
@@ -3101,7 +3101,7 @@ private function verificarHistoriasAnteriores(string $pacienteUuid): bool
     }
 }
  /**
- * ✅ OBTENER ESPECIALIDAD OFFLINE - VERSIÓN CORREGIDA
+ * ✅ OBTENER ESPECIALIDAD OFFLINE - VERSIÓN CORREGIDA (PRIORIZA ESPECIALIDAD DEL MÉDICO)
  */
 private function obtenerEspecialidadOffline(string $citaUuid): ?string
 {
@@ -3120,56 +3120,94 @@ private function obtenerEspecialidadOffline(string $citaUuid): ?string
             return null;
         }
 
-        // ✅ 2. BUSCAR ESPECIALIDAD EN LA ESTRUCTURA DE LA CITA
-        $especialidad = $cita['agenda']['proceso']['nombre'] ?? 
-                       $cita['proceso']['nombre'] ?? 
-                       $cita['agenda']['medico']['especialidad']['nombre'] ?? 
+        // ✅✅✅ 2. BUSCAR ESPECIALIDAD DEL MÉDICO PRIMERO (NO EL PROCESO) ✅✅✅
+        $especialidad = $cita['agenda']['medico']['especialidad']['nombre'] ?? 
                        $cita['agenda']['usuario_medico']['especialidad']['nombre'] ?? 
+                       $cita['medico']['especialidad']['nombre'] ?? 
+                       $cita['usuario_medico']['especialidad']['nombre'] ?? 
                        null;
 
         if ($especialidad) {
-            Log::info('✅ Especialidad encontrada en cita offline', [
-                'especialidad' => $especialidad
+            Log::info('✅ Especialidad encontrada desde médico en cita offline', [
+                'especialidad' => $especialidad,
+                'fuente' => 'cita.medico'
             ]);
             return $especialidad;
         }
 
-        // ✅ 3. SI NO ESTÁ EN LA CITA, BUSCAR EN LA AGENDA
+        // ✅ 3. SI NO HAY ESPECIALIDAD DEL MÉDICO, BUSCAR EN LA AGENDA
         $agendaUuid = $cita['agenda_uuid'] ?? $cita['agenda']['uuid'] ?? null;
         
         if (!$agendaUuid) {
             Log::warning('⚠️ No se encontró agenda_uuid');
-            return null;
+            return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
         }
+
+        Log::info('🔍 Buscando especialidad en agenda', [
+            'agenda_uuid' => $agendaUuid
+        ]);
 
         // ✅ 4. BUSCAR AGENDA OFFLINE
         $agenda = $this->offlineService->getAgendaOffline($agendaUuid);
         
         if ($agenda) {
-            $especialidad = $agenda['proceso']['nombre'] ?? 
-                           $agenda['usuario_medico']['especialidad']['nombre'] ?? 
+            // ✅ BUSCAR ESPECIALIDAD DEL MÉDICO EN LA AGENDA (NO EL PROCESO)
+            $especialidad = $agenda['usuario_medico']['especialidad']['nombre'] ?? 
+                           $agenda['medico']['especialidad']['nombre'] ?? 
+                           $agenda['usuario']['especialidad']['nombre'] ?? 
                            null;
 
             if ($especialidad) {
-                Log::info('✅ Especialidad encontrada en agenda offline', [
-                    'especialidad' => $especialidad
+                Log::info('✅ Especialidad encontrada desde médico en agenda offline', [
+                    'especialidad' => $especialidad,
+                    'agenda_uuid' => $agendaUuid,
+                    'fuente' => 'agenda.medico'
                 ]);
                 return $especialidad;
             }
+
+            // ✅ ÚLTIMO RECURSO: USAR EL PROCESO SOLO SI NO HAY ESPECIALIDAD DEL MÉDICO
+            $especialidadProceso = $agenda['proceso']['nombre'] ?? null;
+            
+            if ($especialidadProceso) {
+                Log::warning('⚠️ Usando proceso como especialidad (último recurso)', [
+                    'proceso_nombre' => $especialidadProceso,
+                    'agenda_uuid' => $agendaUuid
+                ]);
+                
+                // ✅ MAPEAR PROCESOS CONOCIDOS A ESPECIALIDADES REALES
+                $mapeo = [
+                    'ESPECIAL CONTROL' => 'MEDICINA GENERAL',
+                    'CONTROL ESPECIAL' => 'MEDICINA GENERAL',
+                    'MEDICINA GENERAL CONTROL' => 'MEDICINA GENERAL',
+                    'MEDICINA GENERAL PRIMERA VEZ' => 'MEDICINA GENERAL',
+                ];
+                
+                $especialidadMapeada = $mapeo[strtoupper($especialidadProceso)] ?? $especialidadProceso;
+                
+                Log::info('🔄 Proceso mapeado a especialidad', [
+                    'proceso_original' => $especialidadProceso,
+                    'especialidad_mapeada' => $especialidadMapeada
+                ]);
+                
+                return $especialidadMapeada;
+            }
         }
 
-        Log::warning('⚠️ No se pudo determinar especialidad offline');
+        Log::warning('⚠️ No se pudo determinar especialidad offline, usando fallback');
         return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
 
     } catch (\Exception $e) {
         Log::error('❌ Error obteniendo especialidad offline', [
             'error' => $e->getMessage(),
-            'cita_uuid' => $citaUuid
+            'cita_uuid' => $citaUuid,
+            'line' => $e->getLine()
         ]);
         
         return 'MEDICINA GENERAL'; // ✅ FALLBACK SEGURO
     }
 }
+
 
 public function determinarVista(Request $request, string $citaUuid)
 {
