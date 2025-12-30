@@ -2994,37 +2994,49 @@ private function saveOnline(array $historiaData): array
     }
 
 
-    /**
- * ✅ DETERMINAR TIPO DE CONSULTA INTELIGENTEMENTE
- */
-private function determinarTipoConsulta(string $citaUuid, string $pacienteUuid): string
+    private function determinarTipoConsulta(string $citaUuid, string $pacienteUuid): string
 {
     try {
-        Log::info('🧠 Determinando tipo de consulta inteligente', [
+        Log::info('🧠 Determinando tipo de consulta inteligente (CORREGIDO)', [
             'cita_uuid' => $citaUuid,
             'paciente_uuid' => $pacienteUuid
         ]);
 
-        // ✅ VERIFICAR SI EL PACIENTE YA TIENE HISTORIAS CLÍNICAS
-        $tieneHistoriasAnteriores = $this->verificarHistoriasAnteriores($pacienteUuid);
+        // ✅ 1. OBTENER ESPECIALIDAD DE LA CITA
+        $especialidad = $this->obtenerEspecialidadOffline($citaUuid);
         
-        if ($tieneHistoriasAnteriores) {
-            Log::info('✅ Paciente con historias anteriores - CONTROL', [
-                'paciente_uuid' => $pacienteUuid
-            ]);
-            return 'CONTROL';
+        if (!$especialidad) {
+            Log::warning('⚠️ No se pudo determinar especialidad, usando fallback');
+            $especialidad = 'MEDICINA GENERAL';
         }
 
-        Log::info('✅ Paciente sin historias anteriores - PRIMERA VEZ', [
-            'paciente_uuid' => $pacienteUuid
+        Log::info('✅ Especialidad determinada para tipo de consulta', [
+            'especialidad' => $especialidad,
+            'cita_uuid' => $citaUuid
+        ]);
+
+        // ✅ 2. VERIFICAR HISTORIAS DE LA MISMA ESPECIALIDAD
+        $tieneHistoriasDeEspecialidad = $this->verificarHistoriasAnterioresPorEspecialidad(
+            $pacienteUuid, 
+            $especialidad
+        );
+        
+        $tipoConsulta = $tieneHistoriasDeEspecialidad ? 'CONTROL' : 'PRIMERA VEZ';
+
+        Log::info('✅ Tipo de consulta determinado (con filtro de especialidad)', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'tiene_historias_especialidad' => $tieneHistoriasDeEspecialidad,
+            'tipo_consulta' => $tipoConsulta
         ]);
         
-        return 'PRIMERA VEZ';
+        return $tipoConsulta;
 
     } catch (\Exception $e) {
         Log::error('❌ Error determinando tipo consulta, usando PRIMERA VEZ por defecto', [
             'error' => $e->getMessage(),
-            'paciente_uuid' => $pacienteUuid
+            'paciente_uuid' => $pacienteUuid,
+            'line' => $e->getLine()
         ]);
         
         return 'PRIMERA VEZ'; // ✅ FALLBACK SEGURO
@@ -3619,33 +3631,41 @@ private function determinarTipoConsultaPorEspecialidad(string $pacienteUuid, str
         return 'PRIMERA VEZ'; // Fallback seguro
     }
 }
-
-/**
- * ✅ VERIFICAR HISTORIAS ANTERIORES POR ESPECIALIDAD
- */
 private function verificarHistoriasAnterioresPorEspecialidad(string $pacienteUuid, string $especialidad): bool
 {
     try {
-        $count = \App\Models\HistoriaClinica::whereHas('cita', function($query) use ($pacienteUuid) {
-            $query->whereHas('paciente', function($q) use ($pacienteUuid) {
-                $q->where('uuid', $pacienteUuid);
-            });
-        })
-        ->whereHas('cita.agenda.usuarioMedico.especialidad', function($query) use ($especialidad) {
-            $query->where('nombre', $especialidad);
-        })
-        ->count();
+        Log::info('🔍 Verificando historias por especialidad (modo offline)', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad
+        ]);
 
-        return $count > 0;
+        // ✅ USAR EL MÉTODO DEL OFFLINE SERVICE QUE YA TIENES
+        $esPrimeraVez = $this->offlineService->esPrimeraConsultaOffline(
+            $pacienteUuid,
+            $especialidad,
+            null // No excluir ninguna cita al verificar
+        );
+
+        $tieneHistorias = !$esPrimeraVez;
+
+        Log::info('✅ Resultado verificación por especialidad', [
+            'paciente_uuid' => $pacienteUuid,
+            'especialidad' => $especialidad,
+            'tiene_historias' => $tieneHistorias,
+            'es_primera_vez' => $esPrimeraVez
+        ]);
+
+        return $tieneHistorias;
 
     } catch (\Exception $e) {
         Log::error('❌ Error verificando historias por especialidad', [
             'error' => $e->getMessage(),
             'paciente_uuid' => $pacienteUuid,
-            'especialidad' => $especialidad
+            'especialidad' => $especialidad,
+            'line' => $e->getLine()
         ]);
         
-        return false;
+        return false; // ✅ Fallback: asumir primera vez
     }
 }
 
