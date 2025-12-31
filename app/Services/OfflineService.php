@@ -11516,45 +11516,46 @@ public function completarDatosFaltantesOffline(string $pacienteUuid, array $hist
                         (is_array($historiaBase['cups']) && count($historiaBase['cups']) === 0);
 
         // ✅ IDENTIFICAR SOLO CAMPOS ESCALARES VACÍOS
-        $camposPorCompletar = [
-            // CLASIFICACIONES
-            'clasificacion_estado_metabolico' => empty($historiaBase['clasificacion_estado_metabolico']),
-            'clasificacion_hta' => empty($historiaBase['clasificacion_hta']),
-            'clasificacion_dm' => empty($historiaBase['clasificacion_dm']),
-            'clasificacion_rcv' => empty($historiaBase['clasificacion_rcv']),
-            'clasificacion_erc_estado' => empty($historiaBase['clasificacion_erc_estado']),
-            'clasificacion_erc_estadodos' => empty($historiaBase['clasificacion_erc_estadodos']),
-            'clasificacion_erc_categoria_ambulatoria_persistente' => empty($historiaBase['clasificacion_erc_categoria_ambulatoria_persistente']),
-            
-            // TASAS DE FILTRACIÓN
-            'tasa_filtracion_glomerular_ckd_epi' => empty($historiaBase['tasa_filtracion_glomerular_ckd_epi']),
-            'tasa_filtracion_glomerular_gockcroft_gault' => empty($historiaBase['tasa_filtracion_glomerular_gockcroft_gault']),
-            
-            // ANTECEDENTES PERSONALES
-            'hipertension_arterial_personal' => ($historiaBase['hipertension_arterial_personal'] ?? 'NO') === 'NO',
-            'diabetes_mellitus_personal' => ($historiaBase['diabetes_mellitus_personal'] ?? 'NO') === 'NO',
-            
-            // TALLA
-            'talla' => empty($historiaBase['talla']),
-            
-            // TEST DE MORISKY
-            'olvida_tomar_medicamentos' => empty($historiaBase['olvida_tomar_medicamentos']),
-            'toma_medicamentos_hora_indicada' => empty($historiaBase['toma_medicamentos_hora_indicada']),
-            'cuando_esta_bien_deja_tomar_medicamentos' => empty($historiaBase['cuando_esta_bien_deja_tomar_medicamentos']),
-            'siente_mal_deja_tomarlos' => empty($historiaBase['siente_mal_deja_tomarlos']),
-            'valoracion_psicologia' => empty($historiaBase['valoracion_psicologia']),
-            'adherente' => empty($historiaBase['adherente']),
-            
-            // EDUCACIÓN EN SALUD
-            'alimentacion' => empty($historiaBase['alimentacion']),
-            'disminucion_consumo_sal_azucar' => empty($historiaBase['disminucion_consumo_sal_azucar']),
-            'fomento_actividad_fisica' => empty($historiaBase['fomento_actividad_fisica']),
-            'importancia_adherencia_tratamiento' => empty($historiaBase['importancia_adherencia_tratamiento']),
-            'consumo_frutas_verduras' => empty($historiaBase['consumo_frutas_verduras']),
-            'manejo_estres' => empty($historiaBase['manejo_estres']),
-            'disminucion_consumo_cigarrillo' => empty($historiaBase['disminucion_consumo_cigarrillo']),
-            'disminucion_peso' => empty($historiaBase['disminucion_peso']),
-        ];
+      $camposPorCompletar = [
+    // CLASIFICACIONES
+    'clasificacion_estado_metabolico' => empty($historiaBase['clasificacion_estado_metabolico']),
+    'clasificacion_hta' => empty($historiaBase['clasificacion_hta']),
+    'clasificacion_dm' => empty($historiaBase['clasificacion_dm']),
+    'clasificacion_rcv' => empty($historiaBase['clasificacion_rcv']),
+    'clasificacion_erc_estado' => empty($historiaBase['clasificacion_erc_estado']),
+    'clasificacion_erc_estadodos' => empty($historiaBase['clasificacion_erc_estadodos']),
+    'clasificacion_erc_categoria_ambulatoria_persistente' => empty($historiaBase['clasificacion_erc_categoria_ambulatoria_persistente']),
+    
+    // TASAS DE FILTRACIÓN
+    'tasa_filtracion_glomerular_ckd_epi' => empty($historiaBase['tasa_filtracion_glomerular_ckd_epi']),
+    'tasa_filtracion_glomerular_gockcroft_gault' => empty($historiaBase['tasa_filtracion_glomerular_gockcroft_gault']),
+    
+    // TALLA
+    'talla' => empty($historiaBase['talla']),
+    
+    // 🔥🔥🔥 CAMPOS SI/NO - CONDICIÓN CORREGIDA 🔥🔥🔥
+    // Solo completar si está vacío O es 'NO'
+    'hipertension_arterial_personal' => empty($historiaBase['hipertension_arterial_personal']) || ($historiaBase['hipertension_arterial_personal'] ?? 'NO') === 'NO',
+    'diabetes_mellitus_personal' => empty($historiaBase['diabetes_mellitus_personal']) || ($historiaBase['diabetes_mellitus_personal'] ?? 'NO') === 'NO',
+    
+    // TEST DE MORISKY
+    'olvida_tomar_medicamentos' => empty($historiaBase['olvida_tomar_medicamentos']) || ($historiaBase['olvida_tomar_medicamentos'] ?? 'NO') === 'NO',
+    'toma_medicamentos_hora_indicada' => empty($historiaBase['toma_medicamentos_hora_indicada']) || ($historiaBase['toma_medicamentos_hora_indicada'] ?? 'NO') === 'NO',
+    'cuando_esta_bien_deja_tomar_medicamentos' => empty($historiaBase['cuando_esta_bien_deja_tomar_medicamentos']) || ($historiaBase['cuando_esta_bien_deja_tomar_medicamentos'] ?? 'NO') === 'NO',
+    'siente_mal_deja_tomarlos' => empty($historiaBase['siente_mal_deja_tomarlos']) || ($historiaBase['siente_mal_deja_tomarlos'] ?? 'NO') === 'NO',
+    'valoracion_psicologia' => empty($historiaBase['valoracion_psicologia']) || ($historiaBase['valoracion_psicologia'] ?? 'NO') === 'NO',
+    'adherente' => empty($historiaBase['adherente']) || ($historiaBase['adherente'] ?? 'NO') === 'NO',
+    
+    // EDUCACIÓN EN SALUD
+    'alimentacion' => empty($historiaBase['alimentacion']) || ($historiaBase['alimentacion'] ?? 'NO') === 'NO',
+    'disminucion_consumo_sal_azucar' => empty($historiaBase['disminucion_consumo_sal_azucar']) || ($historiaBase['disminucion_consumo_sal_azucar'] ?? 'NO') === 'NO',
+    'fomento_actividad_fisica' => empty($historiaBase['fomento_actividad_fisica']) || ($historiaBase['fomento_actividad_fisica'] ?? 'NO') === 'NO',
+    'importancia_adherencia_tratamiento' => empty($historiaBase['importancia_adherencia_tratamiento']) || ($historiaBase['importancia_adherencia_tratamiento'] ?? 'NO') === 'NO',
+    'consumo_frutas_verduras' => empty($historiaBase['consumo_frutas_verduras']) || ($historiaBase['consumo_frutas_verduras'] ?? 'NO') === 'NO',
+    'manejo_estres' => empty($historiaBase['manejo_estres']) || ($historiaBase['manejo_estres'] ?? 'NO') === 'NO',
+    'disminucion_consumo_cigarrillo' => empty($historiaBase['disminucion_consumo_cigarrillo']) || ($historiaBase['disminucion_consumo_cigarrillo'] ?? 'NO') === 'NO',
+    'disminucion_peso' => empty($historiaBase['disminucion_peso']) || ($historiaBase['disminucion_peso'] ?? 'NO') === 'NO',
+];
 
         Log::info('📋 [OFFLINESERVICE] Estado inicial de campos', [
             'campos_escalares_vacios' => count(array_filter($camposPorCompletar)),
