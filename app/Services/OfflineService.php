@@ -5861,6 +5861,117 @@ public function getCupsStatsOffline(): array
     }
 }
 
+/**
+ * ✅ OBTENER MEDICAMENTO POR ID
+ */
+public function obtenerMedicamentoPorId($medicamentoId)
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $medicamento = DB::connection('offline')
+                ->table('medicamentos')
+                ->where('uuid', $medicamentoId)
+                ->first();
+            
+            if ($medicamento) {
+                return (array) $medicamento;
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo medicamento', [
+            'id' => $medicamentoId,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER DIAGNÓSTICO POR ID
+ */
+public function obtenerDiagnosticoPorId($diagnosticoId)
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $diagnostico = DB::connection('offline')
+                ->table('diagnosticos')
+                ->where('uuid', $diagnosticoId)
+                ->first();
+            
+            if ($diagnostico) {
+                return (array) $diagnostico;
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo diagnóstico', [
+            'id' => $diagnosticoId,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER REMISIÓN POR ID
+ */
+public function obtenerRemisionPorId($remisionId)
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $remision = DB::connection('offline')
+                ->table('remisiones')
+                ->where('uuid', $remisionId)
+                ->first();
+            
+            if ($remision) {
+                return (array) $remision;
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo remisión', [
+            'id' => $remisionId,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
+
+/**
+ * ✅ OBTENER CUPS POR ID
+ */
+public function obtenerCupsPorId($cupsId)
+{
+    try {
+        if ($this->isSQLiteAvailable()) {
+            $cups = DB::connection('offline')
+                ->table('cups')
+                ->where('uuid', $cupsId)
+                ->first();
+            
+            if ($cups) {
+                return (array) $cups;
+            }
+        }
+        
+        return null;
+        
+    } catch (\Exception $e) {
+        Log::error('❌ Error obteniendo CUPS', [
+            'id' => $cupsId,
+            'error' => $e->getMessage()
+        ]);
+        return null;
+    }
+}
 
 private function getBrigadaIdFromUuid(string $uuid): ?int
 {
@@ -8693,40 +8804,139 @@ public function storeHistoriaClinicaOffline(array $historiaData, bool $needsSync
         }
 
         // ═══════════════════════════════════════════
-        // 🔹 PASO 2: GUARDAR JSON COMPLETO (CON ARRAYS)
-        // ═══════════════════════════════════════════
-        try {
-            // ✅ CONSTRUIR OBJETO COMPLETO PRESERVANDO LOS ARRAYS EXTRAÍDOS
-           $historiaCompleta = array_merge($historiaData, [
-            'diagnosticos' => $diagnosticos,      // ✅ Nombre correcto
-            'medicamentos' => $medicamentos,      // ✅ Nombre correcto
-            'remisiones' => $remisiones,          // ✅ Nombre correcto
-            'cups' => $cups,                      // ✅ Nombre correcto
-            'sync_status' => $needsSync ? 'pending' : 'synced',
-            'updated_at' => now()->toISOString(),
-        ]);
+// 🔹 PASO 2: GUARDAR JSON COMPLETO (CON ARRAYS)
+// ═══════════════════════════════════════════
+try {
+    // 🛡️ VALIDAR ARRAYS ANTES DE GUARDAR
+    $diagnosticos = is_array($diagnosticos) ? $diagnosticos : [];
+    $medicamentos = is_array($medicamentos) ? $medicamentos : [];
+    $remisiones = is_array($remisiones) ? $remisiones : [];
+    $cups = is_array($cups) ? $cups : [];
+    
+    // ✅ CONSTRUIR OBJETO JSON COMPLETO (NO USAR array_merge)
+    $historiaCompleta = [
+        // 🔹 CAMPOS BÁSICOS
+        'uuid' => $uuid,
+        'cita_uuid' => $historiaData['cita_uuid'] ?? null,
+        'paciente_uuid' => $historiaData['paciente_uuid'] ?? null,
+        'sede_id' => $historiaData['sede_id'] ?? null,
+        'usuario_id' => $historiaData['usuario_id'] ?? null,
+        'especialidad' => $historiaData['especialidad'] ?? null,
+        'tipo_consulta' => $historiaData['tipo_consulta'] ?? null,
+        
+        // 🔹 ARRAYS DE RELACIONES (PRESERVADOS)
+        'diagnosticos' => $diagnosticos,
+        'medicamentos' => $medicamentos,
+        'remisiones' => $remisiones,
+        'cups' => $cups,
+        
+        // 🔹 CAMPOS COMPLEMENTARIOS (CON VALIDACIÓN)
+        'complementaria' => $complementaria,
+        'cita' => $cita,
+        'sede' => $sede,
+        
+        // 🔹 MOTIVO Y ENFERMEDAD
+        'motivo_consulta' => $historiaData['motivo_consulta'] ?? null,
+        'enfermedad_actual' => $historiaData['enfermedad_actual'] ?? null,
+        'diagnostico_principal' => $historiaData['diagnostico_principal'] ?? null,
+        
+        // 🔹 CLASIFICACIONES
+        'clasificacion_estado_metabolico' => $historiaData['clasificacion_estado_metabolico'] ?? null,
+        'clasificacion_hta' => $historiaData['clasificacion_hta'] ?? null,
+        'clasificacion_dm' => $historiaData['clasificacion_dm'] ?? null,
+        'clasificacion_rcv' => $historiaData['clasificacion_rcv'] ?? null,
+        'clasificacion_erc_estado' => $historiaData['clasificacion_erc_estado'] ?? null,
+        'clasificacion_erc_estadodos' => $historiaData['clasificacion_erc_estadodos'] ?? null,
+        'clasificacion_erc_categoria_ambulatoria_persistente' => $historiaData['clasificacion_erc_categoria_ambulatoria_persistente'] ?? null,
+        
+        // 🔹 TASAS DE FILTRACIÓN
+        'tasa_filtracion_glomerular_ckd_epi' => $historiaData['tasa_filtracion_glomerular_ckd_epi'] ?? null,
+        'tasa_filtracion_glomerular_gockcroft_gault' => $historiaData['tasa_filtracion_glomerular_gockcroft_gault'] ?? null,
+        
+        // 🔹 ANTROPOMETRÍA
+        'peso' => $historiaData['peso'] ?? null,
+        'talla' => $historiaData['talla'] ?? null,
+        'imc' => $historiaData['imc'] ?? null,
+        
+        // 🔹 ANTECEDENTES PERSONALES
+        'hipertension_arterial_personal' => $historiaData['hipertension_arterial_personal'] ?? 'NO',
+        'obs_personal_hipertension_arterial' => $historiaData['obs_personal_hipertension_arterial'] ?? null,
+        'diabetes_mellitus_personal' => $historiaData['diabetes_mellitus_personal'] ?? 'NO',
+        'obs_personal_mellitus' => $historiaData['obs_personal_mellitus'] ?? null,
+        
+        // 🔹 TEST DE MORISKY
+        'olvida_tomar_medicamentos' => $historiaData['olvida_tomar_medicamentos'] ?? null,
+        'toma_medicamentos_hora_indicada' => $historiaData['toma_medicamentos_hora_indicada'] ?? null,
+        'cuando_esta_bien_deja_tomar_medicamentos' => $historiaData['cuando_esta_bien_deja_tomar_medicamentos'] ?? null,
+        'siente_mal_deja_tomarlos' => $historiaData['siente_mal_deja_tomarlos'] ?? null,
+        'valoracion_psicologia' => $historiaData['valoracion_psicologia'] ?? null,
+        'adherente' => $historiaData['adherente'] ?? null,
+        
+        // 🔹 EDUCACIÓN EN SALUD
+        'alimentacion' => $historiaData['alimentacion'] ?? null,
+        'disminucion_consumo_sal_azucar' => $historiaData['disminucion_consumo_sal_azucar'] ?? null,
+        'fomento_actividad_fisica' => $historiaData['fomento_actividad_fisica'] ?? null,
+        'importancia_adherencia_tratamiento' => $historiaData['importancia_adherencia_tratamiento'] ?? null,
+        'consumo_frutas_verduras' => $historiaData['consumo_frutas_verduras'] ?? null,
+        'manejo_estres' => $historiaData['manejo_estres'] ?? null,
+        'disminucion_consumo_cigarrillo' => $historiaData['disminucion_consumo_cigarrillo'] ?? null,
+        'disminucion_peso' => $historiaData['disminucion_peso'] ?? null,
+        
+        // 🔹 CAMPOS DE PSICOLOGÍA
+        'estructura_familiar' => $historiaData['estructura_familiar'] ?? null,
+        'psicologia_red_apoyo' => $historiaData['psicologia_red_apoyo'] ?? null,
+        'psicologia_comportamiento_consulta' => $historiaData['psicologia_comportamiento_consulta'] ?? null,
+        'psicologia_tratamiento_actual_adherencia' => $historiaData['psicologia_tratamiento_actual_adherencia'] ?? null,
+        'psicologia_descripcion_problema' => $historiaData['psicologia_descripcion_problema'] ?? null,
+        'analisis_conclusiones' => $historiaData['analisis_conclusiones'] ?? null,
+        'psicologia_plan_intervencion_recomendacion' => $historiaData['psicologia_plan_intervencion_recomendacion'] ?? null,
+        'avance_paciente' => $historiaData['avance_paciente'] ?? null,
+        
+        // 🔹 CAMPOS DE FISIOTERAPIA
+        'evaluacion_dolor' => $historiaData['evaluacion_dolor'] ?? null,
+        'evaluacion_os' => $historiaData['evaluacion_os'] ?? null,
+        'evaluacion_neu' => $historiaData['evaluacion_neu'] ?? null,
+        'plan_seguir' => $historiaData['plan_seguir'] ?? null,
+        
+        // 🔹 OBSERVACIONES
+        'observaciones_generales' => $historiaData['observaciones_generales'] ?? null,
+        'adicional' => $historiaData['adicional'] ?? null,
+        
+        // 🔹 CONTROL
+        'sync_status' => $needsSync ? 'pending' : 'synced',
+        'created_at' => $historiaData['created_at'] ?? now()->toISOString(),
+        'updated_at' => now()->toISOString(),
+    ];
+    
+    // 🔍 LOG PARA VERIFICAR ANTES DE GUARDAR
+    Log::info('📦 Historia completa preparada para JSON', [
+        'uuid' => $uuid,
+        'diagnosticos_count' => count($historiaCompleta['diagnosticos']),
+        'medicamentos_count' => count($historiaCompleta['medicamentos']),
+        'remisiones_count' => count($historiaCompleta['remisiones']),
+        'cups_count' => count($historiaCompleta['cups']),
+        'tiene_complementaria' => !is_null($historiaCompleta['complementaria']),
+        'tiene_cita' => !is_null($historiaCompleta['cita']),
+        'tiene_clasificaciones' => !is_null($historiaCompleta['clasificacion_estado_metabolico']),
+    ]);
 
-            // ✅ GUARDAR EN JSON CON ESTRUCTURA COMPLETA
-            $this->storeData('historias_clinicas/' . $historiaData['uuid'] . '.json', $historiaCompleta);
-            
-            Log::info('✅ Historia guardada en JSON con TODAS las relaciones PRESERVADAS', [
-                'uuid' => $historiaData['uuid'],
-                'diagnosticos_count' => count($historiaCompleta['diagnosticos']),
-                'medicamentos_count' => count($historiaCompleta['medicamentos']),
-                'remisiones_count' => count($historiaCompleta['remisiones']),
-                'cups_count' => count($historiaCompleta['cups']),
-                'tiene_complementaria' => !is_null($historiaCompleta['complementaria']),
-                'tiene_cita' => !is_null($historiaCompleta['cita']),
-                'tiene_sede' => !is_null($historiaCompleta['sede'])
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('❌ Error guardando JSON', [
-                'uuid' => $historiaData['uuid'],
-                'error' => $e->getMessage(),
-                'line' => $e->getLine()
-            ]);
-        }
+    // ✅ GUARDAR EN JSON CON ESTRUCTURA COMPLETA
+    $this->storeData('historias_clinicas/' . $uuid . '.json', $historiaCompleta);
+    
+    Log::info('✅ Historia JSON guardada correctamente', [
+        'uuid' => $uuid,
+        'path' => 'historias_clinicas/' . $uuid . '.json'
+    ]);
+    
+} catch (\Exception $e) {
+    Log::error('❌ Error guardando JSON', [
+        'uuid' => $uuid,
+        'error' => $e->getMessage(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]);
+    // ✅ NO LANZAR EXCEPCIÓN - CONTINUAR
+}
 
         Log::info('✅ Historia clínica almacenada offline COMPLETAMENTE', [
             'uuid' => $historiaData['uuid'],
@@ -10858,15 +11068,25 @@ private function obtenerUltimaHistoriaDesdeJSON(string $pacienteUuid): ?array
     }
 }
 
-
 /**
- * ✅ PROCESAR HISTORIA OFFLINE PARA FRONTEND (DESDE SQLITE)
+ * ✅ PROCESAR HISTORIA OFFLINE PARA FRONTEND (DESDE SQLITE) - VERSIÓN CORREGIDA
  */
 private function procesarHistoriaOfflineParaFrontend(array $historia): array
 {
     try {
+        // 🔥🔥🔥 VERIFICAR UUID ANTES DE PROCESAR 🔥🔥🔥
+        $uuid = $historia['uuid'] ?? null;
+        
+        if (empty($uuid)) {
+            Log::error('❌ Historia SQLITE sin UUID', [
+                'historia_id' => $historia['id'] ?? 'N/A',
+                'historia_keys' => array_keys($historia)
+            ]);
+            return null; // ✅ NO PROCESAR HISTORIAS SIN UUID
+        }
+        
         Log::info('🔧 Procesando historia SQLITE para frontend', [
-            'historia_uuid' => $historia['uuid'] ?? null,
+            'historia_uuid' => $uuid,
             'historia_id' => $historia['id'] ?? null
         ]);
 
@@ -10913,14 +11133,21 @@ private function procesarHistoriaOfflineParaFrontend(array $historia): array
                [];
 
         Log::info('✅ Historia SQLITE procesada', [
-            'historia_uuid' => $historia['uuid'] ?? null,
+            'historia_uuid' => $uuid,
             'medicamentos_count' => count($medicamentos),
             'diagnosticos_count' => count($diagnosticos),
             'remisiones_count' => count($remisiones),
             'cups_count' => count($cups)
         ]);
 
+        // 🔥🔥🔥 RETORNAR CON 'uuid' COMO PRIMER CAMPO 🔥🔥🔥
         return [
+            // ✅ UUID PRIMERO (CRÍTICO)
+            'uuid' => $uuid,
+            'id' => $historia['id'] ?? null,
+            'created_at' => $historia['created_at'] ?? null,
+            'especialidad' => $historia['especialidad'] ?? null,
+            
             // ✅ ARRAYS DE RELACIONES
             'medicamentos' => $medicamentos,
             'diagnosticos' => $diagnosticos,
@@ -10942,9 +11169,9 @@ private function procesarHistoriaOfflineParaFrontend(array $historia): array
 
             // ✅ ANTECEDENTES PERSONALES
             'hipertension_arterial_personal' => $limpiarValor($historia['hipertension_arterial_personal'] ?? 'NO'),
-            'obs_hipertension_arterial_personal' => $limpiarValor($historia['obs_personal_hipertension_arterial'] ?? null),
+            'obs_personal_hipertension_arterial' => $limpiarValor($historia['obs_personal_hipertension_arterial'] ?? null),
             'diabetes_mellitus_personal' => $limpiarValor($historia['diabetes_mellitus_personal'] ?? 'NO'),
-            'obs_diabetes_mellitus_personal' => $limpiarValor($historia['obs_personal_mellitus'] ?? null),
+            'obs_personal_mellitus' => $limpiarValor($historia['obs_personal_mellitus'] ?? null),
 
             // ✅ TALLA
             'talla' => $limpiarValor($historia['talla'] ?? null),
@@ -10966,35 +11193,38 @@ private function procesarHistoriaOfflineParaFrontend(array $historia): array
             'manejo_estres' => $limpiarValor($historia['manejo_estres'] ?? null),
             'disminucion_consumo_cigarrillo' => $limpiarValor($historia['disminucion_consumo_cigarrillo'] ?? null),
             'disminucion_peso' => $limpiarValor($historia['disminucion_peso'] ?? null),
-
-            // ✅ METADATOS
-            'historia_uuid' => $historia['uuid'] ?? null,
-            'historia_id' => $historia['id'] ?? null,
-            'created_at' => $historia['created_at'] ?? null,
         ];
 
     } catch (\Exception $e) {
         Log::error('❌ Error procesando historia SQLITE', [
             'error' => $e->getMessage(),
-            'line' => $e->getLine()
+            'line' => $e->getLine(),
+            'historia_uuid' => $historia['uuid'] ?? 'N/A'
         ]);
         
-        return [
-            'medicamentos' => [],
-            'diagnosticos' => [],
-            'remisiones' => [],
-            'cups' => [],
-        ];
+        return null; // ✅ RETORNAR NULL EN CASO DE ERROR
     }
 }
+
 /**
- * 🔥 PROCESAR HISTORIA JSON PARA FRONTEND (DESDE ARCHIVOS JSON)
+ * 🔥 PROCESAR HISTORIA JSON PARA FRONTEND (DESDE ARCHIVOS JSON) - VERSIÓN CORREGIDA
  */
 private function procesarHistoriaJSONParaFrontend(array $historia): array
 {
     try {
+        // 🔥🔥🔥 VERIFICAR UUID ANTES DE PROCESAR 🔥🔥🔥
+        $uuid = $historia['uuid'] ?? null;
+        
+        if (empty($uuid)) {
+            Log::error('❌ Historia JSON sin UUID', [
+                'historia_keys' => array_keys($historia),
+                'tiene_id' => isset($historia['id'])
+            ]);
+            return null; // ✅ NO PROCESAR HISTORIAS SIN UUID
+        }
+        
         Log::info('🔧 Procesando historia JSON para frontend', [
-            'historia_uuid' => $historia['uuid'] ?? null,
+            'historia_uuid' => $uuid,
             'historia_id' => $historia['id'] ?? null
         ]);
 
@@ -11027,7 +11257,7 @@ private function procesarHistoriaJSONParaFrontend(array $historia): array
                [];
 
         Log::info('✅ Historia JSON procesada', [
-            'historia_uuid' => $historia['uuid'] ?? null,
+            'historia_uuid' => $uuid,
             'medicamentos_count' => count($medicamentos),
             'diagnosticos_count' => count($diagnosticos),
             'remisiones_count' => count($remisiones),
@@ -11035,7 +11265,14 @@ private function procesarHistoriaJSONParaFrontend(array $historia): array
             'tiene_clasificaciones' => !empty($limpiarValor($historia['clasificacion_estado_metabolico'] ?? null))
         ]);
 
+        // 🔥🔥🔥 RETORNAR CON 'uuid' COMO PRIMER CAMPO 🔥🔥🔥
         return [
+            // ✅ UUID PRIMERO (CRÍTICO)
+            'uuid' => $uuid,
+            'id' => $historia['id'] ?? null,
+            'created_at' => $historia['created_at'] ?? null,
+            'especialidad' => $historia['especialidad'] ?? null,
+            
             // ✅ ARRAYS DE RELACIONES
             'medicamentos' => $medicamentos,
             'diagnosticos' => $diagnosticos,
@@ -11057,9 +11294,9 @@ private function procesarHistoriaJSONParaFrontend(array $historia): array
 
             // ✅ ANTECEDENTES PERSONALES
             'hipertension_arterial_personal' => $limpiarValor($historia['hipertension_arterial_personal'] ?? 'NO'),
-            'obs_hipertension_arterial_personal' => $limpiarValor($historia['obs_personal_hipertension_arterial'] ?? null),
+            'obs_personal_hipertension_arterial' => $limpiarValor($historia['obs_personal_hipertension_arterial'] ?? null),
             'diabetes_mellitus_personal' => $limpiarValor($historia['diabetes_mellitus_personal'] ?? 'NO'),
-            'obs_diabetes_mellitus_personal' => $limpiarValor($historia['obs_personal_mellitus'] ?? null),
+            'obs_personal_mellitus' => $limpiarValor($historia['obs_personal_mellitus'] ?? null),
 
             // ✅ TALLA
             'talla' => $limpiarValor($historia['talla'] ?? null),
@@ -11081,27 +11318,19 @@ private function procesarHistoriaJSONParaFrontend(array $historia): array
             'manejo_estres' => $limpiarValor($historia['manejo_estres'] ?? null),
             'disminucion_consumo_cigarrillo' => $limpiarValor($historia['disminucion_consumo_cigarrillo'] ?? null),
             'disminucion_peso' => $limpiarValor($historia['disminucion_peso'] ?? null),
-
-            // ✅ METADATOS
-            'historia_uuid' => $historia['uuid'] ?? null,
-            'historia_id' => $historia['id'] ?? null,
-            'created_at' => $historia['created_at'] ?? null,
         ];
 
     } catch (\Exception $e) {
         Log::error('❌ Error procesando historia JSON', [
             'error' => $e->getMessage(),
-            'line' => $e->getLine()
+            'line' => $e->getLine(),
+            'historia_uuid' => $historia['uuid'] ?? 'N/A'
         ]);
         
-        return [
-            'medicamentos' => [],
-            'diagnosticos' => [],
-            'remisiones' => [],
-            'cups' => [],
-        ];
+        return null; // ✅ RETORNAR NULL EN CASO DE ERROR
     }
 }
+
 
 /**
  * ✅ OBTENER UNA HISTORIA CLÍNICA POR UUID (OFFLINE)
@@ -11258,7 +11487,8 @@ public function obtenerTodasLasHistoriasOffline(string $pacienteUuid, ?string $e
     }
 }
 /**
- * ✅ COMPLETAR DATOS FALTANTES DE HISTORIAS ANTERIORES (OFFLINE)
+ * ✅ COMPLETAR DATOS FALTANTES DE HISTORIAS ANTERIORES (OFFLINE) - VERSIÓN MEJORADA
+ * Busca recursivamente en TODAS las historias anteriores hasta completar TODOS los datos
  * Replica: completarDatosFaltantesDeCualquierEspecialidad del backend
  */
 public function completarDatosFaltantesOffline(string $pacienteUuid, array $historiaBase): array
@@ -11272,11 +11502,18 @@ public function completarDatosFaltantesOffline(string $pacienteUuid, array $hist
     ]);
 
     try {
-        // ✅ VERIFICAR SI LOS ARRAYS YA TIENEN DATOS (NO SOBRESCRIBIR)
-        $necesitaMedicamentos = empty($historiaBase['medicamentos']);
-        $necesitaDiagnosticos = empty($historiaBase['diagnosticos']);
-        $necesitaRemisiones = empty($historiaBase['remisiones']);
-        $necesitaCups = empty($historiaBase['cups']);
+        // ✅ VERIFICAR SI LOS ARRAYS YA TIENEN DATOS (VERIFICACIÓN ROBUSTA)
+        $necesitaMedicamentos = empty($historiaBase['medicamentos']) || 
+                                (is_array($historiaBase['medicamentos']) && count($historiaBase['medicamentos']) === 0);
+
+        $necesitaDiagnosticos = empty($historiaBase['diagnosticos']) || 
+                                (is_array($historiaBase['diagnosticos']) && count($historiaBase['diagnosticos']) === 0);
+
+        $necesitaRemisiones = empty($historiaBase['remisiones']) || 
+                              (is_array($historiaBase['remisiones']) && count($historiaBase['remisiones']) === 0);
+
+        $necesitaCups = empty($historiaBase['cups']) || 
+                        (is_array($historiaBase['cups']) && count($historiaBase['cups']) === 0);
 
         // ✅ IDENTIFICAR SOLO CAMPOS ESCALARES VACÍOS
         $camposPorCompletar = [
@@ -11337,256 +11574,323 @@ public function completarDatosFaltantesOffline(string $pacienteUuid, array $hist
             return $historiaBase;
         }
 
-        // 🔥 BUSCAR EN HISTORIAS ANTERIORES (ÚLTIMAS 20)
+        // 🔥🔥🔥 BUSCAR EN TODAS LAS HISTORIAS ANTERIORES (SIN LÍMITE) 🔥🔥🔥
         $todasLasHistorias = $this->obtenerTodasLasHistoriasOffline($pacienteUuid, null);
         
-        // ✅ ORDENAR POR FECHA DESC
+        // ✅ ORDENAR POR FECHA DESC (MÁS RECIENTE PRIMERO)
         usort($todasLasHistorias, function($a, $b) {
             $fechaA = $a['created_at'] ?? '1970-01-01 00:00:00';
             $fechaB = $b['created_at'] ?? '1970-01-01 00:00:00';
             return strtotime($fechaB) - strtotime($fechaA);
         });
 
-        // ✅ SALTAR LA PRIMERA (YA LA TENEMOS) Y TOMAR HASTA 20
-        $historiasAnteriores = array_slice($todasLasHistorias, 1, 20);
+        // ✅ SALTAR LA PRIMERA (ES LA HISTORIA ACTUAL)
+        $historiasAnteriores = array_slice($todasLasHistorias, 1);
 
-        Log::info('🔍 [OFFLINESERVICE] Historias anteriores encontradas', [
-            'count' => count($historiasAnteriores)
+        Log::info('🔍 [OFFLINESERVICE] Historias anteriores disponibles', [
+            'total_historias' => count($todasLasHistorias),
+            'historias_a_revisar' => count($historiasAnteriores)
         ]);
 
-        // ✅ RECORRER HISTORIAS Y COMPLETAR SOLO DATOS FALTANTES
-        foreach ($historiasAnteriores as $historia) {
+        if (empty($historiasAnteriores)) {
+            Log::warning('⚠️ [OFFLINESERVICE] No hay historias anteriores para completar datos');
+            return $historiaBase;
+        }
+
+        // 🔥🔥🔥 ITERAR HASTA COMPLETAR TODOS LOS DATOS O AGOTAR HISTORIAS 🔥🔥🔥
+        $historiaIndex = 0;
+        $maxIteraciones = count($historiasAnteriores);
+        $datosCompletadosPorHistoria = [];
+        
+        while ($historiaIndex < $maxIteraciones) {
+            // ✅ VERIFICAR SI YA COMPLETAMOS TODO ANTES DE CONTINUAR
+            $todosCompletos = !in_array(true, $camposPorCompletar) && 
+                             !$necesitaMedicamentos && 
+                             !$necesitaDiagnosticos && 
+                             !$necesitaRemisiones && 
+                             !$necesitaCups;
+            
+            if ($todosCompletos) {
+                Log::info('✅ [OFFLINESERVICE] Todos los campos completados, deteniendo búsqueda', [
+                    'historias_revisadas' => $historiaIndex,
+                    'historias_disponibles' => $maxIteraciones
+                ]);
+                break;
+            }
+            
+            $historia = $historiasAnteriores[$historiaIndex];
+            $historiaIndex++;
             
             $especialidadHistoria = $historia['especialidad'] ?? 
                                    $historia['cita']['agenda']['proceso']['nombre'] ?? 
                                    'DESCONOCIDA';
             
-            Log::info('🔍 [OFFLINESERVICE] Revisando historia', [
-                'historia_uuid' => $historia['uuid'] ?? null,
+            $historiaUuid = $historia['uuid'] ?? 'N/A';
+            $datosCompletadosEnEstaHistoria = [];
+            
+            Log::info("🔍 [OFFLINESERVICE] Revisando historia #{$historiaIndex}/{$maxIteraciones}", [
+                'historia_uuid' => $historiaUuid,
                 'especialidad' => $especialidadHistoria,
-                'tiene_medicamentos' => !empty($historia['medicamentos']),
-                'tiene_diagnosticos' => !empty($historia['diagnosticos']),
+                'fecha' => $historia['created_at'] ?? 'N/A',
+                'tiene_medicamentos' => !empty($historia['medicamentos']) && count($historia['medicamentos']) > 0,
+                'tiene_diagnosticos' => !empty($historia['diagnosticos']) && count($historia['diagnosticos']) > 0,
             ]);
 
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR MEDICAMENTOS (SOLO SI ESTÁ VACÍO)
-            // ═══════════════════════════════════════════
-            if ($necesitaMedicamentos && !empty($historia['medicamentos'])) {
-                $historiaBase['medicamentos'] = $historia['medicamentos'];
-                $necesitaMedicamentos = false;
-                Log::info('✅ [OFFLINESERVICE] Medicamentos completados', [
-                    'especialidad_origen' => $especialidadHistoria,
-                    'count' => count($historia['medicamentos'])
+           // ═══════════════════════════════════════════
+// 🔹 COMPLETAR MEDICAMENTOS (SOLO SI ESTÁ VACÍO)
+// ═══════════════════════════════════════════
+if ($necesitaMedicamentos && 
+    !empty($historia['medicamentos']) && 
+    is_array($historia['medicamentos']) && 
+    count($historia['medicamentos']) > 0) {
+    
+    // 🔥🔥🔥 ENRIQUECER ANTES DE COPIAR 🔥🔥🔥
+    $medicamentosEnriquecidos = [];
+    foreach ($historia['medicamentos'] as $med) {
+        // ✅ SI YA ESTÁ ENRIQUECIDO, USAR DIRECTAMENTE
+        if (!empty($med['medicamento']['nombre'])) {
+            $medicamentosEnriquecidos[] = $med;
+            continue;
+        }
+        
+        // ✅ SI NO ESTÁ ENRIQUECIDO, BUSCAR DATOS
+        $medicamentoId = $med['medicamento_id'] ?? $med['medicamento']['uuid'] ?? null;
+        if ($medicamentoId) {
+            $medicamentoCompleto = $this->obtenerMedicamentoPorId($medicamentoId);
+            if ($medicamentoCompleto) {
+                $med['medicamento'] = $medicamentoCompleto;
+                Log::debug('✅ Medicamento enriquecido al completar', [
+                    'medicamento_id' => $medicamentoId,
+                    'nombre' => $medicamentoCompleto['nombre']
                 ]);
             }
+        }
+        $medicamentosEnriquecidos[] = $med;
+    }
+    
+    $historiaBase['medicamentos'] = $medicamentosEnriquecidos;
+    $necesitaMedicamentos = false;
+    $datosCompletadosEnEstaHistoria[] = 'medicamentos';
+    
+    Log::info('✅ [OFFLINESERVICE] Medicamentos completados Y ENRIQUECIDOS', [
+        'especialidad_origen' => $especialidadHistoria,
+        'historia_uuid' => $historiaUuid,
+        'count' => count($medicamentosEnriquecidos),
+        'primer_nombre' => $medicamentosEnriquecidos[0]['medicamento']['nombre'] ?? 'NO_NOMBRE',
+        'historia_index' => $historiaIndex
+    ]);
+}
+
+           // ═══════════════════════════════════════════
+// 🔹 COMPLETAR DIAGNÓSTICOS (SOLO SI ESTÁ VACÍO)
+// ═══════════════════════════════════════════
+if ($necesitaDiagnosticos && 
+    !empty($historia['diagnosticos']) && 
+    is_array($historia['diagnosticos']) && 
+    count($historia['diagnosticos']) > 0) {
+    
+    // 🔥🔥🔥 ENRIQUECER ANTES DE COPIAR 🔥🔥🔥
+    $diagnosticosEnriquecidos = [];
+    foreach ($historia['diagnosticos'] as $diag) {
+        // ✅ SI YA ESTÁ ENRIQUECIDO, USAR DIRECTAMENTE
+        if (!empty($diag['diagnostico']['nombre'])) {
+            $diagnosticosEnriquecidos[] = $diag;
+            continue;
+        }
+        
+        // ✅ SI NO ESTÁ ENRIQUECIDO, BUSCAR DATOS
+        $diagnosticoId = $diag['diagnostico_id'] ?? $diag['diagnostico']['uuid'] ?? null;
+        if ($diagnosticoId) {
+            $diagnosticoCompleto = $this->obtenerDiagnosticoPorId($diagnosticoId);
+            if ($diagnosticoCompleto) {
+                $diag['diagnostico'] = $diagnosticoCompleto;
+            }
+        }
+        $diagnosticosEnriquecidos[] = $diag;
+    }
+    
+    $historiaBase['diagnosticos'] = $diagnosticosEnriquecidos;
+    $necesitaDiagnosticos = false;
+    $datosCompletadosEnEstaHistoria[] = 'diagnosticos';
+    
+    Log::info('✅ [OFFLINESERVICE] Diagnósticos completados Y ENRIQUECIDOS', [
+        'especialidad_origen' => $especialidadHistoria,
+        'historia_uuid' => $historiaUuid,
+        'count' => count($diagnosticosEnriquecidos),
+        'historia_index' => $historiaIndex
+    ]);
+}
+
+           // ═══════════════════════════════════════════
+// 🔹 COMPLETAR REMISIONES (SOLO SI ESTÁ VACÍO)
+// ═══════════════════════════════════════════
+if ($necesitaRemisiones && 
+    !empty($historia['remisiones']) && 
+    is_array($historia['remisiones']) && 
+    count($historia['remisiones']) > 0) {
+    
+    // 🔥🔥🔥 ENRIQUECER ANTES DE COPIAR 🔥🔥🔥
+    $remisionesEnriquecidas = [];
+    foreach ($historia['remisiones'] as $rem) {
+        // ✅ SI YA ESTÁ ENRIQUECIDO, USAR DIRECTAMENTE
+        if (!empty($rem['remision']['nombre'])) {
+            $remisionesEnriquecidas[] = $rem;
+            continue;
+        }
+        
+        // ✅ SI NO ESTÁ ENRIQUECIDO, BUSCAR DATOS
+        $remisionId = $rem['remision_id'] ?? $rem['remision']['uuid'] ?? null;
+        if ($remisionId) {
+            $remisionCompleta = $this->obtenerRemisionPorId($remisionId);
+            if ($remisionCompleta) {
+                $rem['remision'] = $remisionCompleta;
+            }
+        }
+        $remisionesEnriquecidas[] = $rem;
+    }
+    
+    $historiaBase['remisiones'] = $remisionesEnriquecidas;
+    $necesitaRemisiones = false;
+    $datosCompletadosEnEstaHistoria[] = 'remisiones';
+    
+    Log::info('✅ [OFFLINESERVICE] Remisiones completadas Y ENRIQUECIDAS', [
+        'especialidad_origen' => $especialidadHistoria,
+        'historia_uuid' => $historiaUuid,
+        'count' => count($remisionesEnriquecidas),
+        'historia_index' => $historiaIndex
+    ]);
+}
+
 
             // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR DIAGNÓSTICOS (SOLO SI ESTÁ VACÍO)
+// 🔹 COMPLETAR CUPS (SOLO SI ESTÁ VACÍO)
+// ═══════════════════════════════════════════
+if ($necesitaCups && 
+    !empty($historia['cups']) && 
+    is_array($historia['cups']) && 
+    count($historia['cups']) > 0) {
+    
+    // 🔥🔥🔥 ENRIQUECER ANTES DE COPIAR 🔥🔥🔥
+    $cupsEnriquecidos = [];
+    foreach ($historia['cups'] as $cup) {
+        // ✅ SI YA ESTÁ ENRIQUECIDO, USAR DIRECTAMENTE
+        if (!empty($cup['cups']['nombre'])) {
+            $cupsEnriquecidos[] = $cup;
+            continue;
+        }
+        
+        // ✅ SI NO ESTÁ ENRIQUECIDO, BUSCAR DATOS
+        $cupsId = $cup['cups_id'] ?? $cup['cups']['uuid'] ?? null;
+        if ($cupsId) {
+            $cupsCompleto = $this->obtenerCupsPorId($cupsId);
+            if ($cupsCompleto) {
+                $cup['cups'] = $cupsCompleto;
+            }
+        }
+        $cupsEnriquecidos[] = $cup;
+    }
+    
+    $historiaBase['cups'] = $cupsEnriquecidos;
+    $necesitaCups = false;
+    $datosCompletadosEnEstaHistoria[] = 'cups';
+    
+    Log::info('✅ [OFFLINESERVICE] CUPS completados Y ENRIQUECIDOS', [
+        'especialidad_origen' => $especialidadHistoria,
+        'historia_uuid' => $historiaUuid,
+        'count' => count($cupsEnriquecidos),
+        'historia_index' => $historiaIndex
+    ]);
+}
+
+
             // ═══════════════════════════════════════════
-            if ($necesitaDiagnosticos && !empty($historia['diagnosticos'])) {
-                $historiaBase['diagnosticos'] = $historia['diagnosticos'];
-                $necesitaDiagnosticos = false;
-                Log::info('✅ [OFFLINESERVICE] Diagnósticos completados', [
-                    'especialidad_origen' => $especialidadHistoria,
-                    'count' => count($historia['diagnosticos'])
+            // 🔹 COMPLETAR CAMPOS ESCALARES (OPTIMIZADO CON LOOP)
+            // ═══════════════════════════════════════════
+            foreach ($camposPorCompletar as $campo => $necesitaCompletar) {
+                if (!$necesitaCompletar) {
+                    continue; // Ya está completo, saltar
+                }
+                
+                // ✅ VERIFICAR SI LA HISTORIA TIENE ESTE CAMPO Y NO ESTÁ VACÍO
+                $valorHistoria = $historia[$campo] ?? null;
+                
+                // ✅ VALIDACIÓN ESPECIAL PARA CAMPOS SI/NO
+                if (in_array($campo, ['hipertension_arterial_personal', 'diabetes_mellitus_personal'])) {
+                    if (!empty($valorHistoria) && $valorHistoria !== 'NO') {
+                        $historiaBase[$campo] = $valorHistoria;
+                        
+                        // ✅ COMPLETAR TAMBIÉN LA OBSERVACIÓN ASOCIADA
+                        if ($campo === 'hipertension_arterial_personal') {
+                            $historiaBase['obs_personal_hipertension_arterial'] = $historia['obs_personal_hipertension_arterial'] ?? null;
+                        } elseif ($campo === 'diabetes_mellitus_personal') {
+                            $historiaBase['obs_personal_mellitus'] = $historia['obs_personal_mellitus'] ?? null;
+                        }
+                        
+                        $camposPorCompletar[$campo] = false;
+                        $datosCompletadosEnEstaHistoria[] = $campo;
+                        
+                        Log::debug("✅ Campo {$campo} completado desde historia #{$historiaIndex}", [
+                            'valor' => $valorHistoria,
+                            'especialidad_origen' => $especialidadHistoria
+                        ]);
+                    }
+                } else {
+                    // ✅ VALIDACIÓN NORMAL PARA OTROS CAMPOS
+                    if (!empty($valorHistoria)) {
+                        $historiaBase[$campo] = $valorHistoria;
+                        $camposPorCompletar[$campo] = false;
+                        $datosCompletadosEnEstaHistoria[] = $campo;
+                        
+                        Log::debug("✅ Campo {$campo} completado desde historia #{$historiaIndex}", [
+                            'valor' => is_string($valorHistoria) ? substr($valorHistoria, 0, 50) : $valorHistoria,
+                            'especialidad_origen' => $especialidadHistoria
+                        ]);
+                    }
+                }
+            }
+            
+            // ✅ REGISTRAR QUÉ DATOS SE COMPLETARON EN ESTA HISTORIA
+            if (!empty($datosCompletadosEnEstaHistoria)) {
+                $datosCompletadosPorHistoria[$historiaUuid] = [
+                    'historia_index' => $historiaIndex,
+                    'especialidad' => $especialidadHistoria,
+                    'fecha' => $historia['created_at'] ?? 'N/A',
+                    'datos_completados' => $datosCompletadosEnEstaHistoria
+                ];
+                
+                Log::info("📝 [OFFLINESERVICE] Datos completados en historia #{$historiaIndex}", [
+                    'historia_uuid' => $historiaUuid,
+                    'datos' => implode(', ', $datosCompletadosEnEstaHistoria)
                 ]);
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR REMISIONES (SOLO SI ESTÁ VACÍO)
-            // ═══════════════════════════════════════════
-            if ($necesitaRemisiones && !empty($historia['remisiones'])) {
-                $historiaBase['remisiones'] = $historia['remisiones'];
-                $necesitaRemisiones = false;
-                Log::info('✅ [OFFLINESERVICE] Remisiones completadas', [
-                    'especialidad_origen' => $especialidadHistoria,
-                    'count' => count($historia['remisiones'])
-                ]);
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR CUPS (SOLO SI ESTÁ VACÍO)
-            // ═══════════════════════════════════════════
-            if ($necesitaCups && !empty($historia['cups'])) {
-                $historiaBase['cups'] = $historia['cups'];
-                $necesitaCups = false;
-                Log::info('✅ [OFFLINESERVICE] CUPS completados', [
-                    'especialidad_origen' => $especialidadHistoria,
-                    'count' => count($historia['cups'])
-                ]);
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR CLASIFICACIONES
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['clasificacion_estado_metabolico'] && !empty($historia['clasificacion_estado_metabolico'])) {
-                $historiaBase['clasificacion_estado_metabolico'] = $historia['clasificacion_estado_metabolico'];
-                $camposPorCompletar['clasificacion_estado_metabolico'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_hta'] && !empty($historia['clasificacion_hta'])) {
-                $historiaBase['clasificacion_hta'] = $historia['clasificacion_hta'];
-                $camposPorCompletar['clasificacion_hta'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_dm'] && !empty($historia['clasificacion_dm'])) {
-                $historiaBase['clasificacion_dm'] = $historia['clasificacion_dm'];
-                $camposPorCompletar['clasificacion_dm'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_rcv'] && !empty($historia['clasificacion_rcv'])) {
-                $historiaBase['clasificacion_rcv'] = $historia['clasificacion_rcv'];
-                $camposPorCompletar['clasificacion_rcv'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_erc_estado'] && !empty($historia['clasificacion_erc_estado'])) {
-                $historiaBase['clasificacion_erc_estado'] = $historia['clasificacion_erc_estado'];
-                $camposPorCompletar['clasificacion_erc_estado'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_erc_estadodos'] && !empty($historia['clasificacion_erc_estadodos'])) {
-                $historiaBase['clasificacion_erc_estadodos'] = $historia['clasificacion_erc_estadodos'];
-                $camposPorCompletar['clasificacion_erc_estadodos'] = false;
-            }
-
-            if ($camposPorCompletar['clasificacion_erc_categoria_ambulatoria_persistente'] && !empty($historia['clasificacion_erc_categoria_ambulatoria_persistente'])) {
-                $historiaBase['clasificacion_erc_categoria_ambulatoria_persistente'] = $historia['clasificacion_erc_categoria_ambulatoria_persistente'];
-                $camposPorCompletar['clasificacion_erc_categoria_ambulatoria_persistente'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR TASAS DE FILTRACIÓN
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['tasa_filtracion_glomerular_ckd_epi'] && !empty($historia['tasa_filtracion_glomerular_ckd_epi'])) {
-                $historiaBase['tasa_filtracion_glomerular_ckd_epi'] = $historia['tasa_filtracion_glomerular_ckd_epi'];
-                $camposPorCompletar['tasa_filtracion_glomerular_ckd_epi'] = false;
-            }
-
-            if ($camposPorCompletar['tasa_filtracion_glomerular_gockcroft_gault'] && !empty($historia['tasa_filtracion_glomerular_gockcroft_gault'])) {
-                $historiaBase['tasa_filtracion_glomerular_gockcroft_gault'] = $historia['tasa_filtracion_glomerular_gockcroft_gault'];
-                $camposPorCompletar['tasa_filtracion_glomerular_gockcroft_gault'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR ANTECEDENTES PERSONALES
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['hipertension_arterial_personal'] && !empty($historia['hipertension_arterial_personal']) && $historia['hipertension_arterial_personal'] !== 'NO') {
-                $historiaBase['hipertension_arterial_personal'] = $historia['hipertension_arterial_personal'];
-                $historiaBase['obs_hipertension_arterial_personal'] = $historia['obs_hipertension_arterial_personal'] ?? null;
-                $camposPorCompletar['hipertension_arterial_personal'] = false;
-            }
-
-            if ($camposPorCompletar['diabetes_mellitus_personal'] && !empty($historia['diabetes_mellitus_personal']) && $historia['diabetes_mellitus_personal'] !== 'NO') {
-                $historiaBase['diabetes_mellitus_personal'] = $historia['diabetes_mellitus_personal'];
-                $historiaBase['obs_diabetes_mellitus_personal'] = $historia['obs_diabetes_mellitus_personal'] ?? null;
-                $camposPorCompletar['diabetes_mellitus_personal'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR TALLA
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['talla'] && !empty($historia['talla'])) {
-                $historiaBase['talla'] = $historia['talla'];
-                $camposPorCompletar['talla'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR TEST DE MORISKY
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['olvida_tomar_medicamentos'] && !empty($historia['olvida_tomar_medicamentos'])) {
-                $historiaBase['olvida_tomar_medicamentos'] = $historia['olvida_tomar_medicamentos'];
-                $camposPorCompletar['olvida_tomar_medicamentos'] = false;
-            }
-
-            if ($camposPorCompletar['toma_medicamentos_hora_indicada'] && !empty($historia['toma_medicamentos_hora_indicada'])) {
-                $historiaBase['toma_medicamentos_hora_indicada'] = $historia['toma_medicamentos_hora_indicada'];
-                $camposPorCompletar['toma_medicamentos_hora_indicada'] = false;
-            }
-
-            if ($camposPorCompletar['cuando_esta_bien_deja_tomar_medicamentos'] && !empty($historia['cuando_esta_bien_deja_tomar_medicamentos'])) {
-                $historiaBase['cuando_esta_bien_deja_tomar_medicamentos'] = $historia['cuando_esta_bien_deja_tomar_medicamentos'];
-                $camposPorCompletar['cuando_esta_bien_deja_tomar_medicamentos'] = false;
-            }
-
-            if ($camposPorCompletar['siente_mal_deja_tomarlos'] && !empty($historia['siente_mal_deja_tomarlos'])) {
-                $historiaBase['siente_mal_deja_tomarlos'] = $historia['siente_mal_deja_tomarlos'];
-                $camposPorCompletar['siente_mal_deja_tomarlos'] = false;
-            }
-
-            if ($camposPorCompletar['valoracion_psicologia'] && !empty($historia['valoracion_psicologia'])) {
-                $historiaBase['valoracion_psicologia'] = $historia['valoracion_psicologia'];
-                $camposPorCompletar['valoracion_psicologia'] = false;
-            }
-
-            if ($camposPorCompletar['adherente'] && !empty($historia['adherente'])) {
-                $historiaBase['adherente'] = $historia['adherente'];
-                $camposPorCompletar['adherente'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 COMPLETAR EDUCACIÓN EN SALUD
-            // ═══════════════════════════════════════════
-            if ($camposPorCompletar['alimentacion'] && !empty($historia['alimentacion'])) {
-                $historiaBase['alimentacion'] = $historia['alimentacion'];
-                $camposPorCompletar['alimentacion'] = false;
-            }
-
-            if ($camposPorCompletar['disminucion_consumo_sal_azucar'] && !empty($historia['disminucion_consumo_sal_azucar'])) {
-                $historiaBase['disminucion_consumo_sal_azucar'] = $historia['disminucion_consumo_sal_azucar'];
-                $camposPorCompletar['disminucion_consumo_sal_azucar'] = false;
-            }
-
-            if ($camposPorCompletar['fomento_actividad_fisica'] && !empty($historia['fomento_actividad_fisica'])) {
-                $historiaBase['fomento_actividad_fisica'] = $historia['fomento_actividad_fisica'];
-                $camposPorCompletar['fomento_actividad_fisica'] = false;
-            }
-
-            if ($camposPorCompletar['importancia_adherencia_tratamiento'] && !empty($historia['importancia_adherencia_tratamiento'])) {
-                $historiaBase['importancia_adherencia_tratamiento'] = $historia['importancia_adherencia_tratamiento'];
-                $camposPorCompletar['importancia_adherencia_tratamiento'] = false;
-            }
-
-            if ($camposPorCompletar['consumo_frutas_verduras'] && !empty($historia['consumo_frutas_verduras'])) {
-                $historiaBase['consumo_frutas_verduras'] = $historia['consumo_frutas_verduras'];
-                $camposPorCompletar['consumo_frutas_verduras'] = false;
-            }
-
-            if ($camposPorCompletar['manejo_estres'] && !empty($historia['manejo_estres'])) {
-                $historiaBase['manejo_estres'] = $historia['manejo_estres'];
-                $camposPorCompletar['manejo_estres'] = false;
-            }
-
-            if ($camposPorCompletar['disminucion_consumo_cigarrillo'] && !empty($historia['disminucion_consumo_cigarrillo'])) {
-                $historiaBase['disminucion_consumo_cigarrillo'] = $historia['disminucion_consumo_cigarrillo'];
-                $camposPorCompletar['disminucion_consumo_cigarrillo'] = false;
-            }
-
-            if ($camposPorCompletar['disminucion_peso'] && !empty($historia['disminucion_peso'])) {
-                $historiaBase['disminucion_peso'] = $historia['disminucion_peso'];
-                $camposPorCompletar['disminucion_peso'] = false;
-            }
-
-            // ═══════════════════════════════════════════
-            // 🔹 VERIFICAR SI YA COMPLETAMOS TODO
-            // ═══════════════════════════════════════════
-            if (!in_array(true, $camposPorCompletar) && 
-                !$necesitaMedicamentos && 
-                !$necesitaDiagnosticos && 
-                !$necesitaRemisiones && 
-                !$necesitaCups) {
-                Log::info('✅ [OFFLINESERVICE] Todos los campos completados, deteniendo búsqueda');
-                break;
             }
         }
 
+        // ✅ CALCULAR RESUMEN FINAL
+        $camposCompletados = count(array_filter($camposPorCompletar, fn($v) => !$v));
+        $camposFaltantes = count(array_filter($camposPorCompletar));
+        
         Log::info('📊 [OFFLINESERVICE] Resultado final de completar datos', [
+            'historias_revisadas' => $historiaIndex,
+            'historias_disponibles' => $maxIteraciones,
+            'historias_con_datos_usados' => count($datosCompletadosPorHistoria),
+            // ARRAYS
             'medicamentos_final' => count($historiaBase['medicamentos'] ?? []),
             'diagnosticos_final' => count($historiaBase['diagnosticos'] ?? []),
             'remisiones_final' => count($historiaBase['remisiones'] ?? []),
             'cups_final' => count($historiaBase['cups'] ?? []),
+            // CAMPOS ESCALARES
+            'campos_escalares_completados' => $camposCompletados,
+            'campos_escalares_faltantes' => $camposFaltantes,
             'tiene_clasificacion' => !empty($historiaBase['clasificacion_estado_metabolico']),
             'tiene_talla' => !empty($historiaBase['talla']),
         ]);
+        
+        // ✅ LOG DETALLADO DE HISTORIAS USADAS
+        if (!empty($datosCompletadosPorHistoria)) {
+            Log::info('📋 [OFFLINESERVICE] Detalle de historias que aportaron datos:', [
+                'historias' => $datosCompletadosPorHistoria
+            ]);
+        }
 
         return $historiaBase;
 
@@ -11594,12 +11898,15 @@ public function completarDatosFaltantesOffline(string $pacienteUuid, array $hist
         Log::error('❌ [OFFLINESERVICE] Error completando datos faltantes', [
             'error' => $e->getMessage(),
             'line' => $e->getLine(),
-            'file' => basename($e->getFile())
+            'file' => basename($e->getFile()),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return $historiaBase;
     }
 }
+
+
 /**
  * FIN HISTORIAS CLINICASSSSS
  * 

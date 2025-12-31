@@ -1133,12 +1133,6 @@ function dispararEventoHistoriaGuardada(citaUuid, historiaUuid, offline) {
     
     console.log('✅ Evento disparado exitosamente');
 }
-/**
- * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL
- */
-/**
- * ✅ CARGAR DATOS PREVIOS MEDICINA GENERAL - CON LOGS DETALLADOS
- */
 function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
     try {
         console.log('🔄 Iniciando carga de datos previos para Medicina General');
@@ -1152,8 +1146,6 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarMedicamentoConDatos(medicamento);
                 }, index * 200);
             });
-        } else {
-            console.log('ℹ️ No hay medicamentos para cargar');
         }
 
         // ✅ CARGAR REMISIONES
@@ -1164,8 +1156,6 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarRemisionConDatos(remision);
                 }, index * 200);
             });
-        } else {
-            console.log('ℹ️ No hay remisiones para cargar');
         }
 
         // ✅ CARGAR DIAGNÓSTICOS
@@ -1186,8 +1176,6 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     }, (i + 1) * 200);
                 }
             }
-        } else {
-            console.log('ℹ️ No hay diagnósticos para cargar');
         }
 
         // ✅ CARGAR CUPS
@@ -1198,19 +1186,15 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
                     agregarCupsConDatos(cups);
                 }, index * 200);
             });
-        } else {
-            console.log('ℹ️ No hay CUPS para cargar');
         }
 
         // ✅ CARGAR TALLA
         if (historiaPrevia.talla) {
             $('#talla').val(historiaPrevia.talla);
             console.log('📏 Talla cargada:', historiaPrevia.talla);
-        } else {
-            console.log('ℹ️ No hay talla para cargar');
         }
 
-        // ✅✅✅ CARGAR CLASIFICACIONES - CON LOGS ULTRA DETALLADOS ✅✅✅
+        // ✅✅✅ CARGAR CLASIFICACIONES - VERSIÓN CORREGIDA ✅✅✅
         console.log('📊 ==================== CARGANDO CLASIFICACIONES ====================');
 
         const camposClasificacion = {
@@ -1227,44 +1211,15 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
             const campoFormulario = camposClasificacion[campoBD];
             const valor = historiaPrevia[campoBD];
             
-            console.log(`🔍 Procesando campo: ${campoBD}`);
-            console.log(`   📌 Valor recibido: ${valor}`);
-            console.log(`   📌 ID del select: ${campoFormulario}`);
-            
-            const $select = $('#' + campoFormulario);
-            console.log(`   📌 Select encontrado: ${$select.length > 0 ? 'SÍ' : 'NO'}`);
-            
-            if ($select.length > 0) {
-                console.log(`   📌 Opciones disponibles:`, $select.find('option').map(function() {
-                    return $(this).val();
-                }).get());
+            if (valor) {
+                console.log(`✅ Cargando ${campoBD}: ${valor}`);
+                const $select = $('#' + campoFormulario);
                 
-                if (valor) {
+                if ($select.length > 0) {
                     $select.val(valor);
-                    console.log(`   ✅ Valor asignado: ${$select.val()}`);
-                    
-                    if ($select.val() === valor) {
-                        console.log(`   ✅✅ ÉXITO: Select ${campoFormulario} actualizado correctamente`);
-                    } else {
-                        console.error(`   ❌ ERROR: El valor ${valor} NO existe en las opciones del select`);
-                    }
+                    console.log(`✅ Select ${campoFormulario} actualizado a: ${$select.val()}`);
                 } else {
-                    console.log(`   ℹ️ No hay valor para cargar`);
-                }
-            } else {
-                console.error(`   ❌ ERROR: No se encontró select con ID "${campoFormulario}"`);
-                console.log(`   🔍 Buscando alternativas...`);
-                
-                // Buscar por name
-                const $selectByName = $('select[name="' + campoBD + '"]');
-                if ($selectByName.length > 0) {
-                    console.log(`   ✅ Encontrado por name: ${campoBD}`);
-                    if (valor) {
-                        $selectByName.val(valor);
-                        console.log(`   ✅ Valor asignado por name: ${$selectByName.val()}`);
-                    }
-                } else {
-                    console.error(`   ❌ Tampoco se encontró por name="${campoBD}"`);
+                    console.error(`❌ No se encontró select con ID: ${campoFormulario}`);
                 }
             }
         });
@@ -1273,39 +1228,27 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
 
         // ✅ CARGAR TASAS DE FILTRACIÓN
         if (historiaPrevia.tasa_filtracion_glomerular_ckd_epi) {
-            console.log('📊 Cargando TFG CKD-EPI:', historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
             $('#tasa_filtracion_glomerular_ckd_epi').val(historiaPrevia.tasa_filtracion_glomerular_ckd_epi);
-        } else {
-            console.log('ℹ️ No hay TFG CKD-EPI para cargar');
         }
         
         if (historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault) {
-            console.log('📊 Cargando TFG Cockcroft-Gault:', historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
             $('#tasa_filtracion_glomerular_gockcroft_gault').val(historiaPrevia.tasa_filtracion_glomerular_gockcroft_gault);
-        } else {
-            console.log('ℹ️ No hay TFG Cockcroft-Gault para cargar');
         }
 
         // ✅ CARGAR ANTECEDENTES PERSONALES - HTA
         if (historiaPrevia.hipertension_arterial_personal) {
-            console.log('🩺 Cargando HTA Personal:', historiaPrevia.hipertension_arterial_personal);
             $('input[name="hipertension_arterial_personal"][value="' + historiaPrevia.hipertension_arterial_personal + '"]').prop('checked', true).trigger('change');
-            if (historiaPrevia.obs_hipertension_arterial_personal) {
-                $('#obs_hipertension_arterial_personal').val(historiaPrevia.obs_hipertension_arterial_personal);
+            if (historiaPrevia.obs_personal_hipertension_arterial) {
+                $('#obs_hipertension_arterial_personal').val(historiaPrevia.obs_personal_hipertension_arterial);
             }
-        } else {
-            console.log('ℹ️ No hay HTA Personal para cargar');
         }
 
         // ✅ CARGAR ANTECEDENTES PERSONALES - DM
         if (historiaPrevia.diabetes_mellitus_personal) {
-            console.log('🩺 Cargando DM Personal:', historiaPrevia.diabetes_mellitus_personal);
             $('input[name="diabetes_mellitus_personal"][value="' + historiaPrevia.diabetes_mellitus_personal + '"]').prop('checked', true).trigger('change');
-            if (historiaPrevia.obs_diabetes_mellitus_personal) {
-                $('#obs_diabetes_mellitus_personal').val(historiaPrevia.obs_diabetes_mellitus_personal);
+            if (historiaPrevia.obs_personal_mellitus) {
+                $('#obs_diabetes_mellitus_personal').val(historiaPrevia.obs_personal_mellitus);
             }
-        } else {
-            console.log('ℹ️ No hay DM Personal para cargar');
         }
 
         // ✅ CARGAR TEST DE MORISKY
@@ -1324,86 +1267,77 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
             const valor = historiaPrevia[campoBD];
             
             if (valor) {
-                console.log(`✅ Cargando ${campoBD}: ${valor}`);
-                const $input = $('input[name="' + campoFormulario + '"][value="' + valor + '"]');
-                
-                if ($input.length > 0) {
-                    $input.prop('checked', true);
-                    console.log(`✅ Radio button ${campoFormulario} marcado correctamente`);
-                } else {
-                    console.warn(`⚠️ No se encontró input para ${campoFormulario} con valor ${valor}`);
-                }
-            } else {
-                console.log(`ℹ️ No hay valor para ${campoBD}`);
+                $('input[name="' + campoFormulario + '"][value="' + valor + '"]').prop('checked', true);
+                console.log(`✅ ${campoBD}: ${valor}`);
             }
         });
 
         // ✅ CARGAR ADHERENTE
         if (historiaPrevia.adherente) {
-            console.log('✅ Cargando adherente:', historiaPrevia.adherente);
-            const $inputAdherente = $('input[name="adherente"][value="' + historiaPrevia.adherente + '"]');
-            
-            if ($inputAdherente.length > 0) {
-                $inputAdherente.prop('checked', true);
-                console.log('✅ Adherente marcado correctamente');
-            } else {
-                console.warn('⚠️ No se encontró input para adherente con valor', historiaPrevia.adherente);
-            }
-        } else {
-            console.log('ℹ️ No hay valor para adherente');
+            $('input[name="adherente"][value="' + historiaPrevia.adherente + '"]').prop('checked', true);
         }
 
         // ✅ RECALCULAR ADHERENCIA
         setTimeout(function() {
-            console.log('🔄 Recalculando adherencia Morisky...');
             calcularAdherenciaMorisky();
         }, 1000);
 
-        // ✅✅✅ CARGAR CAMPOS DE EDUCACIÓN - CON LOGS ULTRA DETALLADOS ✅✅✅
-        console.log('📚 ==================== CARGANDO EDUCACIÓN EN SALUD ====================');
+       // ✅✅✅ CARGAR EDUCACIÓN EN SALUD - FORZAR ACTUALIZACIÓN VISUAL ✅✅✅
+console.log('📚 ==================== CARGANDO EDUCACIÓN EN SALUD ====================');
 
-        const camposEducacion = [
-            'alimentacion',
-            'disminucion_consumo_sal_azucar',
-            'fomento_actividad_fisica',
-            'importancia_adherencia_tratamiento',
-            'consumo_frutas_verduras',
-            'manejo_estres',
-            'disminucion_consumo_cigarrillo',
-            'disminucion_peso'
-        ];
+// 🔥 ESPERAR 500ms PARA ASEGURAR QUE EL DOM ESTÉ LISTO
+setTimeout(function() {
+    const camposEducacion = [
+        'alimentacion',
+        'disminucion_consumo_sal_azucar',
+        'fomento_actividad_fisica',
+        'importancia_adherencia_tratamiento',
+        'consumo_frutas_verduras',
+        'manejo_estres',
+        'disminucion_consumo_cigarrillo',
+        'disminucion_peso'
+    ];
 
-        camposEducacion.forEach(function(campo) {
-            const valor = historiaPrevia[campo];
+    camposEducacion.forEach(function(campo) {
+        const valor = historiaPrevia[campo];
+        
+        console.log(`🔍 Procesando: ${campo} → valor = ${valor}`);
+        
+        if (valor) {
+            const radioSI = document.querySelector(`input[name="${campo}"][value="SI"]`);
+            const radioNO = document.querySelector(`input[name="${campo}"][value="NO"]`);
             
-            console.log(`🔍 Procesando campo: ${campo}`);
-            console.log(`   📌 Valor recibido: ${valor}`);
-            
-            const $input = $('input[name="' + campo + '"][value="' + valor + '"]');
-            console.log(`   📌 Input encontrado: ${$input.length > 0 ? 'SÍ' : 'NO'}`);
-            
-            if ($input.length > 0) {
-                console.log(`   📌 Tipo de input: ${$input.attr('type')}`);
-                $input.prop('checked', true);
-                console.log(`   ✅✅ Campo ${campo} marcado correctamente`);
-            } else {
-                console.error(`   ❌ ERROR: No se encontró input[name="${campo}"][value="${valor}"]`);
-                
-                // Buscar todos los inputs con ese name
-                const $allInputs = $('input[name="' + campo + '"]');
-                console.log(`   🔍 Inputs disponibles con name="${campo}": ${$allInputs.length}`);
-                
-                if ($allInputs.length > 0) {
-                    console.log(`   📌 Valores disponibles:`, $allInputs.map(function() {
-                        return $(this).val();
-                    }).get());
+            if (radioSI && radioNO) {
+                if (valor === 'SI' || valor === '1' || valor === 1 || valor === true) {
+                    radioSI.checked = true;
+                    radioNO.checked = false;
+                    radioSI.click(); // 🔥 FORZAR ACTUALIZACIÓN VISUAL
+                    console.log(`✅✅ ${campo} marcado como SÍ`);
                 } else {
-                    console.error(`   ❌ No existe ningún input con name="${campo}"`);
+                    radioSI.checked = false;
+                    radioNO.checked = true;
+                    radioNO.click(); // 🔥 FORZAR ACTUALIZACIÓN VISUAL
+                    console.log(`✅✅ ${campo} marcado como NO`);
                 }
+                
+                console.log(`   📌 Verificación: radioSI.checked = ${radioSI.checked}, radioNO.checked = ${radioNO.checked}`);
+            } else {
+                console.warn(`⚠️ Radio buttons de ${campo} no encontrados`);
             }
-        });
+        } else {
+            const radioNO = document.querySelector(`input[name="${campo}"][value="NO"]`);
+            if (radioNO) {
+                radioNO.checked = true;
+                radioNO.click();
+                console.log(`ℹ️ ${campo} marcado como NO (por defecto)`);
+            }
+        }
+    });
 
-        console.log('📚 ==================== FIN EDUCACIÓN EN SALUD ====================');
+    console.log('📚 ==================== FIN EDUCACIÓN EN SALUD ====================');
+    
+}, 500);
+
 
         console.log('✅ Datos previos cargados exitosamente');
 
@@ -1412,7 +1346,6 @@ function cargarDatosPreviosMedicinaGeneral(historiaPrevia) {
         console.error('Stack trace:', error.stack);
     }
 }
-
 
 
 // ============================================

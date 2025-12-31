@@ -27,19 +27,25 @@
                 @endif
                 <div class="col-md-6">
                     <div class="mb-3">
-                        <label class="form-label">{{ $item['label'] }}</label>
+                        <label class="form-label fw-bold">{{ $item['label'] }}</label>
                         <div>
                             <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="{{ $item['key'] }}" 
-                                       id="{{ $item['key'] }}_si" value="SI"
-                                       {{ ($historiaPrevia[$item['key']] ?? '') === 'SI' ? 'checked' : '' }}>
-                                <label class="form-check-label" for="{{ $item['key'] }}_si">Sí</label>
+                                <input class="form-check-input" type="radio" 
+                                       name="{{ $item['key'] }}" 
+                                       id="{{ $item['key'] }}_si" 
+                                       value="SI">
+                                <label class="form-check-label" for="{{ $item['key'] }}_si">
+                                    Sí
+                                </label>
                             </div>
                             <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="{{ $item['key'] }}" 
-                                       id="{{ $item['key'] }}_no" value="NO"
-                                       {{ ($historiaPrevia[$item['key']] ?? 'NO') === 'NO' ? 'checked' : '' }}>
-                                <label class="form-check-label" for="{{ $item['key'] }}_no">No</label>
+                                <input class="form-check-input" type="radio" 
+                                       name="{{ $item['key'] }}" 
+                                       id="{{ $item['key'] }}_no" 
+                                       value="NO">
+                                <label class="form-check-label" for="{{ $item['key'] }}_no">
+                                    No
+                                </label>
                             </div>
                         </div>
                     </div>

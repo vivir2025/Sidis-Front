@@ -610,7 +610,6 @@ private function obtenerHistoriaOffline(string $uuid): ?array
 }
 /**
  * ✅✅✅ OBTENER ÚLTIMA HISTORIA PARA FORMULARIO - VERSIÓN CORREGIDA ✅✅✅
- * (Busca en TODAS las especialidades, pero solo carga si es CONTROL)
  */
 private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, string $especialidad): ?array
 {
@@ -647,10 +646,118 @@ private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, strin
             'diagnosticos_count' => count($ultimaHistoria['diagnosticos'] ?? [])
         ]);
 
+        // ✅✅✅ ENRIQUECER MEDICAMENTOS (USANDO TU MÉTODO) ✅✅✅
+        if (!empty($ultimaHistoria['medicamentos'])) {
+            Log::info('🔍 Enriqueciendo medicamentos', [
+                'count' => count($ultimaHistoria['medicamentos'])
+            ]);
+            
+            foreach ($ultimaHistoria['medicamentos'] as &$medicamento) {
+                if (empty($medicamento['medicamento'])) {
+                    // 🔥 USAR TU MÉTODO obtenerMedicamentoCompleto()
+                    $medicamentoCompleto = $this->obtenerMedicamentoCompleto($medicamento['medicamento_id']);
+                    
+                    if ($medicamentoCompleto) {
+                        $medicamento['medicamento'] = $medicamentoCompleto;
+                        Log::debug('✅ Medicamento enriquecido', [
+                            'medicamento_id' => $medicamento['medicamento_id'],
+                            'nombre' => $medicamentoCompleto['nombre']
+                        ]);
+                    } else {
+                        Log::warning('⚠️ Medicamento no encontrado', [
+                            'medicamento_id' => $medicamento['medicamento_id']
+                        ]);
+                    }
+                }
+            }
+            unset($medicamento); // ✅ Liberar referencia
+        }
+
+        // ✅✅✅ ENRIQUECER DIAGNÓSTICOS (USANDO TU MÉTODO) ✅✅✅
+        if (!empty($ultimaHistoria['diagnosticos'])) {
+            Log::info('🔍 Enriqueciendo diagnósticos', [
+                'count' => count($ultimaHistoria['diagnosticos'])
+            ]);
+            
+            foreach ($ultimaHistoria['diagnosticos'] as &$diagnostico) {
+                if (empty($diagnostico['diagnostico'])) {
+                    // 🔥 USAR TU MÉTODO obtenerDiagnosticoCompleto()
+                    $diagnosticoCompleto = $this->obtenerDiagnosticoCompleto($diagnostico['diagnostico_id']);
+                    
+                    if ($diagnosticoCompleto) {
+                        $diagnostico['diagnostico'] = $diagnosticoCompleto;
+                        Log::debug('✅ Diagnóstico enriquecido', [
+                            'diagnostico_id' => $diagnostico['diagnostico_id'],
+                            'nombre' => $diagnosticoCompleto['nombre']
+                        ]);
+                    } else {
+                        Log::warning('⚠️ Diagnóstico no encontrado', [
+                            'diagnostico_id' => $diagnostico['diagnostico_id']
+                        ]);
+                    }
+                }
+            }
+            unset($diagnostico); // ✅ Liberar referencia
+        }
+
+        // ✅✅✅ ENRIQUECER REMISIONES (USANDO TU MÉTODO) ✅✅✅
+        if (!empty($ultimaHistoria['remisiones'])) {
+            Log::info('🔍 Enriqueciendo remisiones', [
+                'count' => count($ultimaHistoria['remisiones'])
+            ]);
+            
+            foreach ($ultimaHistoria['remisiones'] as &$remision) {
+                if (empty($remision['remision'])) {
+                    // 🔥 USAR TU MÉTODO obtenerRemisionCompleta()
+                    $remisionCompleta = $this->obtenerRemisionCompleta($remision['remision_id']);
+                    
+                    if ($remisionCompleta) {
+                        $remision['remision'] = $remisionCompleta;
+                        Log::debug('✅ Remisión enriquecida', [
+                            'remision_id' => $remision['remision_id'],
+                            'nombre' => $remisionCompleta['nombre']
+                        ]);
+                    } else {
+                        Log::warning('⚠️ Remisión no encontrada', [
+                            'remision_id' => $remision['remision_id']
+                        ]);
+                    }
+                }
+            }
+            unset($remision); // ✅ Liberar referencia
+        }
+
+        // ✅✅✅ ENRIQUECER CUPS (USANDO TU MÉTODO) ✅✅✅
+        if (!empty($ultimaHistoria['cups'])) {
+            Log::info('🔍 Enriqueciendo CUPS', [
+                'count' => count($ultimaHistoria['cups'])
+            ]);
+            
+            foreach ($ultimaHistoria['cups'] as &$cup) {
+                if (empty($cup['cups'])) {
+                    // 🔥 USAR TU MÉTODO obtenerCupsCompleto()
+                    $cupsCompleto = $this->obtenerCupsCompleto($cup['cups_id']);
+                    
+                    if ($cupsCompleto) {
+                        $cup['cups'] = $cupsCompleto;
+                        Log::debug('✅ CUPS enriquecido', [
+                            'cups_id' => $cup['cups_id'],
+                            'nombre' => $cupsCompleto['nombre']
+                        ]);
+                    } else {
+                        Log::warning('⚠️ CUPS no encontrado', [
+                            'cups_id' => $cup['cups_id']
+                        ]);
+                    }
+                }
+            }
+            unset($cup); // ✅ Liberar referencia
+        }
+
         // ✅ FORMATEAR PARA EL FORMULARIO
         $historiaFormateada = $this->formatearHistoriaParaFormulario($ultimaHistoria);
 
-        // ✅✅✅ COMPLETAR DATOS FALTANTES (NUEVO) ✅✅✅
+        // ✅✅✅ COMPLETAR DATOS FALTANTES ✅✅✅
         $historiaFormateada = $this->offlineService->completarDatosFaltantesOffline($pacienteUuid, $historiaFormateada);
 
         Log::info('✅ [FORMULARIO] Historia completa después de rellenar', [
@@ -666,12 +773,14 @@ private function obtenerUltimaHistoriaParaFormulario(string $pacienteUuid, strin
     } catch (\Exception $e) {
         Log::error('❌ [FORMULARIO] Error obteniendo historia', [
             'error' => $e->getMessage(),
-            'line' => $e->getLine()
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
         ]);
         
         return null;
     }
 }
+
 
 
 /**
@@ -821,186 +930,228 @@ private function formatearHistoriaParaFormulario(array $historia): array
     }
 }
 
-
 /**
- * ✅ FORMATEAR MEDICAMENTOS PARA EL FORMULARIO
+ * ✅ FORMATEAR MEDICAMENTOS PARA EL FORMULARIO - VERSIÓN CORREGIDA
  */
 private function formatearMedicamentosParaFormulario(array $medicamentos): array
 {
     return array_map(function($medicamento) {
-        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
-        $medicamentoUuid = $medicamento['medicamento']['uuid'] ?? 
-                          $medicamento['medicamento_uuid'] ?? 
-                          $this->obtenerMedicamentoUuid($medicamento['medicamento_id'] ?? $medicamento['id'] ?? null);
-        
-        // ✅ OBTENER NOMBRE - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
-        $nombre = $medicamento['medicamento']['nombre'] ?? '';
-        $principioActivo = $medicamento['medicamento']['principio_activo'] ?? '';
-        
-        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
-        if (empty($nombre) && $medicamentoUuid) {
-            Log::debug('🔍 Buscando nombre de medicamento desde offline', [
-                'medicamento_uuid' => $medicamentoUuid
+        // ✅✅✅ SI YA VIENE ENRIQUECIDO, RETORNAR DIRECTAMENTE ✅✅✅
+        if (isset($medicamento['medicamento']['nombre']) && !empty($medicamento['medicamento']['nombre'])) {
+            Log::debug('✅ Medicamento ya enriquecido, retornando directamente', [
+                'medicamento_id' => $medicamento['medicamento_id'] ?? 'N/A',
+                'nombre' => $medicamento['medicamento']['nombre']
             ]);
-            $medicamentoOffline = $this->obtenerMedicamentoCompleto($medicamentoUuid);
-            if ($medicamentoOffline) {
-                $nombre = $medicamentoOffline['nombre'] ?? '';
-                $principioActivo = $medicamentoOffline['principio_activo'] ?? '';
-                Log::debug('✅ Nombre de medicamento recuperado desde offline', [
-                    'medicamento_uuid' => $medicamentoUuid,
-                    'nombre' => $nombre
-                ]);
-            } else {
-                Log::warning('⚠️ Medicamento no encontrado en offline', [
-                    'medicamento_uuid' => $medicamentoUuid
-                ]);
-            }
+            
+            return [
+                'medicamento_id' => $medicamento['medicamento_id'] ?? $medicamento['medicamento']['uuid'],
+                'cantidad' => $medicamento['cantidad'] ?? '',
+                'dosis' => $medicamento['dosis'] ?? '',
+                'medicamento' => $medicamento['medicamento'] // ✅ PASAR DIRECTAMENTE
+            ];
         }
         
+        // ✅ SI NO ESTÁ ENRIQUECIDO, ENRIQUECER AHORA
+        $medicamentoUuid = $medicamento['medicamento']['uuid'] ?? 
+                          $medicamento['medicamento_uuid'] ?? 
+                          $medicamento['medicamento_id'] ?? 
+                          null;
+        
+        Log::warning('⚠️ Medicamento NO enriquecido, buscando datos', [
+            'medicamento_uuid' => $medicamentoUuid
+        ]);
+        
+        $medicamentoCompleto = $this->obtenerMedicamentoCompleto($medicamentoUuid);
+        
+        if ($medicamentoCompleto) {
+            return [
+                'medicamento_id' => $medicamentoUuid,
+                'cantidad' => $medicamento['cantidad'] ?? '',
+                'dosis' => $medicamento['dosis'] ?? '',
+                'medicamento' => $medicamentoCompleto
+            ];
+        }
+        
+        // ✅ FALLBACK: Retornar con datos vacíos
+        Log::error('❌ No se pudo enriquecer medicamento', [
+            'medicamento_uuid' => $medicamentoUuid
+        ]);
+        
         return [
-            'medicamento_id' => $medicamentoUuid, // ✅ SIEMPRE UUID
+            'medicamento_id' => $medicamentoUuid,
             'cantidad' => $medicamento['cantidad'] ?? '',
             'dosis' => $medicamento['dosis'] ?? '',
             'medicamento' => [
                 'uuid' => $medicamentoUuid,
-                'nombre' => $nombre,
-                'principio_activo' => $principioActivo
+                'nombre' => 'Medicamento sin nombre',
+                'principio_activo' => ''
             ]
         ];
     }, $medicamentos);
 }
 
 /**
- * ✅ FORMATEAR REMISIONES PARA EL FORMULARIO
+ * ✅ FORMATEAR REMISIONES PARA EL FORMULARIO - VERSIÓN CORREGIDA
  */
 private function formatearRemisionesParaFormulario(array $remisiones): array
 {
     return array_map(function($remision) {
-        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
-        $remisionUuid = $remision['remision']['uuid'] ?? 
-                       $remision['remision_uuid'] ?? 
-                       $this->obtenerRemisionUuid($remision['remision_id'] ?? $remision['id'] ?? null);
-        
-        // ✅ OBTENER NOMBRE - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
-        $nombre = $remision['remision']['nombre'] ?? '';
-        $tipo = $remision['remision']['tipo'] ?? '';
-        
-        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
-        if (empty($nombre) && $remisionUuid) {
-            Log::debug('🔍 Buscando nombre de remisión desde offline', [
-                'remision_uuid' => $remisionUuid
+        // ✅✅✅ SI YA VIENE ENRIQUECIDO, RETORNAR DIRECTAMENTE ✅✅✅
+        if (isset($remision['remision']['nombre']) && !empty($remision['remision']['nombre'])) {
+            Log::debug('✅ Remisión ya enriquecida, retornando directamente', [
+                'remision_id' => $remision['remision_id'] ?? 'N/A',
+                'nombre' => $remision['remision']['nombre']
             ]);
-            $remisionOffline = $this->obtenerRemisionCompleta($remisionUuid);
-            if ($remisionOffline) {
-                $nombre = $remisionOffline['nombre'] ?? '';
-                $tipo = $remisionOffline['tipo'] ?? '';
-                Log::debug('✅ Nombre de remisión recuperado desde offline', [
-                    'remision_uuid' => $remisionUuid,
-                    'nombre' => $nombre
-                ]);
-            } else {
-                Log::warning('⚠️ Remisión no encontrada en offline', [
-                    'remision_uuid' => $remisionUuid
-                ]);
-            }
+            
+            return [
+                'remision_id' => $remision['remision_id'] ?? $remision['remision']['uuid'],
+                'observacion' => $remision['observacion'] ?? '',
+                'remision' => $remision['remision'] // ✅ PASAR DIRECTAMENTE
+            ];
         }
         
+        // ✅ SI NO ESTÁ ENRIQUECIDO, ENRIQUECER AHORA
+        $remisionUuid = $remision['remision']['uuid'] ?? 
+                       $remision['remision_uuid'] ?? 
+                       $remision['remision_id'] ?? 
+                       null;
+        
+        Log::warning('⚠️ Remisión NO enriquecida, buscando datos', [
+            'remision_uuid' => $remisionUuid
+        ]);
+        
+        $remisionCompleta = $this->obtenerRemisionCompleta($remisionUuid);
+        
+        if ($remisionCompleta) {
+            return [
+                'remision_id' => $remisionUuid,
+                'observacion' => $remision['observacion'] ?? '',
+                'remision' => $remisionCompleta
+            ];
+        }
+        
+        // ✅ FALLBACK
         return [
-            'remision_id' => $remisionUuid, // ✅ SIEMPRE UUID
+            'remision_id' => $remisionUuid,
             'observacion' => $remision['observacion'] ?? '',
             'remision' => [
                 'uuid' => $remisionUuid,
-                'nombre' => $nombre,
-                'tipo' => $tipo
+                'nombre' => 'Remisión sin nombre',
+                'tipo' => ''
             ]
         ];
     }, $remisiones);
 }
 
 /**
- * ✅ FORMATEAR DIAGNÓSTICOS PARA EL FORMULARIO
+ * ✅ FORMATEAR DIAGNÓSTICOS PARA EL FORMULARIO - VERSIÓN CORREGIDA
  */
 private function formatearDiagnosticosParaFormulario(array $diagnosticos): array
 {
     return array_map(function($diagnostico) {
-        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
-        $diagnosticoUuid = $diagnostico['diagnostico']['uuid'] ?? 
-                          $diagnostico['diagnostico_uuid'] ?? 
-                          $this->obtenerDiagnosticoUuid($diagnostico['diagnostico_id'] ?? $diagnostico['id'] ?? null);
-        
-        // ✅ OBTENER NOMBRE Y CÓDIGO - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
-        $codigo = $diagnostico['diagnostico']['codigo'] ?? '';
-        $nombre = $diagnostico['diagnostico']['nombre'] ?? '';
-        
-        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
-        if (empty($nombre) && $diagnosticoUuid) {
-            Log::debug('🔍 Buscando nombre de diagnóstico desde offline', [
-                'diagnostico_uuid' => $diagnosticoUuid
+        // ✅✅✅ SI YA VIENE ENRIQUECIDO, RETORNAR DIRECTAMENTE ✅✅✅
+        if (isset($diagnostico['diagnostico']['nombre']) && !empty($diagnostico['diagnostico']['nombre'])) {
+            Log::debug('✅ Diagnóstico ya enriquecido, retornando directamente', [
+                'diagnostico_id' => $diagnostico['diagnostico_id'] ?? 'N/A',
+                'nombre' => $diagnostico['diagnostico']['nombre']
             ]);
-            $diagnosticoOffline = $this->obtenerDiagnosticoCompleto($diagnosticoUuid);
-            if ($diagnosticoOffline) {
-                $codigo = $diagnosticoOffline['codigo'] ?? '';
-                $nombre = $diagnosticoOffline['nombre'] ?? '';
-                Log::debug('✅ Nombre de diagnóstico recuperado desde offline', [
-                    'diagnostico_uuid' => $diagnosticoUuid,
-                    'codigo' => $codigo,
-                    'nombre' => $nombre
-                ]);
-            } else {
-                Log::warning('⚠️ Diagnóstico no encontrado en offline', [
-                    'diagnostico_uuid' => $diagnosticoUuid
-                ]);
-            }
+            
+            return [
+                'diagnostico_id' => $diagnostico['diagnostico_id'] ?? $diagnostico['diagnostico']['uuid'],
+                'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
+                'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
+                'diagnostico' => $diagnostico['diagnostico'] // ✅ PASAR DIRECTAMENTE
+            ];
         }
         
+        // ✅ SI NO ESTÁ ENRIQUECIDO, ENRIQUECER AHORA
+        $diagnosticoUuid = $diagnostico['diagnostico']['uuid'] ?? 
+                          $diagnostico['diagnostico_uuid'] ?? 
+                          $diagnostico['diagnostico_id'] ?? 
+                          null;
+        
+        Log::warning('⚠️ Diagnóstico NO enriquecido, buscando datos', [
+            'diagnostico_uuid' => $diagnosticoUuid
+        ]);
+        
+        $diagnosticoCompleto = $this->obtenerDiagnosticoCompleto($diagnosticoUuid);
+        
+        if ($diagnosticoCompleto) {
+            return [
+                'diagnostico_id' => $diagnosticoUuid,
+                'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
+                'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
+                'diagnostico' => $diagnosticoCompleto
+            ];
+        }
+        
+        // ✅ FALLBACK
         return [
-            'diagnostico_id' => $diagnosticoUuid, // ✅ SIEMPRE UUID
+            'diagnostico_id' => $diagnosticoUuid,
             'tipo' => $diagnostico['tipo'] ?? 'PRINCIPAL',
             'tipo_diagnostico' => $diagnostico['tipo_diagnostico'] ?? '',
             'diagnostico' => [
                 'uuid' => $diagnosticoUuid,
-                'codigo' => $codigo,
-                'nombre' => $nombre
+                'codigo' => '',
+                'nombre' => 'Diagnóstico sin nombre'
             ]
         ];
     }, $diagnosticos);
 }
 
 /**
- * ✅ FORMATEAR CUPS PARA EL FORMULARIO
+ * ✅ FORMATEAR CUPS PARA EL FORMULARIO - VERSIÓN CORREGIDA
  */
 private function formatearCupsParaFormulario(array $cups): array
 {
     return array_map(function($cup) {
-        // ✅ ASEGURAR QUE SIEMPRE SEA UUID
-        $cupsUuid = $cup['cups']['uuid'] ?? 
-                   $cup['cups_uuid'] ?? 
-                   $this->obtenerCupsUuid($cup['cups_id'] ?? $cup['id'] ?? null);
-        
-        // ✅ OBTENER NOMBRE Y CÓDIGO - PRIMERO DESDE DATOS, LUEGO DESDE OFFLINE
-        $codigo = $cup['cups']['codigo'] ?? '';
-        $nombre = $cup['cups']['nombre'] ?? '';
-        
-        // ✅ SI NO HAY NOMBRE, BUSCARLO EN LA BASE DE DATOS OFFLINE
-        if (empty($nombre) && $cupsUuid) {
-            $cupsOffline = $this->obtenerCupsCompleto($cupsUuid);
-            if ($cupsOffline) {
-                $codigo = $cupsOffline['codigo'] ?? '';
-                $nombre = $cupsOffline['nombre'] ?? '';
-            }
+        // ✅✅✅ SI YA VIENE ENRIQUECIDO, RETORNAR DIRECTAMENTE ✅✅✅
+        if (isset($cup['cups']['nombre']) && !empty($cup['cups']['nombre'])) {
+            Log::debug('✅ CUPS ya enriquecido, retornando directamente', [
+                'cups_id' => $cup['cups_id'] ?? 'N/A',
+                'nombre' => $cup['cups']['nombre']
+            ]);
+            
+            return [
+                'cups_id' => $cup['cups_id'] ?? $cup['cups']['uuid'],
+                'observacion' => $cup['observacion'] ?? '',
+                'cups' => $cup['cups'] // ✅ PASAR DIRECTAMENTE
+            ];
         }
         
+        // ✅ SI NO ESTÁ ENRIQUECIDO, ENRIQUECER AHORA
+        $cupsUuid = $cup['cups']['uuid'] ?? 
+                   $cup['cups_uuid'] ?? 
+                   $cup['cups_id'] ?? 
+                   null;
+        
+        Log::warning('⚠️ CUPS NO enriquecido, buscando datos', [
+            'cups_uuid' => $cupsUuid
+        ]);
+        
+        $cupsCompleto = $this->obtenerCupsCompleto($cupsUuid);
+        
+        if ($cupsCompleto) {
+            return [
+                'cups_id' => $cupsUuid,
+                'observacion' => $cup['observacion'] ?? '',
+                'cups' => $cupsCompleto
+            ];
+        }
+        
+        // ✅ FALLBACK
         return [
-            'cups_id' => $cupsUuid, // ✅ SIEMPRE UUID
+            'cups_id' => $cupsUuid,
             'observacion' => $cup['observacion'] ?? '',
             'cups' => [
                 'uuid' => $cupsUuid,
-                'codigo' => $codigo,
-                'nombre' => $nombre
+                'codigo' => '',
+                'nombre' => 'CUPS sin nombre'
             ]
         ];
     }, $cups);
 }
+
 
  public function store(Request $request)
 {
